@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.15
+// @version      3.16
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -5086,6 +5086,10 @@
       .pqs-help code{background:#dbeafe;border-radius:4px;padding:0 4px;font-size:11px}
       .pqs-dirty{margin-top:6px;color:#b45309;font-weight:600}
       .pqs-src{margin-top:4px;color:#475569;font-size:11px}
+      .pqs-gh{margin-top:8px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:12px;line-height:1.5}
+      .pqs-gh .pqs-row{margin-top:6px}
+      .pqs-gh input{flex:1}
+      .pqs-gh small{color:#64748b}
       .pqs-gridwrap{overflow-x:auto;border:1px solid #e5e7eb;border-radius:8px}
       .pqs-grid{width:100%;border-collapse:collapse;font-size:12px}
       .pqs-grid th,.pqs-grid td{border-bottom:1px solid #f1f5f9;padding:6px 8px;text-align:center;white-space:nowrap}
@@ -5158,7 +5162,8 @@
     });
     let draft = lsGet(DRAFT_KEY, null) || fromScript();
     const saveDraft = () => lsSet(DRAFT_KEY, draft);
-    const dirty = () => JSON.stringify(draft) !== JSON.stringify(fromScript());
+    let savedJson = null; // what we just saved to GitHub (this page still runs on the old teams until reload)
+    const dirty = () => JSON.stringify(draft) !== (savedJson || JSON.stringify(fromScript()));
     let people = null, peopleErr = '', q = '', rows = [];
 
     async function loadPeople() {
@@ -5240,6 +5245,43 @@
       return out.join('\n');
     }
 
+    // ---------- save straight to GitHub (the token stays on this PC, never in the script or the repo) ----------
+    const GH_REPO = 'Azanone/SABRBUNS', GH_KEY = 'pqsuite_gh_token_v1';
+    const ghToken = () => String(lsGet(GH_KEY, '') || '').trim();
+    const b64 = (str) => { let bin = ''; for (const x of new TextEncoder().encode(str)) bin += String.fromCharCode(x); return btoa(bin); };
+    async function ghPut(file, text, msg) {
+      const tok = ghToken();
+      if (!tok) throw new Error('no GitHub token on this PC yet');
+      const url = `https://api.github.com/repos/${GH_REPO}/contents/${file}`;
+      const h = { Authorization: `Bearer ${tok}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+      for (let a = 0; a < 2; a++) {
+        let g;
+        try { g = await fetch(`${url}?ref=main&t=${Date.now()}`, { headers: h, credentials: 'omit', cache: 'no-store' }); }
+        catch (_) { throw new Error('could not reach GitHub from this page (blocked?) · use Copy instead'); }
+        if (g.status === 401) throw new Error('GitHub says the token is wrong or expired · make a new one');
+        const sha = g.ok ? (await g.json()).sha : undefined;
+        const p = await fetch(url, { method: 'PUT', headers: { ...h, 'Content-Type': 'application/json' }, credentials: 'omit',
+          body: JSON.stringify({ message: msg, content: b64(text), branch: 'main', ...(sha ? { sha } : {}) }) });
+        if (p.ok) return true;
+        if ((p.status === 409 || p.status === 422) && a === 0) continue; // someone saved in between: take the new version and try again
+        const t = await p.text().catch(() => '');
+        if (p.status === 401) throw new Error('GitHub says the token is wrong or expired · make a new one');
+        if (p.status === 403 || p.status === 404) throw new Error(`GitHub says no (HTTP ${p.status}) · the token needs Contents: Read and write on ${GH_REPO}`);
+        throw new Error(`GitHub HTTP ${p.status} ${t.slice(0, 120)}`);
+      }
+      throw new Error('someone else keeps saving at the same time · try again');
+    }
+    // this PC uses the new file right away (and does not take the old one back from GitHub's 5 min cache)
+    const ghKeep = (r, data) => { lsSet(r.ls, { ts: Date.now(), data }); lsSet(r.lsTry, { ts: Date.now() + REMOTE_EVERY, err: '' }); };
+    function ghHtml() {
+      if (ghToken()) return `<div class="pqs-gh">GitHub: token saved on this PC · <b>Save to GitHub</b> commits straight to ${GH_REPO}
+        <button class="pqs-b" data-x="ghforget">Forget token</button></div>`;
+      return `<div class="pqs-gh"><b>Save straight to GitHub</b> (once per PC): on GitHub · Settings · Developer settings · Fine-grained tokens · Generate ·
+        Repository access <i>Only select</i> → SABRBUNS · Permissions <i>Contents: Read and write</i> · copy the token, paste it here.
+        <div class="pqs-row"><input type="password" data-gh="tok" placeholder="github_pat_…" autocomplete="off"><button class="pqs-b" data-x="ghsave">Save token</button></div>
+        <small>Only on your own PC: whoever has the token can change the script for every PC.</small></div>`;
+    }
+
     const ago = (ts) => { const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
     function teamsSource() {
       const src = TEAMS_SRC.from === 'github' ? `teams.js from GitHub, checked ${ago(TEAMS_SRC.ts)}`
@@ -5300,7 +5342,7 @@
       pane.innerHTML = `<div class="pqs-sec">
         <div class="pqs-help">Picklist lines with exactly this <b>product code</b> get the color (GLW-MASKER-75 does not color GLW-MASKER-750).
           Shared colors are in <code>colors.js</code> on GitHub (every PC). Colors added here are for <b>this PC only</b> and win over the shared ones.
-          <div class="pqs-src">${colorsSource()}</div></div>
+          <div class="pqs-src">${colorsSource()}</div>${can('settings') ? ghHtml() : ''}</div>
         <h4>Add a color on this PC</h4>
         <div class="pqs-row"><select data-c="prod">${prods.length
           ? '<option value="">-- pick a product from this page --</option>' + prods.map((p) => `<option value="${escHtml(p.code)}">${escHtml(p.code)}${p.name ? ' · ' + escHtml(p.name) : ''}</option>`).join('')
@@ -5334,10 +5376,10 @@
       const cols = draft.teams.map((t, i) => ({ i, name: t.name, allow: t.allow })).concat([{ i: -1, name: 'Leftovers', allow: draft.leftovers.allow }]);
       const has = (a, f) => a === '*' || a.includes(f);
       pane.innerHTML = `<div class="pqs-sec">
-        <div class="pqs-help"><b>How:</b> put people in a team · tick what each team may use · <b>Copy config</b> · on GitHub open
-          <code>teams.js</code> · paste over everything · commit. Every PC has it within ~10 min. Everyone in no team is a leftover.
+        <div class="pqs-help"><b>How:</b> put people in a team · tick what each team may use · <b>Save to GitHub</b>
+          (or Copy config and paste it over <code>teams.js</code> on GitHub). Every PC has it within ~10 min. Everyone in no team is a leftover.
           <div class="pqs-src">${teamsSource()}</div>
-          ${dirty() ? '<div class="pqs-dirty">Changes here are not on GitHub yet</div>' : ''}</div>
+          ${dirty() ? '<div class="pqs-dirty">Changes here are not on GitHub yet</div>' : ''}${ghHtml()}</div>
         <h4>What each team may use</h4>
         <div class="pqs-gridwrap"><table class="pqs-grid"><thead><tr><th></th>${cols.map((c) => `<th>
           <div class="pqs-tname">${c.i >= 0 ? `<span data-t="ren" data-i="${c.i}" title="Rename">${escHtml(c.name)}</span> <button class="pqs-x" data-t="del" data-i="${c.i}" title="Delete team">✕</button>` : 'Leftovers'}</div>
@@ -5376,9 +5418,9 @@
         ${full ? `<div class="ft" data-foot="tools"${hide('tools')}><span>This PC only · for everyone on this PC, within their team · after reload</span>
           <div><button class="pqs-b" data-x="reset">Reset</button><button class="pqs-b p" data-x="save">Save &amp; reload</button></div></div>
         <div class="ft" data-foot="teams"${hide('teams')}><span>Teams come from teams.js on GitHub</span>
-          <div><button class="pqs-b" data-x="tstart">Start over</button><button class="pqs-b p" data-x="tcopy">Copy config</button></div></div>` : ''}
+          <div><button class="pqs-b" data-x="tstart">Start over</button><button class="pqs-b" data-x="tcopy">Copy config</button><button class="pqs-b p" data-x="tgh">Save to GitHub</button></div></div>` : ''}
         <div class="ft" data-foot="colors"${hide('colors')}><span>This PC's colors win over colors.js</span>
-          <div><button class="pqs-b" data-x="cclear">Clear this PC</button>${full ? '<button class="pqs-b p" data-x="ccopy">Copy colors.js</button>' : ''}</div></div>
+          <div><button class="pqs-b" data-x="cclear">Clear this PC</button>${full ? '<button class="pqs-b" data-x="ccopy">Copy colors.js</button><button class="pqs-b p" data-x="cgh">Save to GitHub</button>' : ''}</div></div>
       </div>`;
       const cPane = ov.querySelector('[data-pane="colors"]');
       if (first === 'colors') renderColors(cPane);
@@ -5503,6 +5545,42 @@
           draft = fromScript();
           try { localStorage.removeItem(DRAFT_KEY); } catch (_) {}
           reRender();
+        }
+        if (x === 'ghsave') {
+          const v = String((ov.querySelector('[data-gh="tok"]') || {}).value || '').trim();
+          if (!/^(github_pat_|ghp_)\w{20,}$/.test(v)) { toast('That does not look like a GitHub token (github_pat_…)'); return; }
+          lsSet(GH_KEY, v);
+          reRender(); renderColors(cPane);
+          toast('Token saved on this PC');
+          return;
+        }
+        if (x === 'ghforget' && confirm('Remove the GitHub token from this PC?')) { try { localStorage.removeItem(GH_KEY); } catch (_) {} reRender(); renderColors(cPane); return; }
+        if (x === 'tgh' || x === 'cgh') {
+          if (!ghToken()) { toast('First paste a GitHub token (box at the top)'); return; }
+          const btn = e.target.closest('[data-x]');
+          const isT = x === 'tgh';
+          let text, data;
+          if (isT) { text = genConfig(); data = parseCfgFile(text, 'PQ_TEAMS', 'teams.js'); }
+          else {
+            data = { ...(COLORS_SRC.data || {}) };
+            for (const [k, v] of Object.entries(localColors())) { for (const s0 of Object.keys(data)) if (codeKey(s0) === codeKey(k)) delete data[s0]; data[k] = v; }
+            text = genColors(data);
+          }
+          if (isT ? !validTeams(data) : !validColors(data)) { toast('Something is off in it, not saved'); return; }
+          if (isT && !teamFor(ME, data.teams) && TEAMS_SRC && teamFor(ME, TEAMS)) {
+            if (!confirm('You are not in any team in this version (you become a leftover and lose Shift+8 settings). Save anyway?')) return;
+          }
+          btn.disabled = true; btn.textContent = 'Saving…';
+          ghPut(isT ? 'teams.js' : 'colors.js', text, `${isT ? 'Teams' : 'Colors'} changed by ${ME.name || 'someone'} (Picqer Suite)`)
+            .then(() => {
+              ghKeep(isT ? REMOTE.teams : REMOTE.colors, data);
+              if (isT) { savedJson = JSON.stringify(draft); updateDirty(); }
+              else { COLORS_SRC = remoteSrc(REMOTE.colors); lsSet(LS_COLORS_LOCAL, {}); colorsChanged(); renderColors(cPane); }
+              toast(`Saved to GitHub · every PC has it within ~10 min${isT ? ' · reload to see it here' : ''}`);
+            })
+            .catch((err) => toast(`Not saved: ${err.message}`))
+            .finally(() => { btn.disabled = false; btn.textContent = 'Save to GitHub'; });
+          return;
         }
         if (x === 'tcopy') {
           const text = genConfig();
