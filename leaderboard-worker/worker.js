@@ -10,7 +10,7 @@
 //   PROXIES      text    user ids that never count, comma separated (optional)
 //   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
-import { newState, tick, profile, buy, equip, grant } from './game.js';
+import { newState, tick, profile, buy, equip, grant, totals } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
@@ -60,6 +60,7 @@ export class Game extends DurableObject {
     return board;
   }
   async board() { return (await this.load()).board; }
+  async totals() { return { at: Date.now(), people: totals(await this.load()) }; }
   async profile(id) { return profile(await this.load(), id, amsNow().slice(0, 10)); }
   async change(kind, id, skin) {
     const st = await this.load();
@@ -86,6 +87,7 @@ export default {
         if (!b || Date.now() - b.at > 3 * 60000) b = await run(env); // cron behind (or first time): do it now
         return json(b);
       }
+      if (url.pathname === '/totals') return json(await game(env).totals());
       if (url.pathname === '/profile') {
         const id = url.searchParams.get('id');
         if (!/^\d+$/.test(id || '')) return json({ err: 'id needed' }, 400);

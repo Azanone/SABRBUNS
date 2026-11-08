@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.37
+// @version      3.38
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -5117,6 +5117,9 @@
       .pq-lb-ov h2{margin:0;font:700 18px system-ui,sans-serif;display:flex;align-items:center;justify-content:space-between}
       .pq-lb-ov .lb-gear{border:1px solid var(--line);background:var(--soft);color:var(--mut);border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer}
       .pq-lb-ov .lb-gear:hover{color:var(--fg)}
+      .pq-lb-ov .lb-tabs{display:flex;gap:4px;margin:10px 0 2px;padding:3px;background:var(--soft);border:1px solid var(--line);border-radius:9px;width:max-content}
+      .pq-lb-ov .lb-tabs button{border:0;background:none;color:var(--mut);font:600 12.5px system-ui;padding:5px 12px;border-radius:7px;cursor:pointer}
+      .pq-lb-ov .lb-tabs button.on{background:var(--bg);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12)}
       .pq-lb-ov .lb-meta{color:var(--mut);font-size:12px;margin:2px 0 14px}
       .pq-lb-ov .lb-row{display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;border-left:3px solid var(--c)}
       .pq-lb-ov .lb-row+.lb-row{margin-top:4px}
@@ -5199,21 +5202,57 @@
     function close(id) { document.getElementById(id)?.remove(); if (id === 'pq-lb-ov') listOpen = false; }
 
     const lbGear = () => openToolSettings && openToolSettings({ title: 'Leaderboard', mods: [{ id: 'leaderboard', keys: can('settings') ? null : ['theme', 'widget'] }] });
+    // Ctrl+Alt+L: "15 min" = who is fast right now · "Total" = all packing points ever (from the middle stop)
+    let listTab = 'now', tot = null, totErr = '', totBusy = false;
+    async function loadTotals() {
+      if (!URL_ || totBusy) return;
+      totBusy = true;
+      try {
+        const r = await fetch(`${URL_}/totals`, { credentials: 'omit', cache: 'no-store' });
+        const j = await r.json();
+        if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
+        const map = await names().catch(() => ({}));
+        tot = { at: j.at, list: j.people.filter((x) => !proxies.has(String(x.id))).map((x) => ({ ...x, id: String(x.id), name: map[x.id] || `#${x.id}` })) };
+        totErr = '';
+      } catch (e) { totErr = e.message; } finally { totBusy = false; }
+      if (listOpen && listTab === 'total') showList(true);
+    }
     function showList(refresh) {
       if (refresh && !document.getElementById('pq-lb-ov')) return;
       close('pq-pf-ov');
       const ov = overlay('pq-lb-ov');
       listOpen = true;
-      const list = ranked();
-      const mins = Math.round(WIN / 60000);
-      const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
-      ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard<button class="lb-gear" title="Leaderboard settings">⚙</button></h2>
-        <div class="lb-meta">last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
+      const tabs = `<div class="lb-tabs"><button data-lt="now" class="${listTab === 'now' ? 'on' : ''}">Last ${Math.round(WIN / 60000)} min</button><button data-lt="total" class="${listTab === 'total' ? 'on' : ''}">Total</button></div>`;
+      let body;
+      if (listTab === 'total') {
+        const hm = tot && tot.at ? new Date(tot.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
+        const meta = !URL_ ? 'needs the middle stop (Shift+8 → Leaderboard)' : `all packing points ever · king and given coins don't count · ${hm}${totErr ? ' · ⚠ ' + escHtml(totErr) : ''}`;
+        const rows = (tot && tot.list) || [];
+        let rank = 0, prev = null;
+        body = `<div class="lb-meta">${meta}</div>` + (rows.length ? rows.map((r, i) => {
+          if (prev === null || r.points !== prev) rank = i + 1;
+          prev = r.points;
+          return `<div class="lb-row t-${rank === 1 ? 'gold' : 'none'}${r.id === ME_ID ? ' me' : ''}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
+            <span class="nm">${escHtml(r.name)}<small>${int(r.picklists)} closed${r.kingTotal ? ` · king ${int(r.kingTotal)} min` : ''} · ${int(r.balance)} coins</small></span>
+            <span class="v">${fmt(r.points)}<small>pts</small></span></div>`;
+        }).join('') : `<div class="lb-empty">${URL_ ? (tot ? 'Nobody has points yet' : 'Loading…') : ''}</div>`);
+      } else {
+        const list = ranked();
+        const mins = Math.round(WIN / 60000);
+        const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
+        body = `<div class="lb-meta">last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
         ${list.length ? list.map((r) => `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.king ? '👑' : '#' + r.rank}</span>
           <span class="nm">${escHtml(r.name)}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single${r.king && r.kingMin != null ? ` · king ${r.kingMin} min` : ''}</small></span>
           <span class="v">${fmt(r.points)}<small>pts</small></span></div>`).join('') : `<div class="lb-empty">Nobody closed a picklist in the last ${mins} min</div>`}
-        <div class="lb-legend"><span class="t-blue"><i></i>30+</span><span class="t-turq"><i></i>25+</span><span class="t-dgreen"><i></i>20+</span><span class="t-green"><i></i>15+</span><span class="t-orange"><i></i>10+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 15+ · +20 coins a minute</span></div></div>`;
+        <div class="lb-legend"><span class="t-blue"><i></i>30+</span><span class="t-turq"><i></i>25+</span><span class="t-dgreen"><i></i>20+</span><span class="t-green"><i></i>15+</span><span class="t-orange"><i></i>10+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 15+ · +20 coins a minute</span></div>`;
+      }
+      ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard<button class="lb-gear" title="Leaderboard settings">⚙</button></h2>${tabs}${body}</div>`;
       ov.querySelector('.lb-gear').onclick = () => { close('pq-lb-ov'); lbGear(); };
+      ov.querySelectorAll('[data-lt]').forEach((b) => (b.onclick = () => {
+        listTab = b.dataset.lt;
+        showList(true);
+        if (listTab === 'total' && (!tot || Date.now() - tot.at > 60000)) loadTotals();
+      }));
     }
 
     // ---------- profile (Shift+9) ----------

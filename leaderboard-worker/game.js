@@ -47,10 +47,12 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '' }) 
     st.seen[d] = st.seen[d] || {};
     if (st.seen[d][p.idpicklist]) continue;
     st.seen[d][p.idpicklist] = 1;
+    totalPoints(st, id); // older accounts: count up what we had before this picklist
     const t = dayRow(st, d, id);
     t.n++; t.multis += pt.multi; t.singles += pt.single; t.points = r3(t.points + pt.pts);
     const a = acct(st, id);
     a.coins = r3(a.coins + pt.pts); a.picklists++;
+    a.points = r3(a.points + pt.pts);
   }
   const people = [...by.values()].sort((a, b) => b.points - a.points || b.picklists - a.picklists);
   // king of the hill
@@ -80,6 +82,20 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '' }) 
 
 const owners = (st, skin) => Object.values(st.acct).filter((a) => (a.owned || []).includes(skin)).length;
 const shop = (st) => SKINS.map((s) => (s.limit ? { ...s, left: Math.max(0, s.limit - owners(st, s.id)) } : s));
+
+// all packing points ever (king coins and given coins don't count). Older accounts: start from the days we still have.
+function totalPoints(st, id) {
+  const a = acct(st, id);
+  if (a.points == null) a.points = r3(Object.values(st.days).reduce((sum, d) => sum + ((d[id] && d[id].points) || 0), 0));
+  return a.points;
+}
+// everyone, most points first
+export function totals(st) {
+  return Object.keys(st.acct).map((id) => {
+    const a = st.acct[id];
+    return { id, points: totalPoints(st, id), picklists: a.picklists || 0, kingTotal: a.kingTotal || 0, balance: r3(a.coins - a.spent) };
+  }).filter((x) => x.points > 0 || x.picklists > 0).sort((x, y) => y.points - x.points || y.picklists - x.picklists);
+}
 
 export function profile(st, id, today) {
   id = String(id);
