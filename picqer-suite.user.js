@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.18
+// @version      3.19
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -4417,10 +4417,12 @@
     // ---------- true pick all ----------
     // clicks Picqer's own ✓ (pick this line) on every line, like picking by hand, so Picqer opens its
     // "Zending maken" popup itself; that popup's button then gets clicked right away (no 3 s countdown)
+    // what is left on a line: the "1 / 1" text Picqer shows (its data-amount attributes don't always update)
     const lineLeft = (it) => {
-      const got = +(it.querySelector('.amount-picked')?.dataset.amount ?? it.querySelector('.amount-picked')?.textContent ?? 0);
-      const need = +(it.querySelector('.amount')?.dataset.amount ?? it.querySelector('.amount')?.textContent ?? 0);
-      return need - got;
+      const m = nm(it.querySelector('.product-pick-status')?.textContent).match(/(\d+)\s*\/\s*(\d+)/);
+      if (m) return +m[2] - +m[1];
+      const num = (el) => +(nm(el?.textContent) || el?.dataset.amount || 0);
+      return num(it.querySelector('.amount')) - num(it.querySelector('.amount-picked'));
     };
     const lineBtn = (it) => { const b = it.querySelector('button.product-pick-all'); return b && !b.disabled ? b : null; };
     const openLines = () => [...document.querySelectorAll('.picklist-product-list__item')].filter((it) => lineLeft(it) > 0 && lineBtn(it));
@@ -4452,8 +4454,8 @@
         lineBtn(it).click();
         clicks++;
         const t0 = Date.now();
-        while (Date.now() - t0 < 3000 && it.isConnected && lineLeft(it) === before && lineBtn(it)) await wait(60);
-        if (it.isConnected && lineLeft(it) === before) { setInfo(`pick all: ${it.dataset.productcode || 'a line'} did not get picked`, true); return clicks; }
+        while (Date.now() - t0 < 4000 && it.isConnected && lineLeft(it) === before && lineBtn(it)) await wait(60);
+        if (it.isConnected && lineLeft(it) === before && lineBtn(it)) { setInfo(`pick all: ${it.dataset.productcode || 'a line'} did not get picked`, true); return clicks; }
       }
       return clicks;
     }
