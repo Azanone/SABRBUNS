@@ -25,5 +25,5 @@ window.PQ_TEAMS = {
       ]
     }
   ],
-  "leftovers": { "allow": ["comboAlert"] }
+  "leftovers": { "allow": ["comboAlert", "leaderboard"] }
 };
