@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.28
+// @version      3.29
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -172,6 +172,7 @@
       { k: 'skipParked', label: 'Skip picklists parked by zap / dayson / error handler', type: 'bool', def: true },
       { k: 'batchMax', label: 'Optimized batches: max picklists per batch', type: 'num', def: 15 },
       { k: 'highlightTags', label: 'BE pick-up tags (badge + always last in the batch), comma separated', type: 'list', def: ['BE pick-up'] },
+      { k: 'skipTags', label: 'Never batch picklists with these tags (Optimized + auto batch), comma separated', type: 'list', def: ['EIGENAAR'] },
       { k: 'apiKey', label: 'API key (optional, leave empty = use login)', type: 'text', def: '' },
     ]},
     { id: 'comboAlert', title: 'Combo changed popup', hint: 'popup on [COMBO CHANGED] comment', fields: [
@@ -1728,6 +1729,7 @@
         skipAssignedTo: C.skipParked ? [CFG.shipErr.assignTo, CFG.zap.assignTo, CFG.dayson.assignTo] : [],
         batchMax: C.batchMax,
         highlightTags: C.highlightTags,
+        skipTags: C.skipTags,
         autoWarehouse: CFG.pickStats ? CFG.pickStats.warehouse : '', // auto batch: same warehouse as the picker dashboard
       },
     });
@@ -1760,6 +1762,13 @@
       if (!HL_CANON.length || !pl || !pl.tags) return false;
       const tags = Array.isArray(pl.tags) ? pl.tags : Object.values(pl.tags);
       return tags.some((t) => HL_CANON.includes(canonTag(t && typeof t === 'object' ? t.title || t.name : t)));
+    }
+    // picklists with one of these tags never go in an optimized / auto batch (EIGENAAR = owner's own orders)
+    const SKIP_TAGS = (conf.skipTags || ['EIGENAAR']).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+    function hasSkipTag(pl) {
+      if (!SKIP_TAGS.length || !pl || !pl.tags) return false;
+      const tags = Array.isArray(pl.tags) ? pl.tags : Object.values(pl.tags);
+      return tags.some((t) => { const n = String(t && typeof t === 'object' ? t.title || t.name : t).toLowerCase(); return SKIP_TAGS.some((k) => n.includes(k)); });
     }
     const hlCount = (pls) => pls.reduce((n, pl) => n + (hasHlTag(pl) ? 1 : 0), 0);
     const hlBadge = (n) => (n ? `<span class="cb-delta cb-lime" title="${n} picklist${n === 1 ? '' : 's'} with the ${esc(HL_LABEL)} tag · they get the last letters (grouped batch: the last of their combo)">${esc(HL_LABEL)} ${n}</span>` : '');
@@ -3263,7 +3272,7 @@
         .sort((a, b) => a.skus.length / a.ms.length - b.skus.length / b.ms.length || b.ms.length - a.ms.length);
     }
 
-    function beOk(pl) { return beMode === 'mix' || (beMode === 'only') === hasHlTag(pl); }
+    function beOk(pl) { return !hasSkipTag(pl) && (beMode === 'mix' || (beMode === 'only') === hasHlTag(pl)); }
     const BE_LABEL = { mix: 'BE + the rest', no: 'without BE', only: 'BE only' };
     function computeGroup(og) {
       const free = multis.filter((m) => m.pl.idfulfilment_customer === og.shop && m.pl.idwarehouse === og.warehouse && !taken.has(m.pl.idpicklist) && beOk(m.pl));
