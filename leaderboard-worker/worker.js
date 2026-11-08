@@ -8,12 +8,13 @@
 //   PICQER_HOST  text    trl-fulfilment.picqer.com      (from wrangler.jsonc)
 //   WAREHOUSE    text    Bunsenstraat                   (from wrangler.jsonc)
 //   PROXIES      text    user ids that never count, comma separated (optional)
+//   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
-import { newState, tick, profile, buy, equip } from './game.js';
+import { newState, tick, profile, buy, equip, grant } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
-const cors = (h = {}) => ({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', ...h });
+const cors = (h = {}) => ({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key', ...h });
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: cors({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }) });
 const PROXIES_DEFAULT = '36135,29011,33549';
 
@@ -62,7 +63,7 @@ export class Game extends DurableObject {
   async profile(id) { return profile(await this.load(), id, amsNow().slice(0, 10)); }
   async change(kind, id, skin) {
     const st = await this.load();
-    const res = kind === 'buy' ? buy(st, id, skin) : equip(st, id, skin);
+    const res = kind === 'grant' ? grant(st, id, skin) : kind === 'buy' ? buy(st, id, skin) : equip(st, id, skin);
     if (res.ok) await this.ctx.storage.put('state', st);
     return { ...res, profile: profile(st, id, amsNow().slice(0, 10)) };
   }
@@ -94,6 +95,13 @@ export default {
         const b = await req.json().catch(() => ({}));
         if (!/^\d+$/.test(String(b.id || ''))) return json({ err: 'id needed' }, 400);
         return json(await game(env).change(url.pathname.slice(1), String(b.id), b.skin ? String(b.skin) : null));
+      }
+      if (url.pathname === '/admin/grant' && req.method === 'POST') {
+        const key = String(env.ADMIN_KEY || '').trim();
+        if (!key || req.headers.get('X-Admin-Key') !== key) return json({ err: 'not allowed' }, 403);
+        const b = await req.json().catch(() => ({}));
+        if (!/^\d+$/.test(String(b.id || ''))) return json({ err: 'id needed' }, 400);
+        return json(await game(env).change('grant', String(b.id), b.coins));
       }
       return new Response('Picqer Suite leaderboard · /leaderboard · /profile?id=', { headers: cors() });
     } catch (e) {

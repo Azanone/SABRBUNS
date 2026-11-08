@@ -111,3 +111,12 @@ export function equip(st, id, skin) {
   a.skin = skin || null;
   return { ok: true };
 }
+
+// admin: add (or with a minus, take) coins
+export function grant(st, id, coins) {
+  const n = Number(coins);
+  if (!Number.isFinite(n)) return { err: 'coins must be a number' };
+  const a = acct(st, String(id));
+  a.coins = r3(a.coins + n);
+  return { ok: true };
+}
