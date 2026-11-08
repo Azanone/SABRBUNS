@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.25
+// @version      3.26
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -330,6 +330,10 @@
     } catch (_) {}
   }
 
+  // DOM_TICK goes up when Picqer adds or removes elements: timers skip their work when nothing changed
+  let DOM_TICK = 0;
+  try { new MutationObserver(() => { DOM_TICK++; }).observe(document.documentElement || document, { childList: true, subtree: true }); } catch (_) {}
+
   function addStyle(id, css) {
     if (document.getElementById(id)) return;
     const s = document.createElement('style');
@@ -370,9 +374,13 @@
       });
     };
     let t = null;
-    const mo = new MutationObserver(() => {
-      if (t) return;
-      t = setTimeout(() => { t = null; if (css) addStyle('pq-hide-css', css); hideTagged(); }, 250);
+    // only when comments (or our style tag going missing) are involved
+    const COMMENTISH = '.pinned-comment__body, .comment-body, .comment, .pinned-comment, #comments';
+    const relevant = (recs) => recs.some((r) => [...r.addedNodes].some((n) => n.nodeType === 1 && (n.matches(COMMENTISH) || n.querySelector(COMMENTISH))) ||
+      [...r.removedNodes].some((n) => n.id === 'pq-hide-css'));
+    const mo = new MutationObserver((recs) => {
+      if (t || !relevant(recs)) return;
+      t = setTimeout(() => { t = null; if (css && !document.getElementById('pq-hide-css')) addStyle('pq-hide-css', css); hideTagged(); }, 250);
     });
     mo.observe(document.documentElement, { childList: true, subtree: true });
     return () => { mo.disconnect(); clearTimeout(t); document.getElementById('pq-hide-css')?.remove(); };
@@ -573,8 +581,10 @@
       }
     }
 
+    let seenTick = -1;
     setInterval(() => {
-      if (document.hidden || busy) return;
+      if (document.hidden || busy || seenTick === DOM_TICK) return; // nothing changed on the page
+      seenTick = DOM_TICK;
       const c = current();
       if (c && c.err) handle(c);
     }, 700);
@@ -910,9 +920,15 @@
       seen.add(key);
       show(text);
     }
+    // only look at what Picqer adds (a comment with the marker), not the whole page every second
+    let maybe = document.body.textContent.indexOf(MARKER) !== -1;
+    new MutationObserver((recs) => {
+      if (maybe) return;
+      for (const r of recs) for (const n of r.addedNodes) if ((n.nodeType === 1 || n.nodeType === 3) && (n.textContent || '').indexOf(MARKER) !== -1) { maybe = true; return; }
+    }).observe(document.body, { childList: true, subtree: true });
     setInterval(() => {
-      if (document.hidden || document.getElementById('ca-ov')) return;
-      if (document.body.textContent.indexOf(MARKER) === -1) return;
+      if (!maybe || document.hidden || document.getElementById('ca-ov')) return;
+      maybe = false;
       scan();
     }, 1000);
   }
@@ -4574,8 +4590,8 @@
     let t = null;
     new MutationObserver(() => {
       if (t || isProcessing) return;
-      t = setTimeout(() => { t = null; saveCtx(); check(); }, 150);
-    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+      t = setTimeout(() => { t = null; saveCtx(); check(); }, 300);
+    }).observe(document.body, { subtree: true, childList: true }); // elements only: text ticking on the page is no reason to look
     setTimeout(check, 600); // a moment later, so an old copy of the script shows up first if it is still installed
     setTimeout(check, 2000);
     // opened a picklist that is closed already (Gesloten) inside a batch: straight to the next one,
@@ -4662,7 +4678,7 @@
     }
     let t = null;
     const later = () => { if (!t) t = setTimeout(() => { t = null; paint(); }, 200); };
-    new MutationObserver(later).observe(document.body, { childList: true, subtree: true, characterData: true });
+    new MutationObserver(later).observe(document.body, { childList: true, subtree: true });
     window.addEventListener('pq-colors', paint);
     paint();
   }
@@ -4710,7 +4726,9 @@
     async function warehouse() {
       const W = norm(String(C.warehouse == null ? '' : C.warehouse));
       if (!W || wh) return wh;
-      const list = (await api('/warehouses')) || [];
+      const c = lsGet('pqsuite_warehouses_v1', null); // warehouses barely change: once a day per PC
+      const list = c && Date.now() - c.at < 86400000 ? c.list : (await api('/warehouses')) || [];
+      if (!c || c.list !== list) lsSet('pqsuite_warehouses_v1', { at: Date.now(), list: list.map((w) => ({ idwarehouse: w.idwarehouse, name: w.name })) });
       const hit = list.find((w) => String(w.idwarehouse) === W) || list.find((w) => low(w.name) === low(W)) || list.find((w) => low(w.name).includes(low(W)));
       wh = hit ? { id: +hit.idwarehouse, name: hit.name } : { id: null, name: '' };
       return wh;
@@ -4797,14 +4815,15 @@
     const fmtPts = (x) => (Math.round(x * 10) / 10).toLocaleString('nl-NL');
 
     addStyle('pq-lb-style', `
-      #pq-lb{position:fixed;right:16px;bottom:16px;z-index:2147483000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer;user-select:none}
+      #pq-lb{position:fixed;right:16px;bottom:16px;z-index:2147483000;isolation:isolate;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer;user-select:none}
       #pq-lb .lb-card{position:relative;display:flex;align-items:center;gap:12px;padding:10px 16px 10px 12px;border-radius:16px;color:#fff;overflow:hidden;
-        background:#0b1020;box-shadow:0 10px 30px rgba(0,0,0,.35),0 0 0 2px var(--c),0 0 24px var(--c);animation:lbBreath 2.4s ease-in-out infinite}
-      #pq-lb .lb-card::before{content:'';position:absolute;inset:-60%;background:conic-gradient(from 0deg,transparent 0 70%,var(--c) 80%,transparent 90%);animation:lbSpin 3.2s linear infinite;opacity:.55}
+        background:#0b1020;box-shadow:0 10px 30px rgba(0,0,0,.35),0 0 0 2px var(--c),0 0 18px var(--c)}
+      #pq-lb .lb-card::before{content:'';position:absolute;inset:-60%;background:conic-gradient(from 0deg,transparent 0 70%,var(--c) 80%,transparent 90%);animation:lbSpin 3.2s linear infinite;opacity:.55;will-change:transform}
+      #pq-lb .lb-glow{position:absolute;inset:-8px;border-radius:22px;box-shadow:0 0 26px 6px var(--c);opacity:.35;animation:lbGlow 2.4s ease-in-out infinite;pointer-events:none;will-change:opacity}
       #pq-lb .lb-card::after{content:'';position:absolute;inset:2px;border-radius:14px;background:radial-gradient(120% 140% at 0% 0%,var(--c2),#0b1020 60%)}
       #pq-lb .lb-card>*{position:relative;z-index:1}
       #pq-lb .lb-shine{position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.45) 45%,transparent 60%);
-        transform:translateX(-120%);animation:lbShine 3.5s ease-in-out infinite}
+        transform:translateX(-120%);animation:lbShine 3.5s ease-in-out infinite;will-change:transform}
       #pq-lb .lb-rank{font:900 34px/1 system-ui,sans-serif;letter-spacing:-1px;background:linear-gradient(180deg,#fff,var(--c));-webkit-background-clip:text;background-clip:text;color:transparent;
         filter:drop-shadow(0 0 8px var(--c));animation:lbPop .6s cubic-bezier(.2,1.6,.4,1) both}
       #pq-lb .lb-txt{display:flex;flex-direction:column;gap:2px;min-width:110px}
@@ -4812,22 +4831,23 @@
       #pq-lb .lb-n{font:800 15px/1.15 system-ui}
       #pq-lb .lb-sub{font:600 11px/1.2 system-ui;color:#94a3b8}
       #pq-lb .lb-bar{height:4px;border-radius:9px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:3px}
-      #pq-lb .lb-bar i{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,var(--c),#fff,var(--c));background-size:200% 100%;animation:lbFlow 1.6s linear infinite;transition:width .8s cubic-bezier(.2,1.4,.4,1)}
+      #pq-lb .lb-bar i{position:relative;display:block;height:100%;border-radius:9px;background:var(--c);overflow:hidden;transition:width .8s cubic-bezier(.2,1.4,.4,1)}
+      #pq-lb .lb-bar i::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent);transform:translateX(-100%);animation:lbFlow 1.6s linear infinite;will-change:transform}
       #pq-lb .lb-move{position:absolute;right:10px;top:-6px;font:900 13px system-ui;color:#4ade80;animation:lbUp 1.8s ease-out forwards;z-index:3}
       #pq-lb .lb-move.down{color:#f87171}
-      #pq-lb .lb-crown{position:absolute;left:8px;top:-14px;font-size:20px;animation:lbFloat 1.6s ease-in-out infinite;z-index:3;filter:drop-shadow(0 0 6px gold)}
-      #pq-lb .lb-spark{position:absolute;width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 8px 2px var(--c);z-index:2;animation:lbSpark 2.2s ease-out infinite;pointer-events:none}
+      #pq-lb .lb-crown{position:absolute;left:8px;top:-14px;font-size:20px;animation:lbFloat 1.6s ease-in-out infinite;z-index:3;text-shadow:0 0 8px gold;will-change:transform}
+      #pq-lb .lb-spark{position:absolute;width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 8px 2px var(--c);z-index:2;animation:lbSpark 2.2s ease-out infinite;pointer-events:none;will-change:transform,opacity}
       #pq-lb.t-gold{--c:#fbbf24;--c2:rgba(251,191,36,.45)} #pq-lb.t-dgreen{--c:#10b981;--c2:rgba(5,150,105,.45)} #pq-lb.t-green{--c:#4ade80;--c2:rgba(74,222,128,.32)}
       #pq-lb.t-blue{--c:#3b82f6;--c2:rgba(59,130,246,.45)} #pq-lb.t-turq{--c:#2dd4bf;--c2:rgba(45,212,191,.4)} #pq-lb.t-orange{--c:#fb923c;--c2:rgba(251,146,60,.32)}
       #pq-lb.t-red{--c:#f43f5e;--c2:rgba(244,63,94,.32)} #pq-lb.t-none{--c:#64748b;--c2:rgba(100,116,139,.3)}
-      #pq-lb.t-gold .lb-card{animation:lbBreath 1.4s ease-in-out infinite}
-      #pq-lb.t-red .lb-card{animation:lbBreath 2.4s ease-in-out infinite,lbNudge 6s ease-in-out infinite}
+      #pq-lb.t-gold .lb-glow{animation-duration:1.4s}
+      #pq-lb.t-red .lb-card{animation:lbNudge 6s ease-in-out infinite}
       #pq-lb:hover .lb-card{transform:translateY(-3px) scale(1.03)}
       @keyframes lbSpin{to{transform:rotate(360deg)}}
       @keyframes lbShine{0%,55%{transform:translateX(-120%)}85%,100%{transform:translateX(120%)}}
-      @keyframes lbBreath{50%{box-shadow:0 10px 30px rgba(0,0,0,.35),0 0 0 2px var(--c),0 0 42px var(--c)}}
+      @keyframes lbGlow{50%{opacity:.9}}
       @keyframes lbPop{0%{transform:scale(.3) rotate(-12deg);opacity:0}100%{transform:none;opacity:1}}
-      @keyframes lbFlow{to{background-position:-200% 0}}
+      @keyframes lbFlow{to{transform:translateX(100%)}}
       @keyframes lbUp{0%{transform:translateY(10px);opacity:0}20%{opacity:1}100%{transform:translateY(-30px);opacity:0}}
       @keyframes lbFloat{50%{transform:translateY(-4px) rotate(-8deg)}}
       @keyframes lbSpark{0%{transform:translate(0,0) scale(0);opacity:0}20%{opacity:1;transform:translate(var(--dx),var(--dy)) scale(1)}100%{transform:translate(calc(var(--dx)*3),calc(var(--dy)*3)) scale(0);opacity:0}}
@@ -4836,7 +4856,8 @@
       @keyframes lbConf{to{transform:translate(var(--x),var(--y)) rotate(var(--r));opacity:0}}
       #pq-lb-ov{position:fixed;inset:0;z-index:2147483002;background:rgba(2,6,23,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
       #pq-lb-ov .lb-panel{width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;background:#0b1020;color:#fff;border-radius:20px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08)}
-      #pq-lb-ov h2{margin:0 0 2px;font:900 22px system-ui;background:linear-gradient(90deg,#fbbf24,#f472b6,#60a5fa,#fbbf24);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:lbFlow 4s linear infinite}
+      #pq-lb-ov h2{margin:0 0 2px;font:900 22px system-ui;background:linear-gradient(90deg,#fbbf24,#f472b6,#60a5fa,#fbbf24);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:lbText 4s linear infinite}
+      @keyframes lbText{to{background-position:-300% 0}}
       #pq-lb-ov .lb-meta{color:#94a3b8;font-size:12px;margin-bottom:14px}
       #pq-lb-ov .lb-row{position:relative;display:grid;grid-template-columns:44px 1fr 76px;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;margin-bottom:6px;
         background:rgba(255,255,255,.04);animation:lbIn .5s cubic-bezier(.2,1.3,.4,1) both;overflow:hidden}
@@ -4901,7 +4922,7 @@
       const gap = me && me.rank > 1 ? list[0].points - me.points : 0;
       const sparks = ['gold', 'blue', 'turq', 'dgreen'].includes(tier)
         ? Array.from({ length: tier === 'gold' || tier === 'blue' ? 7 : 4 }, (_, i) => `<span class="lb-spark" style="left:${15 + i * 13}%;top:${30 + (i % 3) * 18}%;--dx:${(i % 2 ? 1 : -1) * (4 + i)}px;--dy:${-6 - i * 2}px;animation-delay:${i * 0.31}s"></span>`).join('') : '';
-      box.innerHTML = `<div class="lb-card">${tier === 'gold' ? '<span class="lb-crown">👑</span>' : ''}${sparks}<span class="lb-shine"></span>
+      box.innerHTML = `<span class="lb-glow"></span><div class="lb-card">${tier === 'gold' ? '<span class="lb-crown">👑</span>' : ''}${sparks}<span class="lb-shine"></span>
         <div class="lb-rank">${me ? '#' + me.rank : '–'}</div>
         <div class="lb-txt"><span class="lb-tier">${TIER[tier]}</span>
           <span class="lb-n"><b>${me ? me.ph : 0}</b> pts/h · ${me ? me.n : 0} closed</span>
@@ -5444,7 +5465,8 @@
       });
     };
     sweep();
-    setInterval(() => { if (!document.hidden) sweep(); }, 600);
+    let seenTick = DOM_TICK;
+    setInterval(() => { if (!document.hidden && seenTick !== DOM_TICK) { seenTick = DOM_TICK; sweep(); } }, 600);
   }
 
   /* =========================================================================
@@ -6043,7 +6065,14 @@
   /* =========================================================================
    *  START
    * ========================================================================= */
-  const safe = (name, fn) => { try { return fn(); } catch (e) { console.warn(`[pq-suite] ${name} crashed`, e); } };
+  // how long each part takes to start (console: __pqSuiteTimes)
+  const T0 = performance.now();
+  window.__pqSuiteTimes = window.__pqSuiteTimes || {};
+  const safe = (name, fn) => {
+    const t = performance.now();
+    try { return fn(); } catch (e) { console.warn(`[pq-suite] ${name} crashed`, e); }
+    finally { window.__pqSuiteTimes[name] = Math.round((performance.now() - t) * 10) / 10; }
+  };
   const use = (id) => can(id) && on(id);
 
   // teams.js / colors.js from GitHub in the background (each max every 5 min per PC)
