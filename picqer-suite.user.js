@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.23
+// @version      3.24
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -2538,6 +2538,8 @@
 
     // optimized tab
     let optMax = Math.min(200, Math.max(2, +store.get('cb_opt_max', BATCH_MAX) || BATCH_MAX));
+    // BE pick-up in the optimized batches (and auto batch): mix = BE + the rest, no = without BE, only = BE only
+    let beMode = ['mix', 'no', 'only'].includes(store.get('cb_opt_be', 'mix')) ? store.get('cb_opt_be', 'mix') : 'mix';
     let optGroups = [];          // per shop + warehouse: { key, shop, warehouse, batches, done, stale }
     let optReady = false, optJob = null, oid = 0;
     const taken = new Set();     // picklists this popup already put in a batch
@@ -3244,8 +3246,10 @@
         .sort((a, b) => a.skus.length / a.ms.length - b.skus.length / b.ms.length || b.ms.length - a.ms.length);
     }
 
+    function beOk(pl) { return beMode === 'mix' || (beMode === 'only') === hasHlTag(pl); }
+    const BE_LABEL = { mix: 'BE + the rest', no: 'without BE', only: 'BE only' };
     function computeGroup(og) {
-      const free = multis.filter((m) => m.pl.idfulfilment_customer === og.shop && m.pl.idwarehouse === og.warehouse && !taken.has(m.pl.idpicklist));
+      const free = multis.filter((m) => m.pl.idfulfilment_customer === og.shop && m.pl.idwarehouse === og.warehouse && !taken.has(m.pl.idpicklist) && beOk(m.pl));
       og.batches = packInto(og, free);
       og.free = free.length;
       og.stale = false;
@@ -3353,7 +3357,7 @@
       }
       if (!users && !usersErr) {
         loadUsers().then(() => {
-          const sel = $opt.querySelector('.cb-sel');
+          const sel = $opt.querySelector('.cb-assign');
           if (sel) sel.innerHTML = assignOptions();
         });
       }
@@ -3362,7 +3366,11 @@
     function drawOpt() {
       if (tab !== 'opt' || !lastGroups) return;
       const groups = optShown();
-      if (!groups.length) { $opt.innerHTML = '<div class="cb-empty">No picklists with 2+ products to batch</div>'; return; }
+      if (!groups.length) {
+        $opt.innerHTML = (beMode !== 'mix' ? `<div class="cb-optbar"><select class="cb-sel cb-bemode" title="BE pick-up picklists (also for auto batch)">${Object.entries(BE_LABEL).map(([k, v]) => `<option value="${k}"${k === beMode ? ' selected' : ''}>${v}</option>`).join('')}</select></div>` : '') +
+          `<div class="cb-empty">No picklists with 2+ products to batch${beMode !== 'mix' ? ` (${BE_LABEL[beMode]})` : ''}</div>`;
+        return;
+      }
       const all = groups.flatMap((g) => g.batches);
       const stops = all.reduce((s, b) => s + b.skus.length, 0);
       groups.forEach((g) => (g.byDate = stopsByDate(g.batches.flatMap((b) => b.ms), optMax)));
@@ -3370,6 +3378,7 @@
       const twoWh = new Set(groups.map((g) => g.shop)).size < groups.length;
       let html = `<div class="cb-optbar">
           <label>Max <input type="number" class="cb-max" min="2" max="200" value="${optMax}"> picklists per batch</label>
+          <select class="cb-sel cb-bemode" title="BE pick-up picklists (also for auto batch)">${Object.entries(BE_LABEL).map(([k, v]) => `<option value="${k}"${k === beMode ? ' selected' : ''}>${v}</option>`).join('')}</select>
           ${all.length ? `<button class="cb-btn" data-act="oall">${all.every((b) => b.checked) ? 'None' : 'All'}</button>` : ''}
           <span class="cb-sp"></span>
           <span>${all.length} batch${all.length === 1 ? '' : 'es'} · <b>${stops}</b> SKU stops${byDate > stops ? ` <span class="cb-muted">· by date ${byDate} (−${Math.round((1 - stops / byDate) * 100)}%)</span>` : ''}</span>
@@ -3388,7 +3397,7 @@
       }
       html += `<div class="cb-bar">
         <div class="cb-barrow"><div class="cb-sum"></div>
-          <div class="cb-acts"><select class="cb-sel" title="Assign the new batches to">${assignOptions()}</select><button class="cb-btn" data-act="ocombine">Combine into 1</button><button class="cb-go" data-act="ocreate">Create batches</button></div></div>
+          <div class="cb-acts"><select class="cb-sel cb-assign" title="Assign the new batches to">${assignOptions()}</select><button class="cb-btn" data-act="ocombine">Combine into 1</button><button class="cb-go" data-act="ocreate">Create batches</button></div></div>
       </div>`;
       $opt.innerHTML = html;
       $opt.querySelectorAll('[data-ind="1"]').forEach((el) => (el.indeterminate = true));
@@ -3548,7 +3557,14 @@
 
     $opt.addEventListener('change', (e) => {
       if (busy) return;
-      if (e.target.matches('.cb-sel')) {
+      if (e.target.matches('.cb-bemode')) {
+        beMode = e.target.value;
+        store.set('cb_opt_be', beMode);
+        optGroups.forEach((g) => (g.stale = true));
+        if (autoPl) autoPl.plan = null;
+        renderOpt();
+        renderAuto();
+      } else if (e.target.matches('.cb-assign')) {
         assignee = e.target.value;
         store.set('cb_assign', assignee);
       } else if (e.target.matches('.cb-max')) {
@@ -3747,7 +3763,7 @@
       for (const pl of list) {
         if (!pl || seen.has(pl.idpicklist)) continue;
         seen.add(pl.idpicklist);
-        if (String(pl.idwarehouse) !== String(wid) || taken.has(pl.idpicklist) || !selectedShops.has(pl.idfulfilment_customer)) continue;
+        if (String(pl.idwarehouse) !== String(wid) || taken.has(pl.idpicklist) || !selectedShops.has(pl.idfulfilment_customer) || !beOk(pl)) continue;
         const ck = classify(pl, NEW);
         if (!ck || typeof ck === 'string') continue;
         const shop = pl.idfulfilment_customer;
@@ -4063,7 +4079,7 @@
       const logHtml = autoLog.slice(-8).reverse().map((l) => `<div><span class="cb-muted">${esc(hm(l.t))}</span> ${esc(l.txt)}</div>`).join('');
       $auto.innerHTML = `<div class="cb-auto${autoOn ? ' on' : ''}">
         <div class="cb-auto-hd"><b>Auto batch</b>${autoOn ? '<span class="cb-auto-live">ON</span>' : ''}
-          <span class="cb-muted cb-auto-how">when someone has picked everything (collected = total) they get the next batch of exactly ${optMax} picklists with the fewest SKUs · 1 shop or 2 together · ticked shops</span>
+          <span class="cb-muted cb-auto-how">when someone has picked everything (collected = total) they get the next batch of exactly ${optMax} picklists with the fewest SKUs · 1 shop or 2 together · ticked shops${beMode === 'mix' ? '' : ` · <b>${BE_LABEL[beMode]}</b>`}</span>
           ${whSel}<button class="${autoOn ? 'cb-btn cb-auto-stop' : 'cb-go'}" data-act="autotoggle">${autoOn ? 'Turn off' : 'Turn on'}</button></div>
         <div class="cb-auto-people">${people || '<div class="cb-muted">Nobody yet · add who should get batches</div>'}<div class="cb-auto-add">${addSel}</div></div>
         ${notes.join('')}${logHtml ? `<div class="cb-auto-log">${logHtml}</div>` : ''}
