@@ -14,7 +14,7 @@ export const SKINS = [
   { id: 'sunset', name: 'Sunset', price: 1500 },
   { id: 'carbon', name: 'Carbon', price: 2500 },
   { id: 'aurora', name: 'Aurora', price: 4000 },
-  { id: 'voidescent', name: 'Voidescent', price: 6000 },
+  { id: 'voidescent', name: 'Voidescent', price: 6000, limit: 10 }, // only 10 people can own it
   { id: 'gold', name: 'Gold', price: 8000 },
   { id: 'crown', name: 'Crown', price: 15000 },
 ];
@@ -78,6 +78,9 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '' }) 
   return st.board;
 }
 
+const owners = (st, skin) => Object.values(st.acct).filter((a) => (a.owned || []).includes(skin)).length;
+const shop = (st) => SKINS.map((s) => (s.limit ? { ...s, left: Math.max(0, s.limit - owners(st, s.id)) } : s));
+
 export function profile(st, id, today) {
   id = String(id);
   const a = st.acct[id] || { coins: 0, spent: 0, owned: [], skin: null, kingTotal: 0, kingBest: 0, picklists: 0 };
@@ -89,7 +92,7 @@ export function profile(st, id, today) {
     id, today: day[id] || { n: 0, multis: 0, singles: 0, points: 0, kingMin: 0 }, rankToday: pos < 0 ? null : pos + 1, ofToday: ranked.length,
     balance: r3(a.coins - a.spent), coins: a.coins, spent: a.spent, owned: a.owned, skin: a.skin, kingTotal: a.kingTotal, kingBest: a.kingBest, picklists: a.picklists,
     king: st.king && st.king.id === id ? { min: Math.floor((Date.now() - st.king.since) / 60000) } : null,
-    week, skins: SKINS,
+    week, skins: shop(st),
   };
 }
 
@@ -99,6 +102,7 @@ export function buy(st, id, skin) {
   if (!s) return { err: 'no such skin' };
   const a = acct(st, id);
   if (!a.owned.includes(skin)) {
+    if (s.limit && owners(st, skin) >= s.limit) return { err: `sold out (only ${s.limit} people can have ${s.name})` };
     if (a.coins - a.spent < s.price) return { err: `not enough coins (${Math.floor(a.coins - a.spent)} of ${s.price})` };
     a.spent += s.price;
     a.owned.push(skin);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.33
+// @version      3.34
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -4787,95 +4787,102 @@
   //  The middle stop (Cloudflare worker) asks Picqer once a minute for everyone and keeps today, coins,
   //  the king and the skins. Without it every PC asks Picqer itself (then no king, coins or skins).
   // =====================================================================
+  // dark: the whole of Picqer goes dark in the skin's colors (th = tint hue, ah/as = accent hue/saturation)
   const SKIN_LOOK = {
-    midnight: { bg: '#0b1220', accent: '#6366f1' },
+    midnight: { bg: 'linear-gradient(90deg,#070b16,#111a33)', accent: '#6366f1', dark: { th: 228, ah: 239, as: '84%', fx: 'line' } },
     forest: { bg: 'linear-gradient(90deg,#064e3b,#065f46)', accent: '#10b981' },
     ocean: { bg: 'linear-gradient(90deg,#0c4a6e,#0e7490)', accent: '#06b6d4' },
     sunset: { bg: 'linear-gradient(90deg,#7c2d12,#be185d)', accent: '#f97316' },
-    carbon: { bg: 'repeating-linear-gradient(135deg,#18181b 0 6px,#202024 6px 12px)', accent: '#71717a' },
-    aurora: { bg: 'linear-gradient(90deg,#312e81,#0e7490 55%,#065f46)', accent: '#8b5cf6' },
-    voidescent: { bg: 'radial-gradient(circle at 20% 30%,rgba(255,0,52,.35),transparent 45%),linear-gradient(90deg,#08080b,#1d040b)', accent: '#ff0034', void: true },
-    gold: { bg: '#1c1917', accent: '#d4a017', line: '#fbbf24' },
-    crown: { bg: 'linear-gradient(90deg,#1c1917,#3f2d0c)', accent: '#d4a017', line: '#fbbf24', crown: true },
+    carbon: { bg: 'repeating-linear-gradient(135deg,#141416 0 6px,#1c1c20 6px 12px)', accent: '#a1a1aa', dark: { th: 240, ah: 240, as: '6%', fx: 'line' } },
+    aurora: { bg: 'radial-gradient(circle at 25% 20%,rgba(139,92,246,.45),transparent 50%),linear-gradient(90deg,#120f2e,#0b2a33 55%,#062a22)', accent: '#8b5cf6', dark: { th: 252, ah: 258, as: '90%', fx: 'full' } },
+    voidescent: { bg: 'radial-gradient(circle at 20% 30%,rgba(255,0,52,.35),transparent 45%),linear-gradient(90deg,#08080b,#1d040b)', accent: '#ff0034', dark: { th: 345, ah: 348, as: '100%', fx: 'full' } },
+    gold: { bg: 'linear-gradient(90deg,#120e08,#2a1f0a)', accent: '#d4a017', line: '#fbbf24', dark: { th: 38, ah: 43, as: '81%', fx: 'line' } },
+    crown: { bg: 'radial-gradient(circle at 18% 30%,rgba(251,191,36,.3),transparent 45%),linear-gradient(90deg,#120e08,#3f2d0c)', accent: '#d4a017', line: '#fbbf24', crown: true, dark: { th: 38, ah: 43, as: '81%', fx: 'full' } },
   };
   // skins belong to a Picqer account: saved per user id on this PC
   const LS_SKIN = 'pqsuite_skin_v2';
   const skinOf = (uid) => ((lsGet(LS_SKIN, null) || {})[String(uid || '')] || null);
   const skinSave = (uid, id) => { if (!uid) return; const all = lsGet(LS_SKIN, null) || {}; all[String(uid)] = { id: id || null, at: Date.now() }; lsSet(LS_SKIN, all); };
 
-  // ---------- Voidescent: the whole of Picqer dark, #ff0034 ----------
-  //  skins/voidescent.css (on GitHub) = every color of Picqer's own CSS turned dark, made from picqer.css.
-  //  Loaded once a day, kept on this PC. On top of that: header, glow and movement from here.
-  const VOID_LS = 'pqsuite_void_css_v1';
-  const VOID_BASE = `
-    html.pq-void{color-scheme:dark;background:#08080b}
-    html.pq-void body{background:#08080b;color:hsl(345,10%,92%)}
-    html.pq-void .layout{background:#08080b}
-    html.pq-void ::selection{background:#ff0034;color:#fff}
-    html.pq-void .layout-header{--header-background-color:#0a0a0e;background:linear-gradient(90deg,#0a0a0e 0%,#170309 50%,#0a0a0e 100%) !important;color:#f4f4f6;position:relative;overflow:hidden;box-shadow:0 1px 0 rgba(255,0,52,.45),0 10px 30px -18px rgba(255,0,52,.6)}
-    html.pq-void .layout-header > *{position:relative;z-index:1}
-    html.pq-void .layout-header-logo img,html.pq-void .layout-header-logo svg{filter:drop-shadow(0 0 6px rgba(255,0,52,.55))}
-    html.pq-void .layout-navigation{background:linear-gradient(180deg,#0c0c11,#09090c);box-shadow:inset -1px 0 0 rgba(255,0,52,.14)}
-    html.pq-void .menu a.active,html.pq-void .menu button.active{text-shadow:0 0 12px rgba(255,0,52,.55)}
-    html.pq-void .btn.btn-primary,html.pq-void .btn-primary{background:#ff0034 !important;border-color:#ff0034 !important;color:#fff !important;transition:box-shadow .2s ease,transform .15s ease}
-    html.pq-void .btn.btn-primary:hover,html.pq-void .btn-primary:hover{box-shadow:0 0 0 1px rgba(255,0,52,.6),0 6px 22px rgba(255,0,52,.45);transform:translateY(-1px)}
-    html.pq-void .card{transition:box-shadow .25s ease}
-    html.pq-void .card:hover{box-shadow:0 0 0 1px rgba(255,0,52,.28),0 12px 30px -14px rgba(255,0,52,.35) !important}
-    html.pq-void .page-heading h1,html.pq-void .page-title{background:linear-gradient(90deg,#fff,#ffb3c1);-webkit-background-clip:text;background-clip:text;color:transparent}
-    html.pq-void input,html.pq-void select,html.pq-void textarea{caret-color:#ff0034}
-    html.pq-void canvas{filter:invert(1) hue-rotate(180deg) saturate(1.4)}
-    html.pq-void :focus-visible{outline-color:#ff0034}
-    html.pq-void ::-webkit-scrollbar{width:11px;height:11px}
-    html.pq-void ::-webkit-scrollbar-track{background:#0b0b0f}
-    html.pq-void ::-webkit-scrollbar-thumb{background:#2a1117;border-radius:8px;border:2px solid #0b0b0f}
-    html.pq-void ::-webkit-scrollbar-thumb:hover{background:#ff0034}
+  // ---------- dark skins: the whole of Picqer dark in the skin's colors ----------
+  //  skins/dark.css (on GitHub) = every color of Picqer's own CSS turned dark, made from picqer.css, with the
+  //  skin's colors as variables. Loaded once a day, kept on this PC. On top: header, glow and movement from here.
+  const DARK_LS = 'pqsuite_dark_css_v1';
+  const ACC = (pct) => `color-mix(in srgb,var(--acc) ${pct}%,transparent)`;
+  const DARK_BASE = `
+    html.pq-dark{color-scheme:dark;background:hsl(var(--th),14%,4%)}
+    html.pq-dark body{background:hsl(var(--th),14%,4%);color:hsl(var(--th),10%,92%)}
+    html.pq-dark .layout{background:hsl(var(--th),14%,4%)}
+    html.pq-dark ::selection{background:var(--acc);color:#fff}
+    html.pq-dark .layout-header{--header-background-color:#0a0a0e;background:var(--hbg) !important;color:#f4f4f6;position:relative;overflow:hidden;box-shadow:0 1px 0 ${ACC(45)},0 10px 30px -18px ${ACC(60)}}
+    html.pq-dark .layout-header > *{position:relative;z-index:1}
+    html.pq-dark .layout-header-logo img,html.pq-dark .layout-header-logo svg{filter:drop-shadow(0 0 6px ${ACC(55)})}
+    html.pq-dark .layout-navigation{background:linear-gradient(180deg,hsl(var(--th),16%,6%),hsl(var(--th),14%,4%));box-shadow:inset -1px 0 0 ${ACC(14)}}
+    html.pq-dark .menu a.active,html.pq-dark .menu button.active{text-shadow:0 0 12px ${ACC(55)}}
+    html.pq-dark .btn.btn-primary,html.pq-dark .btn-primary{background:var(--acc) !important;border-color:var(--acc) !important;color:var(--on-acc) !important;transition:box-shadow .2s ease,transform .15s ease}
+    html.pq-dark .btn.btn-primary:hover,html.pq-dark .btn-primary:hover{box-shadow:0 0 0 1px ${ACC(60)},0 6px 22px ${ACC(45)};transform:translateY(-1px)}
+    html.pq-dark .card{transition:box-shadow .25s ease}
+    html.pq-dark .card:hover{box-shadow:0 0 0 1px ${ACC(28)},0 12px 30px -14px ${ACC(35)} !important}
+    html.pq-dark .page-heading h1,html.pq-dark .page-title{background:linear-gradient(90deg,#fff,color-mix(in srgb,var(--acc) 35%,#fff));-webkit-background-clip:text;background-clip:text;color:transparent}
+    html.pq-dark input,html.pq-dark select,html.pq-dark textarea{caret-color:var(--acc)}
+    html.pq-dark canvas{filter:invert(1) hue-rotate(180deg) saturate(1.4)}
+    html.pq-dark :focus-visible{outline-color:var(--acc)}
+    html.pq-dark ::-webkit-scrollbar{width:11px;height:11px}
+    html.pq-dark ::-webkit-scrollbar-track{background:hsl(var(--th),14%,5%)}
+    html.pq-dark ::-webkit-scrollbar-thumb{background:hsl(var(--ah),30%,14%);border-radius:8px;border:2px solid hsl(var(--th),14%,5%)}
+    html.pq-dark ::-webkit-scrollbar-thumb:hover{background:var(--acc)}
     #pq-void-fx{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}
     #pq-void-fx .st{position:absolute;inset:-20px;opacity:.35;will-change:opacity;animation:pqvTw 5s ease-in-out infinite alternate;
-      background-image:radial-gradient(1px 1px at 8% 30%,#fff,transparent),radial-gradient(1px 1px at 23% 70%,#ffd1da,transparent),radial-gradient(1.5px 1.5px at 41% 22%,#fff,transparent),
-        radial-gradient(1px 1px at 57% 64%,#fff,transparent),radial-gradient(1.5px 1.5px at 73% 35%,#ff8099,transparent),radial-gradient(1px 1px at 88% 58%,#fff,transparent),radial-gradient(1px 1px at 96% 20%,#ffd1da,transparent)}
+      background-image:radial-gradient(1px 1px at 8% 30%,#fff,transparent),radial-gradient(1px 1px at 23% 70%,#fff,transparent),radial-gradient(1.5px 1.5px at 41% 22%,#fff,transparent),
+        radial-gradient(1px 1px at 57% 64%,#fff,transparent),radial-gradient(1.5px 1.5px at 73% 35%,var(--acc),transparent),radial-gradient(1px 1px at 88% 58%,#fff,transparent),radial-gradient(1px 1px at 96% 20%,#fff,transparent)}
     #pq-void-fx .st.b{animation-duration:7s;animation-delay:-3s;transform:translateX(37px)}
-    #pq-void-fx .sw{position:absolute;left:0;bottom:0;height:2px;width:30%;background:linear-gradient(90deg,transparent,#ff0034,#ff7a93,#ff0034,transparent);
-      will-change:transform;animation:pqvSw 6.5s cubic-bezier(.45,0,.2,1) infinite;filter:drop-shadow(0 0 6px #ff0034)}
-    #pq-void-fx .orb{position:absolute;top:-60px;left:12%;width:220px;height:160px;border-radius:50%;background:radial-gradient(closest-side,rgba(255,0,52,.35),transparent);
+    #pq-void-fx .sw{position:absolute;left:0;bottom:0;height:2px;width:30%;background:linear-gradient(90deg,transparent,var(--acc),color-mix(in srgb,var(--acc) 55%,#fff),var(--acc),transparent);
+      will-change:transform;animation:pqvSw 6.5s cubic-bezier(.45,0,.2,1) infinite;filter:drop-shadow(0 0 6px var(--acc))}
+    #pq-void-fx .orb{position:absolute;top:-60px;left:12%;width:220px;height:160px;border-radius:50%;background:radial-gradient(closest-side,${ACC(35)},transparent);
       will-change:transform,opacity;animation:pqvOrb 14s ease-in-out infinite alternate}
     @keyframes pqvTw{from{opacity:.15}to{opacity:.6}}
     @keyframes pqvSw{from{transform:translateX(-110%)}to{transform:translateX(440%)}}
     @keyframes pqvOrb{0%{transform:translateX(0);opacity:.55}50%{opacity:.9}100%{transform:translateX(520%);opacity:.5}}
     @media (prefers-reduced-motion:reduce){#pq-void-fx *{animation:none !important}}`;
-  function voidCss() {
-    const c = lsGet(VOID_LS, null);
+  function darkCss() {
+    const c = lsGet(DARK_LS, null);
     if (!c || Date.now() - c.at > 86400000) {
-      fetch(`${RAW}skins/voidescent.css?t=${Math.floor(Date.now() / 3600000)}`, { credentials: 'omit', cache: 'no-store' })
+      fetch(`${RAW}skins/dark.css?t=${Math.floor(Date.now() / 3600000)}`, { credentials: 'omit', cache: 'no-store' })
         .then((r) => (r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status))))
         .then((css) => {
-          if (!/\.pq-void/.test(css)) return;
+          if (!/\.pq-dark/.test(css)) return;
           const fresh = !c || c.css !== css;
-          lsSet(VOID_LS, { at: Date.now(), css });
-          if (fresh && document.getElementById('pq-skin-void')) document.getElementById('pq-skin-void').textContent = css;
+          lsSet(DARK_LS, { at: Date.now(), css });
+          if (fresh && document.getElementById('pq-skin-dark')) document.getElementById('pq-skin-dark').textContent = css;
         })
-        .catch((e) => console.info('[suite] voidescent.css not loaded:', e.message));
+        .catch((e) => console.info('[suite] dark.css not loaded:', e.message));
     }
     return c ? c.css : '';
   }
-  function voidFx() {
+  function skinFx(kind) {
     const h = document.querySelector('.layout-header');
     if (!h || h.querySelector('#pq-void-fx')) return !!h;
     const fx = document.createElement('div');
     fx.id = 'pq-void-fx';
-    fx.innerHTML = '<div class="orb"></div><div class="st"></div><div class="st b"></div><div class="sw"></div>';
+    fx.innerHTML = kind === 'full' ? '<div class="orb"></div><div class="st"></div><div class="st b"></div><div class="sw"></div>' : '<div class="sw"></div>';
     h.prepend(fx);
     return true;
   }
+  const SKIN_VARS = ['--th', '--ah', '--as', '--acc', '--on-acc', '--hbg'];
   function applySkin(id) {
-    ['pq-skin', 'pq-skin-void', 'pq-void-fx'].forEach((x) => document.getElementById(x)?.remove());
-    document.documentElement.classList.remove('pq-void');
+    ['pq-skin', 'pq-skin-dark', 'pq-void-fx'].forEach((x) => document.getElementById(x)?.remove());
+    const root = document.documentElement;
+    root.classList.remove('pq-dark');
+    SKIN_VARS.forEach((v) => root.style.removeProperty(v));
     const k = SKIN_LOOK[id];
     if (!k) return;
-    if (k.void) {
-      document.documentElement.classList.add('pq-void');
-      addStyle('pq-skin-void', voidCss());
-      addStyle('pq-skin', VOID_BASE);
-      if (!voidFx()) { let n = 0; const iv = setInterval(() => { if (voidFx() || ++n > 30) clearInterval(iv); }, 500); }
+    if (k.dark) {
+      root.classList.add('pq-dark');
+      const vars = { '--th': k.dark.th, '--ah': k.dark.ah, '--as': k.dark.as, '--acc': k.accent, '--on-acc': id === 'carbon' || id === 'gold' || id === 'crown' ? '#111' : '#fff', '--hbg': k.bg };
+      Object.entries(vars).forEach(([v, x]) => root.style.setProperty(v, String(x)));
+      addStyle('pq-skin-dark', darkCss());
+      addStyle('pq-skin', DARK_BASE + (k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : ''));
+      if (!skinFx(k.dark.fx)) { let n = 0; const iv = setInterval(() => { if (skinFx(k.dark.fx) || ++n > 30) clearInterval(iv); }, 500); }
       return;
     }
     addStyle('pq-skin', `
@@ -5001,7 +5008,7 @@
     }
 
     const theme = () => {
-      if (document.documentElement.classList.contains('pq-void')) return 'dark';
+      if (document.documentElement.classList.contains('pq-dark')) return 'dark';
       const t = low(C.theme || 'auto');
       if (t === 'light' || t === 'dark') return t;
       try { return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (_) { return 'light'; }
@@ -5062,6 +5069,7 @@
       .pq-lb-ov .pf-skin button{margin-top:6px;width:100%;padding:5px 0;border-radius:7px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:600 12px system-ui;cursor:pointer}
       .pq-lb-ov .pf-skin button.buy{background:#6366f1;border-color:#6366f1;color:#fff}
       .pq-lb-ov .pf-skin button:disabled{opacity:.45;cursor:default}
+      .pq-lb-ov .pf-lim{color:#e11d48;font-weight:700}
       .pq-lb-ov .pf-note{color:var(--mut);font-size:11.5px;margin-top:10px}
       @media (max-width:560px){.pq-lb-ov .pf-tiles,.pq-lb-ov .pf-shop{grid-template-columns:repeat(2,1fr)}}
     `);
@@ -5170,9 +5178,10 @@
         <div class="pf-shop">${(p.skins || []).map((s) => {
           const own = (p.owned || []).includes(s.id), on = p.skin === s.id, look = SKIN_LOOK[s.id] || { bg: '#334155', accent: '#64748b' };
           const btn = on ? '<button data-pf="off">Take off</button>' : own ? `<button data-pf="wear" data-s="${s.id}">Wear</button>`
+            : s.limit && !s.left ? '<button disabled>Sold out</button>'
             : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>Buy · ${int(s.price)}</button>`;
           return `<div class="pf-skin${on ? ' on' : ''}"><div class="pf-sw" style="background:${look.bg};box-shadow:inset 0 -3px 0 ${look.line || look.accent}"></div>
-            <div class="pf-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b><span>${own ? (on ? 'wearing' : 'yours') : int(s.price) + ' coins'}</span>${btn}</div></div>`;
+            <div class="pf-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b><span>${own ? (on ? 'wearing' : 'yours') : int(s.price) + ' coins'}${s.limit ? ` · <b class="pf-lim">${s.left || 0}/${s.limit} left</b>` : ''}${look.dark ? ' · dark' : ''}</span>${btn}</div></div>`;
         }).join('')}</div>
         <div class="pf-note">${note ? escHtml(note) + ' · ' : ''}coins: 1 per packing point, +20 every minute as king · skins change Picqer's top bar and buttons on your PC</div></div>`;
       ov.querySelectorAll('[data-pf]').forEach((b) => b.addEventListener('click', async () => {
