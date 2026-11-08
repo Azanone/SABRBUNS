@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.22
+// @version      3.23
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -244,6 +244,7 @@
       { k: 'excludeIds', label: 'Leave these user ids out, comma separated', type: 'list', def: [] },
     ]},
     { id: 'leaderboard', title: 'Leaderboard', hint: 'closed picklists in the last minutes · your rank bottom right · Ctrl+Alt+L = everyone', fields: [
+      { k: 'url', label: 'Middle stop (Cloudflare worker link, empty = every PC asks Picqer itself)', type: 'text', def: '' },
       { k: 'windowMin', label: 'Count closed picklists of the last (min)', type: 'num', def: 15 },
       { k: 'pollSec', label: 'Check every (sec)', type: 'num', def: 60 },
       { k: 'warehouse', label: 'Only this warehouse (name or id, empty = all)', type: 'text', def: 'Bunsenstraat' },
@@ -4663,16 +4664,17 @@
    * ========================================================================= */
 
   // =====================================================================
-  //  LEADERBOARD · who closed the most picklists in the last 15 min
-  //  Picqer: GET /picklists?status=closed&closed_after=… (closed_by_iduser per picklist)
-  //  1 tab per PC asks Picqer (every 60 s), the other tabs read along. Rank colors next to the leader:
-  //  #1 gold · 80%+ of the leader dark green · 55%+ green · 30%+ yellow · less red
+  //  LEADERBOARD · points for closed picklists in the last 15 min, as points per hour
+  //  multi (2+ different products) = 2 points, single = 1.334. Lines with has_parts (a set) don't count, their parts do.
+  //  With a middle stop (Cloudflare worker) Picqer gets asked once for everyone, else each PC asks itself
+  //  (GET /picklists?status=closed&closed_after=…). 1 tab per PC asks, the other tabs read along.
+  //  per hour: 120+ blue · 100+ turquoise · 80+ dark green · 60+ green · 40+ orange · less red · #1 gold if 60+
   // =====================================================================
   function leaderboard() {
     const C = CFG.leaderboard || {};
     const WIN = Math.max(1, +C.windowMin || 15) * 60000;
     const POLL = Math.max(20, +C.pollSec || 60) * 1000;
-    const LS_DATA = 'pqsuite_lb_v1', LS_LOCK = 'pqsuite_lb_lock_v1', LS_USERS = 'pqsuite_lb_users_v1';
+    const LS_DATA = 'pqsuite_lb_v2', LS_LOCK = 'pqsuite_lb_lock_v1', LS_USERS = 'pqsuite_lb_users_v1';
     const TAB = Math.random().toString(36).slice(2);
     const proxies = new Set(((CFG.zaplog && CFG.zaplog.proxyIds) || []).map(String));
     const low = (x) => norm(String(x == null ? '' : x)).toLowerCase();
@@ -4714,28 +4716,29 @@
       if (lock && lock.tab !== TAB && Date.now() - lock.ts < POLL * 1.6) return; // another tab on this PC does it
       lsSet(LS_LOCK, { tab: TAB, ts: Date.now() });
       try {
-        const w = await warehouse();
-        const since = Date.now() - WIN;
-        const rows = [];
-        for (let off = 0; off < 3000; off += 100) {
-          const page = await api(`/picklists?status=closed&closed_after=${encodeURIComponent(stamp(since))}${w && w.id ? `&idwarehouse=${w.id}` : ''}&offset=${off}`);
-          rows.push(...(page || []));
-          if (!page || page.length < 100) break;
+        let people, whName = '';
+        const URL_ = norm(String(C.url || '')).replace(/\/+$/, '');
+        if (URL_) { // the middle stop asked Picqer for everyone
+          const r = await fetch(`${URL_}/leaderboard?min=${Math.round(WIN / 60000)}`, { credentials: 'omit', cache: 'no-store' });
+          const j = await r.json();
+          if (!r.ok || !j.people) throw new Error(j.err || `middle stop HTTP ${r.status}`);
+          people = j.people; whName = j.wh || '';
+        } else {
+          const w = await warehouse();
+          whName = w && w.name;
+          const rows = [];
+          for (let off = 0; off < 3000; off += 100) {
+            const page = await api(`/picklists?status=closed&closed_after=${encodeURIComponent(stamp(Date.now() - WIN))}${w && w.id ? `&idwarehouse=${w.id}` : ''}&offset=${off}`);
+            rows.push(...(page || []));
+            if (!page || page.length < 100) break;
+          }
+          people = scoreRows(rows);
         }
         const map = await names().catch(() => ({}));
-        const by = new Map();
-        for (const p of rows) {
-          const id = p.closed_by_iduser;
-          if (id == null || proxies.has(String(id))) continue;
-          const t = p.closed_at ? new Date(String(p.closed_at).replace(' ', 'T')).getTime() : Date.now();
-          if (t < since - 60000) continue;
-          const units = (p.products || []).filter((x) => !x.has_parts).reduce((n, x) => n + (+x.amount || 0), 0) || +p.totalproducts || 0;
-          const r = by.get(String(id)) || { id: String(id), name: map[id] || `#${id}`, n: 0, units: 0, last: 0 };
-          r.n++; r.units += units; r.last = Math.max(r.last, t);
-          by.set(r.id, r);
-        }
-        const list = [...by.values()].sort((a, b) => b.n - a.n || b.units - a.units || a.last - b.last);
-        data = { at: Date.now(), win: WIN, wh: w && w.name, list, err: '' };
+        const list = people.filter((r) => !proxies.has(String(r.id)))
+          .map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}`, n: r.picklists }))
+          .sort((a2, b2) => b2.points - a2.points || b2.n - a2.n);
+        data = { at: Date.now(), win: WIN, wh: whName, list, err: '', via: URL_ ? 'middle stop' : 'Picqer' };
       } catch (e) {
         data = { ...(data || { list: [] }), at: Date.now(), err: e.message };
       }
@@ -4744,19 +4747,38 @@
       render();
     }
 
+    // multi 2 · single 1.334 · lines that have parts don't count (their parts do)
+    function scoreRows(rows) {
+      const by = new Map();
+      for (const p of rows) {
+        if (p.closed_by_iduser == null) continue;
+        const codes = new Set((p.products || []).filter((x) => !x.has_parts).map((x) => x.productcode));
+        if (!codes.size) continue;
+        const r = by.get(String(p.closed_by_iduser)) || { id: String(p.closed_by_iduser), picklists: 0, multis: 0, singles: 0, points: 0 };
+        r.picklists++;
+        if (codes.size >= 2) r.multis++; else r.singles++;
+        r.points = Math.round((r.multis * 2 + r.singles * 1.334) * 1000) / 1000;
+        by.set(r.id, r);
+      }
+      return [...by.values()];
+    }
+    const perHour = (pts) => pts * 3600000 / WIN;
+    const tierOf = (ph) => (ph >= 120 ? 'blue' : ph >= 100 ? 'turq' : ph >= 80 ? 'dgreen' : ph >= 60 ? 'green' : ph >= 40 ? 'orange' : 'red');
     // place + color
     function ranked(list) {
-      const top = list.length ? list[0].n : 0;
+      const top = list.length ? list[0].points : 0;
       let rank = 0, prev = null;
       return list.map((r, i) => {
-        if (!prev || r.n !== prev.n || r.units !== prev.units) rank = i + 1;
+        if (!prev || r.points !== prev.points) rank = i + 1;
         prev = r;
-        const f = top ? r.n / top : 0;
-        const tier = r.n === top && top > 0 ? 'gold' : f >= 0.8 ? 'dgreen' : f >= 0.55 ? 'green' : f >= 0.3 ? 'yellow' : 'red';
-        return { ...r, rank, tier, f };
+        const ph = Math.round(perHour(r.points));
+        const base = tierOf(ph);
+        const tier = rank === 1 && ph >= 60 ? 'gold' : base; // gold only for #1 at green or better
+        return { ...r, rank, tier, ph, f: top ? r.points / top : 0 };
       });
     }
-    const TIER = { gold: 'GOLD', dgreen: 'ON FIRE', green: 'STRONG', yellow: 'KEEP GOING', red: 'WAKE UP', none: 'NOT ON THE BOARD' };
+    const TIER = { gold: 'GOLD', blue: 'GOD MODE', turq: 'INSANE', dgreen: 'ON FIRE', green: 'ON TRACK', orange: 'PICK IT UP', red: 'WAKE UP', none: 'NOT ON THE BOARD' };
+    const fmtPts = (x) => (Math.round(x * 10) / 10).toLocaleString('nl-NL');
 
     addStyle('pq-lb-style', `
       #pq-lb{position:fixed;right:16px;bottom:16px;z-index:2147483000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer;user-select:none}
@@ -4780,7 +4802,8 @@
       #pq-lb .lb-crown{position:absolute;left:8px;top:-14px;font-size:20px;animation:lbFloat 1.6s ease-in-out infinite;z-index:3;filter:drop-shadow(0 0 6px gold)}
       #pq-lb .lb-spark{position:absolute;width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 8px 2px var(--c);z-index:2;animation:lbSpark 2.2s ease-out infinite;pointer-events:none}
       #pq-lb.t-gold{--c:#fbbf24;--c2:rgba(251,191,36,.45)} #pq-lb.t-dgreen{--c:#10b981;--c2:rgba(5,150,105,.45)} #pq-lb.t-green{--c:#4ade80;--c2:rgba(74,222,128,.32)}
-      #pq-lb.t-yellow{--c:#facc15;--c2:rgba(250,204,21,.28)} #pq-lb.t-red{--c:#f43f5e;--c2:rgba(244,63,94,.32)} #pq-lb.t-none{--c:#64748b;--c2:rgba(100,116,139,.3)}
+      #pq-lb.t-blue{--c:#3b82f6;--c2:rgba(59,130,246,.45)} #pq-lb.t-turq{--c:#2dd4bf;--c2:rgba(45,212,191,.4)} #pq-lb.t-orange{--c:#fb923c;--c2:rgba(251,146,60,.32)}
+      #pq-lb.t-red{--c:#f43f5e;--c2:rgba(244,63,94,.32)} #pq-lb.t-none{--c:#64748b;--c2:rgba(100,116,139,.3)}
       #pq-lb.t-gold .lb-card{animation:lbBreath 1.4s ease-in-out infinite}
       #pq-lb.t-red .lb-card{animation:lbBreath 2.4s ease-in-out infinite,lbNudge 6s ease-in-out infinite}
       #pq-lb:hover .lb-card{transform:translateY(-3px) scale(1.03)}
@@ -4799,7 +4822,7 @@
       #pq-lb-ov .lb-panel{width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;background:#0b1020;color:#fff;border-radius:20px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08)}
       #pq-lb-ov h2{margin:0 0 2px;font:900 22px system-ui;background:linear-gradient(90deg,#fbbf24,#f472b6,#60a5fa,#fbbf24);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:lbFlow 4s linear infinite}
       #pq-lb-ov .lb-meta{color:#94a3b8;font-size:12px;margin-bottom:14px}
-      #pq-lb-ov .lb-row{position:relative;display:grid;grid-template-columns:44px 1fr 70px;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;margin-bottom:6px;
+      #pq-lb-ov .lb-row{position:relative;display:grid;grid-template-columns:44px 1fr 76px;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;margin-bottom:6px;
         background:rgba(255,255,255,.04);animation:lbIn .5s cubic-bezier(.2,1.3,.4,1) both;overflow:hidden}
       #pq-lb-ov .lb-row.me{box-shadow:0 0 0 2px var(--c),0 0 22px var(--c);background:rgba(255,255,255,.08)}
       #pq-lb-ov .lb-row .r{font:900 20px system-ui;color:var(--c);text-align:center}
@@ -4810,7 +4833,8 @@
       #pq-lb-ov .lb-row .fill{position:absolute;left:0;top:0;bottom:0;z-index:-1;background:linear-gradient(90deg,var(--c2),transparent);transform-origin:left;animation:lbGrow 1s cubic-bezier(.2,1.2,.4,1) both}
       #pq-lb-ov .lb-row{isolation:isolate}
       #pq-lb-ov .lb-row.t-gold{--c:#fbbf24;--c2:rgba(251,191,36,.35)} #pq-lb-ov .lb-row.t-dgreen{--c:#10b981;--c2:rgba(5,150,105,.35)} #pq-lb-ov .lb-row.t-green{--c:#4ade80;--c2:rgba(74,222,128,.25)}
-      #pq-lb-ov .lb-row.t-yellow{--c:#facc15;--c2:rgba(250,204,21,.22)} #pq-lb-ov .lb-row.t-red{--c:#f43f5e;--c2:rgba(244,63,94,.25)}
+      #pq-lb-ov .lb-row.t-blue{--c:#3b82f6;--c2:rgba(59,130,246,.35)} #pq-lb-ov .lb-row.t-turq{--c:#2dd4bf;--c2:rgba(45,212,191,.3)}
+      #pq-lb-ov .lb-row.t-orange{--c:#fb923c;--c2:rgba(251,146,60,.25)} #pq-lb-ov .lb-row.t-red{--c:#f43f5e;--c2:rgba(244,63,94,.25)}
       #pq-lb-ov .lb-row.t-gold .r::after{content:' 👑'}
       @keyframes lbIn{from{transform:translateX(-30px);opacity:0}}
       @keyframes lbGrow{from{transform:scaleX(0)}}
@@ -4854,18 +4878,18 @@
       const me = list.find((r) => r.id === String(ME.id));
       const tier = me ? me.tier : 'none';
       const mins = Math.round(WIN / 60000);
-      const key = JSON.stringify([tier, me && me.rank, me && me.n, list.length]);
+      const key = JSON.stringify([tier, me && me.rank, me && me.points, list.length]);
       if (key === shown) return;
       shown = key;
       box.className = 't-' + tier;
-      const gap = me && me.rank > 1 ? list[0].n - me.n : 0;
-      const sparks = tier === 'gold' || tier === 'dgreen'
-        ? Array.from({ length: tier === 'gold' ? 7 : 4 }, (_, i) => `<span class="lb-spark" style="left:${15 + i * 13}%;top:${30 + (i % 3) * 18}%;--dx:${(i % 2 ? 1 : -1) * (4 + i)}px;--dy:${-6 - i * 2}px;animation-delay:${i * 0.31}s"></span>`).join('') : '';
+      const gap = me && me.rank > 1 ? list[0].points - me.points : 0;
+      const sparks = ['gold', 'blue', 'turq', 'dgreen'].includes(tier)
+        ? Array.from({ length: tier === 'gold' || tier === 'blue' ? 7 : 4 }, (_, i) => `<span class="lb-spark" style="left:${15 + i * 13}%;top:${30 + (i % 3) * 18}%;--dx:${(i % 2 ? 1 : -1) * (4 + i)}px;--dy:${-6 - i * 2}px;animation-delay:${i * 0.31}s"></span>`).join('') : '';
       box.innerHTML = `<div class="lb-card">${tier === 'gold' ? '<span class="lb-crown">👑</span>' : ''}${sparks}<span class="lb-shine"></span>
         <div class="lb-rank">${me ? '#' + me.rank : '–'}</div>
         <div class="lb-txt"><span class="lb-tier">${TIER[tier]}</span>
-          <span class="lb-n"><b class="lb-cnt" data-v="${me ? me.n : 0}">${me ? me.n : 0}</b> closed · ${mins} min</span>
-          <span class="lb-sub">${me ? (me.rank === 1 ? `top of ${list.length} 🔥` : `${gap} behind #1 · of ${list.length}`) : list.length ? `${list.length} on the board · close one to join` : 'nobody closed one yet'}</span>
+          <span class="lb-n"><b>${me ? me.ph : 0}</b> pts/h · ${me ? me.n : 0} closed</span>
+          <span class="lb-sub">${me ? (me.rank === 1 ? `top of ${list.length} 🔥 · last ${mins} min` : `${fmtPts(gap)} pts behind #1 · of ${list.length}`) : list.length ? `${list.length} on the board · close one to join` : 'nobody closed one yet'}</span>
           <span class="lb-bar"><i style="width:${me ? Math.max(6, Math.round(me.f * 100)) : 4}%"></i></span></div></div>`;
       if (me && prevRank != null && me.rank !== prevRank) {
         const up = me.rank < prevRank;
@@ -4890,11 +4914,11 @@
       const mins = Math.round(WIN / 60000);
       const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
       ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard</h2>
-        <div class="lb-meta">closed picklists · last ${mins} min${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · checked ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
+        <div class="lb-meta">points per hour · last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · checked ${at}${data && data.via ? ' via ' + data.via : ''}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
         ${list.length ? list.map((r, i) => `<div class="lb-row t-${r.tier}${r.id === String(ME.id) ? ' me' : ''}" style="animation-delay:${i * 0.05}s">
           <span class="fill" style="width:${Math.round(r.f * 100)}%;animation-delay:${0.2 + i * 0.05}s"></span>
-          <span class="r">#${r.rank}</span><span class="nm">${escHtml(r.name)}<small>${TIER[r.tier]} · ${r.units} products</small></span>
-          <span class="v">${r.n}<small>closed</small></span></div>`).join('') : '<div class="lb-empty">Nobody closed a picklist in the last ' + mins + ' min</div>'}</div>`;
+          <span class="r">#${r.rank}</span><span class="nm">${escHtml(r.name)}<small>${TIER[r.tier]} · ${r.n} closed · ${r.multis} multi · ${r.singles} single · ${fmtPts(r.points)} pts</small></span>
+          <span class="v">${r.ph}<small>pts/h</small></span></div>`).join('') : '<div class="lb-empty">Nobody closed a picklist in the last ' + mins + ' min</div>'}</div>`;
     }
 
     document.addEventListener('keydown', (e) => {
