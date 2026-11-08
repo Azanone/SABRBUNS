@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.38
+// @version      3.39
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -5222,7 +5222,8 @@
       close('pq-pf-ov');
       const ov = overlay('pq-lb-ov');
       listOpen = true;
-      const tabs = `<div class="lb-tabs"><button data-lt="now" class="${listTab === 'now' ? 'on' : ''}">Last ${Math.round(WIN / 60000)} min</button><button data-lt="total" class="${listTab === 'total' ? 'on' : ''}">Total</button></div>`;
+      if (!isOwner()) listTab = 'now'; // Total: only Ahmad
+      const tabs = !isOwner() ? '' : `<div class="lb-tabs"><button data-lt="now" class="${listTab === 'now' ? 'on' : ''}">Last ${Math.round(WIN / 60000)} min</button><button data-lt="total" class="${listTab === 'total' ? 'on' : ''}">Total</button></div>`;
       let body;
       if (listTab === 'total') {
         const hm = tot && tot.at ? new Date(tot.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
