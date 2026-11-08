@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.29
+// @version      3.30
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -153,6 +153,9 @@
     return null;
   }
   let ME = { id: null, name: '' };
+  // only the owner sees and changes the teams (Shift+8 -> Teams)
+  const OWNER_ID = '32247'; // Ahmad Saber
+  const isOwner = () => String(ME.id || '') === OWNER_ID;
   let TEAM = null;
   const allowOf = (t) => (t ? t.allow : LEFTOVERS.allow);
   const can = (f) => { const a = allowOf(TEAM); return a === '*' || (Array.isArray(a) && a.includes(f)); };
@@ -260,6 +263,57 @@
   const LS_CFG = 'pqsuite_cfg_v1';
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
+
+  // ---------- API gate: all tabs on this PC together stay under Picqer's rate limit ----------
+  //  every /api/v1 call from the suite waits for a slot (max API_PER_MIN a minute for the whole PC, a little gap between calls).
+  //  Picqer says 429 (too many): every tab stops for a bit (Retry-After) and the call is tried again by itself.
+  const API_PER_MIN = Math.max(20, +lsGet('pqsuite_api_per_min', 0) || 150);
+  const GATE = 'pqsuite_api_gate_v1';
+  const gateSleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  let gateLast = 0;
+  async function gateWait() {
+    for (let n = 0; n < 400; n++) {
+      const now = Date.now();
+      const g = lsGet(GATE, null) || { t: [], pause: 0 };
+      if (g.pause > now) { await gateSleep(Math.min(g.pause - now + 30 + Math.random() * 200, 30000)); continue; }
+      if (now - gateLast < 60) { await gateSleep(60 - (now - gateLast)); continue; }
+      const t = (g.t || []).filter((x) => now - x < 60000);
+      if (t.length >= API_PER_MIN) { await gateSleep(Math.min(60000 - (now - t[0]) + 50 + Math.random() * 300, 30000)); continue; }
+      t.push(now);
+      gateLast = now;
+      lsSet(GATE, { t, pause: g.pause || 0 });
+      return;
+    }
+  }
+  function gatePause(res, ms0) {
+    let ra = ms0 ? ms0 / 1000 : NaN;
+    try { ra = parseFloat(res.headers.get('Retry-After')); } catch (_) {}
+    const ms = Math.min(120000, Math.max(5000, (Number.isFinite(ra) ? ra * 1000 : 15000)));
+    const g = lsGet(GATE, null) || { t: [], pause: 0 };
+    g.pause = Math.max(g.pause || 0, Date.now() + ms);
+    lsSet(GATE, g);
+    console.info(`[suite] Picqer says too many requests · all tabs wait ${Math.round(ms / 1000)} s`);
+  }
+  try {
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async function (input, init) {
+      let url = '';
+      try { url = new URL(typeof input === 'string' ? input : input.url, location.href); } catch (_) {}
+      if (!url || url.origin !== location.origin || !url.pathname.startsWith('/api/v1/')) return realFetch(input, init);
+      let res;
+      for (let i = 0; i < 4; i++) {
+        await gateWait();
+        res = await realFetch(input, init);
+        // Picqer's limit (500 a minute) is shared by everyone on the same key: almost used up -> everyone here slows down first
+        let left = NaN;
+        try { left = parseInt(res.headers.get('X-RateLimit-Remaining'), 10); } catch (_) {}
+        if (res.status !== 429 && Number.isFinite(left) && left < 40) gatePause(res, left < 15 ? 20000 : 6000);
+        if (res.status !== 429) return res;
+        gatePause(res);
+      }
+      return res;
+    };
+  } catch (_) {}
 
   function loadCfg() {
     const saved = lsGet(LS_CFG, {});
@@ -2805,7 +2859,7 @@
         const list = [];
         let k = 0, bad = 0, badMsg = '';
         setProg(`${open.length} open · ${inBatch} in a batch · containers 0/${free.length}…`);
-        await pool(free, 6, async (pl) => {
+        await pool(free, 3, async (pl) => {
           if (isoStop) return;
           try {
             const r = await apiRetry('GET', `/picking-containers?idpicklist=${pl.idpicklist}`, null, { retry5xx: true });
@@ -3273,7 +3327,18 @@
     }
 
     function beOk(pl) { return !hasSkipTag(pl) && (beMode === 'mix' || (beMode === 'only') === hasHlTag(pl)); }
-    const BE_LABEL = { mix: 'BE + the rest', no: 'without BE', only: 'BE only' };
+    const BE_LABEL = { mix: 'België included', no: 'België excluded', only: 'België only' };
+    const beSelect = () => `<select class="cb-sel cb-bemode" title="BE pick-up picklists (Optimized tab + auto batch)">${Object.entries(BE_LABEL).map(([k, v]) => `<option value="${k}"${k === beMode ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
+    function setBe(v) {
+      if (!BE_LABEL[v] || v === beMode) return;
+      beMode = v;
+      store.set('cb_opt_be', beMode);
+      optGroups.forEach((g) => (g.stale = true));
+      if (autoPl) autoPl.plan = null;
+      if (autoOn) autoAddLog(BE_LABEL[beMode]);
+      renderOpt();
+      renderAuto();
+    }
     function computeGroup(og) {
       const free = multis.filter((m) => m.pl.idfulfilment_customer === og.shop && m.pl.idwarehouse === og.warehouse && !taken.has(m.pl.idpicklist) && beOk(m.pl));
       og.batches = packInto(og, free);
@@ -3393,7 +3458,7 @@
       if (tab !== 'opt' || !lastGroups) return;
       const groups = optShown();
       if (!groups.length) {
-        $opt.innerHTML = (beMode !== 'mix' ? `<div class="cb-optbar"><select class="cb-sel cb-bemode" title="BE pick-up picklists (also for auto batch)">${Object.entries(BE_LABEL).map(([k, v]) => `<option value="${k}"${k === beMode ? ' selected' : ''}>${v}</option>`).join('')}</select></div>` : '') +
+        $opt.innerHTML = (beMode !== 'mix' ? `<div class="cb-optbar">${beSelect()}</div>` : '') +
           `<div class="cb-empty">No picklists with 2+ products to batch${beMode !== 'mix' ? ` (${BE_LABEL[beMode]})` : ''}</div>`;
         return;
       }
@@ -3404,7 +3469,7 @@
       const twoWh = new Set(groups.map((g) => g.shop)).size < groups.length;
       let html = `<div class="cb-optbar">
           <label>Max <input type="number" class="cb-max" min="2" max="200" value="${optMax}"> picklists per batch</label>
-          <select class="cb-sel cb-bemode" title="BE pick-up picklists (also for auto batch)">${Object.entries(BE_LABEL).map(([k, v]) => `<option value="${k}"${k === beMode ? ' selected' : ''}>${v}</option>`).join('')}</select>
+          ${beSelect()}
           ${all.length ? `<button class="cb-btn" data-act="oall">${all.every((b) => b.checked) ? 'None' : 'All'}</button>` : ''}
           <span class="cb-sp"></span>
           <span>${all.length} batch${all.length === 1 ? '' : 'es'} · <b>${stops}</b> SKU stops${byDate > stops ? ` <span class="cb-muted">· by date ${byDate} (−${Math.round((1 - stops / byDate) * 100)}%)</span>` : ''}</span>
@@ -3584,12 +3649,7 @@
     $opt.addEventListener('change', (e) => {
       if (busy && !e.target.matches('.cb-bemode')) return; // the BE choice always counts (auto batch can be busy any moment)
       if (e.target.matches('.cb-bemode')) {
-        beMode = e.target.value;
-        store.set('cb_opt_be', beMode);
-        optGroups.forEach((g) => (g.stale = true));
-        if (autoPl) autoPl.plan = null;
-        renderOpt();
-        renderAuto();
+        setBe(e.target.value);
       } else if (e.target.matches('.cb-assign')) {
         assignee = e.target.value;
         store.set('cb_assign', assignee);
@@ -4105,8 +4165,8 @@
       const logHtml = autoLog.slice(-8).reverse().map((l) => `<div><span class="cb-muted">${esc(hm(l.t))}</span> ${esc(l.txt)}</div>`).join('');
       $auto.innerHTML = `<div class="cb-auto${autoOn ? ' on' : ''}">
         <div class="cb-auto-hd"><b>Auto batch</b>${autoOn ? '<span class="cb-auto-live">ON</span>' : ''}
-          <span class="cb-muted cb-auto-how">when someone has picked everything (collected = total) they get the next batch of exactly ${optMax} picklists with the fewest SKUs · 1 shop or 2 together · ticked shops${beMode === 'mix' ? '' : ` · <b>${BE_LABEL[beMode]}</b>`}</span>
-          ${whSel}<button class="${autoOn ? 'cb-btn cb-auto-stop' : 'cb-go'}" data-act="autotoggle">${autoOn ? 'Turn off' : 'Turn on'}</button></div>
+          <span class="cb-muted cb-auto-how">when someone has picked everything (collected = total) they get the next batch of exactly ${optMax} picklists with the fewest SKUs · 1 shop or 2 together · ticked shops</span>
+          ${beSelect()}${whSel}<button class="${autoOn ? 'cb-btn cb-auto-stop' : 'cb-go'}" data-act="autotoggle">${autoOn ? 'Turn off' : 'Turn on'}</button></div>
         <div class="cb-auto-people">${people || '<div class="cb-muted">Nobody yet · add who should get batches</div>'}<div class="cb-auto-add">${addSel}</div></div>
         ${notes.join('')}${logHtml ? `<div class="cb-auto-log">${logHtml}</div>` : ''}
       </div>`;
@@ -4136,7 +4196,8 @@
     });
     $auto.addEventListener('change', (e) => {
       const t = e.target;
-      if (t.matches('.cb-autoadd')) {
+      if (t.matches('.cb-bemode')) setBe(t.value);
+      else if (t.matches('.cb-autoadd')) {
         const u = t.value;
         t.blur();
         if (u && !autoUsers.includes(u)) {
@@ -5919,7 +5980,7 @@
       ov.id = 'pqs-ov';
       // settings = tools + teams + colors · colors only = just the colors tab
       const full = can('settings');
-      const tabs = full ? ['tools', 'teams', 'colors'] : ['colors'];
+      const tabs = full ? (isOwner() ? ['tools', 'teams', 'colors'] : ['tools', 'colors']) : ['colors'];
       const first = tabs[0];
       const label = { tools: 'Tools', teams: 'Teams', colors: 'Colors' };
       const hide = (t) => (t === first ? '' : ' style="display:none"');
@@ -5929,12 +5990,12 @@
           <button class="pqs-b" data-x="close">✕</button></div>
         <div class="pqs-tabs">${tabs.map((t) => `<button class="pqs-tab${t === first ? ' on' : ''}" data-tab="${t}">${label[t]}</button>`).join('')}</div>
         ${full ? `<div class="bd" data-pane="tools"${hide('tools')}>${toolsHtml()}</div>
-        <div class="bd" data-pane="teams"${hide('teams')}></div>` : ''}
+        ${isOwner() ? `<div class="bd" data-pane="teams"${hide('teams')}></div>` : ''}` : ''}
         <div class="bd" data-pane="colors"${hide('colors')}></div>
         ${full ? `<div class="ft" data-foot="tools"${hide('tools')}><span>This PC only · for everyone on this PC, within their team · after reload</span>
           <div><button class="pqs-b" data-x="reset">Reset</button><button class="pqs-b p" data-x="save">Save &amp; reload</button></div></div>
-        <div class="ft" data-foot="teams"${hide('teams')}><span>Teams come from teams.js on GitHub</span>
-          <div><button class="pqs-b" data-x="tstart">Start over</button><button class="pqs-b" data-x="tcopy">Copy config</button><button class="pqs-b p" data-x="tgh">Save to GitHub</button></div></div>` : ''}
+        ${isOwner() ? `<div class="ft" data-foot="teams"${hide('teams')}><span>Teams come from teams.js on GitHub</span>
+          <div><button class="pqs-b" data-x="tstart">Start over</button><button class="pqs-b" data-x="tcopy">Copy config</button><button class="pqs-b p" data-x="tgh">Save to GitHub</button></div></div>` : ''}` : ''}
         <div class="ft" data-foot="colors"${hide('colors')}><span>This PC's colors win over colors.js</span>
           <div><button class="pqs-b" data-x="cclear">Clear this PC</button>${full ? '<button class="pqs-b" data-x="ccopy">Copy colors.js</button><button class="pqs-b p" data-x="cgh">Save to GitHub</button>' : ''}</div></div>
       </div>`;
