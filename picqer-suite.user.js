@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.16
+// @version      3.17
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -127,6 +127,7 @@
     cardColor: 'Product colors on picklists',
     colors: 'Edit this PC\'s colors (Shift+8)',
     pickAll: 'Picqer "Pick alles" buttons',
+    truePickAll: 'True pick all: A picks every product of the picklist',
     bulkSingles: 'Picqer "Verwerk in bulk"',
   };
   const FEATURES = Object.keys(FEATURE_INFO);
@@ -225,7 +226,9 @@
       { k: 'includeMissing', label: 'Missing lines in chat', type: 'bool', def: false },
     ]},
     { id: 'unpick', title: 'Unpick all', hint: 'button next to Pick alles', fields: [] },
-    { id: 'autoNext', title: 'Auto print + auto next', hint: 'after a shipment · A = pick all · N = next', fields: [
+    { id: 'autoNext', title: 'Auto print + auto next', hint: 'after a shipment · A = pick all (true pick all if your team has it) · N = next', fields: [
+      { k: 'goNext', label: 'Go to the next picklist after a shipment', type: 'bool', def: true },
+      { k: 'skipClosed', label: 'Closed picklist in a batch opens: go to the next one right away (not after < back)', type: 'bool', def: true },
       { k: 'printLabel', label: 'Print the shipping label', type: 'bool', def: true },
       { k: 'printerId', label: 'Printer id (leave empty if it works)', type: 'text', def: '' },
       { k: 'delayMs', label: 'Wait before going next (ms)', type: 'num', def: 800 },
@@ -4127,7 +4130,7 @@
     const pickKey = String(C.pickAllKey || 'a').toLowerCase();
     const nextKey = String(C.nextKey || 'n').toLowerCase();
     let isProcessing = false;
-    let enabled = lsGet(LS_ON, true) !== false;
+    const enabled = C.goNext !== false; // Shift+8 -> Auto print + auto next
     let rowsPromise = null, flashAtLoad = new Set(), arrival = null, pendingWarn = null;
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const nm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
@@ -4142,28 +4145,26 @@
     // the old separate script still installed? then stay passive so nothing prints twice
     const oldScript = () => !!document.getElementById('picqer-auto-toolbar');
 
-    addStyle('pq-an-style', `
-      #pq-an-bar{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:10000;display:flex;align-items:center;gap:12px;padding:6px 15px;background:#222;color:#fff;
-        border-radius:8px;font-family:sans-serif;font-size:11px;box-shadow:0 0 10px rgba(0,0,0,.5),0 0 2px #007bff;border:1px solid #444;font-weight:bold}
-      #pq-an-bar .dot{width:7px;height:7px;background:#00ff41;border-radius:50%;margin-right:5px;box-shadow:0 0 5px #00ff41}
-      #pq-an-bar .dot.off{background:#777;box-shadow:none}
-      #pq-an-bar .div{width:1px;height:14px;background:#555}
-      #pq-an-bar .sw{position:relative;display:inline-block;width:30px;height:16px;margin-right:6px}
-      #pq-an-bar .sw input{opacity:0;width:0;height:0}
-      #pq-an-bar .sl{position:absolute;cursor:pointer;inset:0;background:#ff4d4d;transition:.3s;border-radius:20px}
-      #pq-an-bar .sl:before{position:absolute;content:"";height:10px;width:10px;left:3px;bottom:3px;background:#fff;transition:.3s;border-radius:50%}
-      #pq-an-bar input:checked + .sl{background:#007bff}
-      #pq-an-bar input:checked + .sl:before{transform:translateX(14px)}
-      #pq-an-bar label{cursor:pointer;display:flex;align-items:center;color:#eee}
-      #pq-an-btn{background:#007bff;color:#fff;border:0;border-radius:5px;padding:3px 8px;font-weight:bold;font-size:11px;cursor:pointer}
-      #pq-an-info{color:#9ecbff;font-weight:normal;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #pq-an-info.warn{color:#ffb020;font-weight:bold}`);
-
-    const setInfo = (txt, warn) => {
-      const el = document.getElementById('pq-an-info');
-      if (el) { el.textContent = txt; el.title = txt; el.classList.toggle('warn', !!warn); }
-      if (txt) console.log('[auto-next]', txt);
-    };
+    // no bar at the top anymore: warnings + the end of a batch show as a small toast bottom left
+    function setInfo(txt, warn, loud) {
+      if (!txt) return;
+      console.log('[auto-next]', txt);
+      if (!warn && !loud) return;
+      if (setInfo.last === txt && Date.now() - setInfo.at < 8000) return; // same message again: once is enough
+      setInfo.last = txt; setInfo.at = Date.now();
+      let box = document.getElementById('pq-an-toast');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'pq-an-toast';
+        box.style.cssText = 'position:fixed;bottom:20px;left:20px;z-index:2147483646;display:flex;flex-direction:column;gap:6px;pointer-events:none;';
+        document.body.appendChild(box);
+      }
+      const el = document.createElement('div');
+      el.style.cssText = `background:${warn ? '#7c2d12' : '#22242b'};color:#fff;font:600 13px/1.4 Arial,sans-serif;padding:9px 14px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.35);max-width:380px;`;
+      el.textContent = txt;
+      box.appendChild(el);
+      setTimeout(() => el.remove(), warn ? 6000 : 3000);
+    }
 
     // ---------- this page ----------
     const currentRef = () => { const m = nm(document.querySelector('h1')?.textContent).match(P_RE) || document.title.match(P_RE); return m ? m[0] : null; };
@@ -4366,7 +4367,9 @@
       }
       if (rows) { // 3) next one in the batch that is still open
         const nx = pick(ok);
-        return nx ? go(nx.url, `→ ${nx.alias} ${nx.ref}`, seen) : stop('batch done ✓');
+        if (nx) return go(nx.url, `→ ${nx.alias} ${nx.ref}`, seen);
+        setInfo('batch done ✓', false, true);
+        return stop('batch done ✓');
       }
       if (!c.batchId && !c.letter && c.header && !seen.includes(idOf(c.header))) return go(c.header, '→ next', seen); // 4) no batch
       return stop(c.batchId || c.letter ? 'end of batch' : 'no next found');
@@ -4398,16 +4401,53 @@
       if (why) printAndNext(why);
     }
 
-    // ---------- toolbar ----------
-    const bar = document.createElement('div');
-    bar.id = 'pq-an-bar';
-    bar.innerHTML = `<div style="display:flex;align-items:center;letter-spacing:.5px"><span class="dot${C.printLabel ? '' : ' off'}"></span> PRINT</div>
-      <div class="div"></div>
-      <label><span class="sw"><input type="checkbox" id="pq-an-toggle" ${enabled ? 'checked' : ''}><span class="sl"></span></span>NEXT</label>
-      <button id="pq-an-btn" title="next picklist (${escHtml(nextKey.toUpperCase())})">▶</button><span id="pq-an-info"></span>`;
-    document.body.appendChild(bar);
-    bar.querySelector('#pq-an-toggle').addEventListener('change', (e) => { enabled = e.target.checked; lsSet(LS_ON, enabled); });
-    bar.querySelector('#pq-an-btn').addEventListener('click', () => { if (isProcessing) return; isProcessing = true; goNext([]); });
+    // ---------- went back on purpose (< in the batch bar or the header, or the browser back button) ----------
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest && e.target.closest('a[href]');
+      if (!a || !a.querySelector('.fa-chevron-left, .fa-angle-left, .fa-arrow-left')) return;
+      const id = idOf(a.getAttribute('href') || '');
+      if (id) ss.set('an_back', id);
+    }, true);
+    const cameBack = () => {
+      const b = ss.get('an_back');
+      if (b && b === PID) return true;
+      try { return ['back_forward', 'reload'].includes((performance.getEntriesByType('navigation')[0] || {}).type); } catch (_) { return false; }
+    };
+
+    // ---------- true pick all: every product of this picklist via Picqer's own pick call ----------
+    async function truePickAll() {
+      if (!PID) return setInfo('open a picklist first', true);
+      if (isClosed()) return setInfo('this picklist is closed', true);
+      setInfo('picking everything…', false, true);
+      let pl;
+      try {
+        const r = await fetch(`/api/v1/picklists/${PID}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        pl = await r.json();
+      } catch (e) { return setInfo(`pick all: could not read the picklist (${e.message})`, true); }
+      const todo = [];
+      let noLoc = 0;
+      for (const p of pl.products || []) {
+        const left = (+p.amount || 0) - (+(p.amount_picked != null ? p.amount_picked : p.amountpicked) || 0);
+        if (left <= 0) continue;
+        const locs = (p.pick_locations || []).filter((l) => (+l.amount || 0) - (+l.amount_picked || 0) > 0);
+        if (!locs.length) { if (!p.has_parts) noLoc++; continue; } // a set (has_parts) gets picked through its parts
+        for (const l of locs) todo.push({ id: l.idpicklist_product_location, amount: (+l.amount || 0) - (+l.amount_picked || 0), code: p.productcode });
+      }
+      if (!todo.length) return setInfo(noLoc ? `nothing to pick here (${noLoc} without a location)` : 'everything is picked already', !!noLoc, true);
+      let ok = 0;
+      const bad = [];
+      for (const t of todo) {
+        try {
+          const r = await fetch(`/api/v1/picklists/${PID}/pick`, { method: 'POST', credentials: 'same-origin', headers: jsonHeaders(),
+            body: JSON.stringify({ idpicklist_product_location: t.id, amount: t.amount }) });
+          if (r.ok) ok++; else bad.push(`${t.code} (HTTP ${r.status})`);
+        } catch (_) { bad.push(`${t.code} (no connection)`); }
+      }
+      if (bad.length || noLoc) setInfo(`picked ${ok}/${todo.length}${bad.length ? ` · not: ${bad.join(', ')}` : ''}${noLoc ? ` · ${noLoc} without a location` : ''}`, true);
+      else setInfo(`picked all ${ok} ✓`, false, true);
+      setTimeout(() => location.reload(), bad.length ? 2500 : 400);
+    }
 
     window.addEventListener('keydown', (e) => {
       if (isTyping(e) || e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
@@ -4415,7 +4455,11 @@
       const cb = document.getElementById('cb-overlay');
       if (cb && cb.style.display === 'flex') return;
       const k = (e.key || '').toLowerCase();
-      if (k === pickKey) {
+      if (k === pickKey && can('truePickAll') && PID) {
+        if (isProcessing) return;
+        e.preventDefault();
+        truePickAll();
+      } else if (k === pickKey) {
         const btn = document.querySelector('.pick-all-button');
         if (!btn) return;
         if (!can('pickAll') || btn.disabled || btn.dataset.pqLock) { setInfo('Pick alles is not for your team'); return; }
@@ -4426,14 +4470,16 @@
       }
     });
 
-    if (!PID) return; // batch page, singles etc: only the A key + bar
+    if (!PID) return; // batch page, singles etc: only the A key
     prune();
     arrival = takeChain();
     const warn = ss.get('an_warn');
     const c0 = ctx();
     setInfo(isClosed() ? (wasHandled() ? 'done · ▶ = next' : 'closed') : c0.letter ? `letter ${c0.letter}` : c0.batchId ? 'in batch' : 'no batch');
     if (warn) { ss.del('an_warn'); setInfo('⚠ ' + warn, true); }
-    if (isClosed() && arrival) { // we jumped here ourselves but this one is done already: keep going
+    const back = cameBack();
+    if (ss.get('an_back') === PID) ss.del('an_back');
+    if (isClosed() && arrival && !back) { // we jumped here ourselves but this one is done already: keep going
       const seen = arrival.seen || [];
       if (seen.includes(PID) || seen.length >= 60) { setInfo('went round the batch · stopped', true); return; }
       isProcessing = true;
@@ -4450,6 +4496,18 @@
     }).observe(document.body, { subtree: true, childList: true, characterData: true });
     setTimeout(check, 600); // a moment later, so an old copy of the script shows up first if it is still installed
     setTimeout(check, 2000);
+    // opened a picklist that is closed already (Gesloten) inside a batch: straight to the next one,
+    // unless you went back to it on purpose, or it was just processed here (then the label goes first)
+    if (enabled && C.skipClosed !== false && isClosed() && !back) {
+      setTimeout(() => {
+        if (isProcessing || shipmentJustMade()) return;
+        const c = ctx();
+        if (!c.batchId && !c.letter) return; // not in a batch: stay
+        isProcessing = true;
+        setInfo('closed → next', false, true);
+        goNext([]);
+      }, 750);
+    }
   }
 
   /* =========================================================================
