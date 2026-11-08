@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.21
+// @version      3.22
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -123,6 +123,7 @@
     dayson: 'DAYSON',
     unpick: 'Unpick all',
     pickStats: 'Picker dashboard (Ctrl+Alt+P)',
+    leaderboard: 'Leaderboard: your rank in closed picklists (last 15 min)',
     autoNext: 'Auto print + auto next (A / N)',
     cardColor: 'Product colors on picklists',
     colors: 'Edit this PC\'s colors (Shift+8)',
@@ -241,6 +242,12 @@
       { k: 'background', label: 'Keep watching in the background on this PC (exact times all day)', type: 'bool', def: false },
       { k: 'idleMin', label: 'No progress for this long = idle (min)', type: 'num', def: 5 },
       { k: 'excludeIds', label: 'Leave these user ids out, comma separated', type: 'list', def: [] },
+    ]},
+    { id: 'leaderboard', title: 'Leaderboard', hint: 'closed picklists in the last minutes · your rank bottom right · Ctrl+Alt+L = everyone', fields: [
+      { k: 'windowMin', label: 'Count closed picklists of the last (min)', type: 'num', def: 15 },
+      { k: 'pollSec', label: 'Check every (sec)', type: 'num', def: 60 },
+      { k: 'warehouse', label: 'Only this warehouse (name or id, empty = all)', type: 'text', def: 'Bunsenstraat' },
+      { k: 'widget', label: 'Show my rank bottom right', type: 'bool', def: true },
     ]},
     { id: 'cardColor', title: 'Product colors', hint: 'colored bar per exact product code · colors in Shift+8 → Colors', fields: [
       { k: 'qtyBadge', label: 'Show "2x" badge when more than 1', type: 'bool', def: true },
@@ -2458,7 +2465,7 @@
       .cb-auto-note{padding:0 12px 8px;font-size:12px}
       .cb-auto-log{padding:6px 12px 8px;border-top:1px solid #f1f5f9;background:#f8fafc;font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#334155;max-height:96px;overflow:auto}
       .cb-tab.cb-autotab::after{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:#16a34a;margin-left:6px;vertical-align:1px}
-      #cb-autopill{position:fixed;right:16px;bottom:16px;z-index:99998;display:flex;align-items:center;gap:8px;max-width:min(440px,calc(100vw - 32px));padding:7px 13px;border-radius:999px;
+      #cb-autopill{position:fixed;right:16px;bottom:96px;z-index:99998;display:flex;align-items:center;gap:8px;max-width:min(440px,calc(100vw - 32px));padding:7px 13px;border-radius:999px;
         background:#0f172a;color:#fff;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.25);cursor:pointer;box-sizing:border-box}
       #cb-autopill i{width:8px;height:8px;border-radius:50%;background:#22c55e;flex:none;animation:cbpulse 2s infinite}
       #cb-autopill.bad i{background:#ef4444;animation:none}
@@ -4654,6 +4661,253 @@
    *  Batches nobody watched still count (batches, picklists, units) from Picqer's
    *  completed list, just without a time.
    * ========================================================================= */
+
+  // =====================================================================
+  //  LEADERBOARD · who closed the most picklists in the last 15 min
+  //  Picqer: GET /picklists?status=closed&closed_after=… (closed_by_iduser per picklist)
+  //  1 tab per PC asks Picqer (every 60 s), the other tabs read along. Rank colors next to the leader:
+  //  #1 gold · 80%+ of the leader dark green · 55%+ green · 30%+ yellow · less red
+  // =====================================================================
+  function leaderboard() {
+    const C = CFG.leaderboard || {};
+    const WIN = Math.max(1, +C.windowMin || 15) * 60000;
+    const POLL = Math.max(20, +C.pollSec || 60) * 1000;
+    const LS_DATA = 'pqsuite_lb_v1', LS_LOCK = 'pqsuite_lb_lock_v1', LS_USERS = 'pqsuite_lb_users_v1';
+    const TAB = Math.random().toString(36).slice(2);
+    const proxies = new Set(((CFG.zaplog && CFG.zaplog.proxyIds) || []).map(String));
+    const low = (x) => norm(String(x == null ? '' : x)).toLowerCase();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = (t) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+    let wh = null, data = lsGet(LS_DATA, null), shown = null, prevRank = null, open = false;
+
+    async function api(path) {
+      for (let i = 0; i < 4; i++) {
+        const r = await fetch('/api/v1' + path, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (r.status === 429) { await new Promise((ok) => setTimeout(ok, 3000 * (i + 1))); continue; }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      }
+      throw new Error('Picqer says too many requests');
+    }
+    async function warehouse() {
+      const W = norm(String(C.warehouse == null ? '' : C.warehouse));
+      if (!W || wh) return wh;
+      const list = (await api('/warehouses')) || [];
+      const hit = list.find((w) => String(w.idwarehouse) === W) || list.find((w) => low(w.name) === low(W)) || list.find((w) => low(w.name).includes(low(W)));
+      wh = hit ? { id: +hit.idwarehouse, name: hit.name } : { id: null, name: '' };
+      return wh;
+    }
+    async function names() {
+      const c = lsGet(LS_USERS, null);
+      if (c && Date.now() - c.at < 12 * 3600000) return c.map;
+      const map = {};
+      for (let off = 0; off < 2000; off += 100) {
+        const page = await api(`/users?offset=${off}`);
+        (page || []).forEach((u) => { map[u.iduser] = [u.firstname, u.lastname].filter(Boolean).join(' ') || u.username || `#${u.iduser}`; });
+        if (!page || page.length < 100) break;
+      }
+      lsSet(LS_USERS, { at: Date.now(), map });
+      return map;
+    }
+    async function poll() {
+      const lock = lsGet(LS_LOCK, null);
+      if (lock && lock.tab !== TAB && Date.now() - lock.ts < POLL * 1.6) return; // another tab on this PC does it
+      lsSet(LS_LOCK, { tab: TAB, ts: Date.now() });
+      try {
+        const w = await warehouse();
+        const since = Date.now() - WIN;
+        const rows = [];
+        for (let off = 0; off < 3000; off += 100) {
+          const page = await api(`/picklists?status=closed&closed_after=${encodeURIComponent(stamp(since))}${w && w.id ? `&idwarehouse=${w.id}` : ''}&offset=${off}`);
+          rows.push(...(page || []));
+          if (!page || page.length < 100) break;
+        }
+        const map = await names().catch(() => ({}));
+        const by = new Map();
+        for (const p of rows) {
+          const id = p.closed_by_iduser;
+          if (id == null || proxies.has(String(id))) continue;
+          const t = p.closed_at ? new Date(String(p.closed_at).replace(' ', 'T')).getTime() : Date.now();
+          if (t < since - 60000) continue;
+          const units = (p.products || []).filter((x) => !x.has_parts).reduce((n, x) => n + (+x.amount || 0), 0) || +p.totalproducts || 0;
+          const r = by.get(String(id)) || { id: String(id), name: map[id] || `#${id}`, n: 0, units: 0, last: 0 };
+          r.n++; r.units += units; r.last = Math.max(r.last, t);
+          by.set(r.id, r);
+        }
+        const list = [...by.values()].sort((a, b) => b.n - a.n || b.units - a.units || a.last - b.last);
+        data = { at: Date.now(), win: WIN, wh: w && w.name, list, err: '' };
+      } catch (e) {
+        data = { ...(data || { list: [] }), at: Date.now(), err: e.message };
+      }
+      lsSet(LS_DATA, data);
+      lsSet(LS_LOCK, { tab: TAB, ts: Date.now() });
+      render();
+    }
+
+    // place + color
+    function ranked(list) {
+      const top = list.length ? list[0].n : 0;
+      let rank = 0, prev = null;
+      return list.map((r, i) => {
+        if (!prev || r.n !== prev.n || r.units !== prev.units) rank = i + 1;
+        prev = r;
+        const f = top ? r.n / top : 0;
+        const tier = r.n === top && top > 0 ? 'gold' : f >= 0.8 ? 'dgreen' : f >= 0.55 ? 'green' : f >= 0.3 ? 'yellow' : 'red';
+        return { ...r, rank, tier, f };
+      });
+    }
+    const TIER = { gold: 'GOLD', dgreen: 'ON FIRE', green: 'STRONG', yellow: 'KEEP GOING', red: 'WAKE UP', none: 'NOT ON THE BOARD' };
+
+    addStyle('pq-lb-style', `
+      #pq-lb{position:fixed;right:16px;bottom:16px;z-index:2147483000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer;user-select:none}
+      #pq-lb .lb-card{position:relative;display:flex;align-items:center;gap:12px;padding:10px 16px 10px 12px;border-radius:16px;color:#fff;overflow:hidden;
+        background:#0b1020;box-shadow:0 10px 30px rgba(0,0,0,.35),0 0 0 2px var(--c),0 0 24px var(--c);animation:lbBreath 2.4s ease-in-out infinite}
+      #pq-lb .lb-card::before{content:'';position:absolute;inset:-60%;background:conic-gradient(from 0deg,transparent 0 70%,var(--c) 80%,transparent 90%);animation:lbSpin 3.2s linear infinite;opacity:.55}
+      #pq-lb .lb-card::after{content:'';position:absolute;inset:2px;border-radius:14px;background:radial-gradient(120% 140% at 0% 0%,var(--c2),#0b1020 60%)}
+      #pq-lb .lb-card>*{position:relative;z-index:1}
+      #pq-lb .lb-shine{position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.45) 45%,transparent 60%);
+        transform:translateX(-120%);animation:lbShine 3.5s ease-in-out infinite}
+      #pq-lb .lb-rank{font:900 34px/1 system-ui,sans-serif;letter-spacing:-1px;background:linear-gradient(180deg,#fff,var(--c));-webkit-background-clip:text;background-clip:text;color:transparent;
+        filter:drop-shadow(0 0 8px var(--c));animation:lbPop .6s cubic-bezier(.2,1.6,.4,1) both}
+      #pq-lb .lb-txt{display:flex;flex-direction:column;gap:2px;min-width:110px}
+      #pq-lb .lb-tier{font:900 10px/1 system-ui;letter-spacing:.16em;color:var(--c)}
+      #pq-lb .lb-n{font:800 15px/1.15 system-ui}
+      #pq-lb .lb-sub{font:600 11px/1.2 system-ui;color:#94a3b8}
+      #pq-lb .lb-bar{height:4px;border-radius:9px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:3px}
+      #pq-lb .lb-bar i{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,var(--c),#fff,var(--c));background-size:200% 100%;animation:lbFlow 1.6s linear infinite;transition:width .8s cubic-bezier(.2,1.4,.4,1)}
+      #pq-lb .lb-move{position:absolute;right:10px;top:-6px;font:900 13px system-ui;color:#4ade80;animation:lbUp 1.8s ease-out forwards;z-index:3}
+      #pq-lb .lb-move.down{color:#f87171}
+      #pq-lb .lb-crown{position:absolute;left:8px;top:-14px;font-size:20px;animation:lbFloat 1.6s ease-in-out infinite;z-index:3;filter:drop-shadow(0 0 6px gold)}
+      #pq-lb .lb-spark{position:absolute;width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 8px 2px var(--c);z-index:2;animation:lbSpark 2.2s ease-out infinite;pointer-events:none}
+      #pq-lb.t-gold{--c:#fbbf24;--c2:rgba(251,191,36,.45)} #pq-lb.t-dgreen{--c:#10b981;--c2:rgba(5,150,105,.45)} #pq-lb.t-green{--c:#4ade80;--c2:rgba(74,222,128,.32)}
+      #pq-lb.t-yellow{--c:#facc15;--c2:rgba(250,204,21,.28)} #pq-lb.t-red{--c:#f43f5e;--c2:rgba(244,63,94,.32)} #pq-lb.t-none{--c:#64748b;--c2:rgba(100,116,139,.3)}
+      #pq-lb.t-gold .lb-card{animation:lbBreath 1.4s ease-in-out infinite}
+      #pq-lb.t-red .lb-card{animation:lbBreath 2.4s ease-in-out infinite,lbNudge 6s ease-in-out infinite}
+      #pq-lb:hover .lb-card{transform:translateY(-3px) scale(1.03)}
+      @keyframes lbSpin{to{transform:rotate(360deg)}}
+      @keyframes lbShine{0%,55%{transform:translateX(-120%)}85%,100%{transform:translateX(120%)}}
+      @keyframes lbBreath{50%{box-shadow:0 10px 30px rgba(0,0,0,.35),0 0 0 2px var(--c),0 0 42px var(--c)}}
+      @keyframes lbPop{0%{transform:scale(.3) rotate(-12deg);opacity:0}100%{transform:none;opacity:1}}
+      @keyframes lbFlow{to{background-position:-200% 0}}
+      @keyframes lbUp{0%{transform:translateY(10px);opacity:0}20%{opacity:1}100%{transform:translateY(-30px);opacity:0}}
+      @keyframes lbFloat{50%{transform:translateY(-4px) rotate(-8deg)}}
+      @keyframes lbSpark{0%{transform:translate(0,0) scale(0);opacity:0}20%{opacity:1;transform:translate(var(--dx),var(--dy)) scale(1)}100%{transform:translate(calc(var(--dx)*3),calc(var(--dy)*3)) scale(0);opacity:0}}
+      @keyframes lbNudge{0%,92%,100%{transform:none}94%{transform:translateX(-3px)}96%{transform:translateX(3px)}98%{transform:translateX(-2px)}}
+      .pq-lb-confetti{position:fixed;z-index:2147483001;width:8px;height:12px;pointer-events:none;border-radius:2px;animation:lbConf 1.6s cubic-bezier(.2,.6,.4,1) forwards}
+      @keyframes lbConf{to{transform:translate(var(--x),var(--y)) rotate(var(--r));opacity:0}}
+      #pq-lb-ov{position:fixed;inset:0;z-index:2147483002;background:rgba(2,6,23,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+      #pq-lb-ov .lb-panel{width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;background:#0b1020;color:#fff;border-radius:20px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08)}
+      #pq-lb-ov h2{margin:0 0 2px;font:900 22px system-ui;background:linear-gradient(90deg,#fbbf24,#f472b6,#60a5fa,#fbbf24);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:lbFlow 4s linear infinite}
+      #pq-lb-ov .lb-meta{color:#94a3b8;font-size:12px;margin-bottom:14px}
+      #pq-lb-ov .lb-row{position:relative;display:grid;grid-template-columns:44px 1fr 70px;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;margin-bottom:6px;
+        background:rgba(255,255,255,.04);animation:lbIn .5s cubic-bezier(.2,1.3,.4,1) both;overflow:hidden}
+      #pq-lb-ov .lb-row.me{box-shadow:0 0 0 2px var(--c),0 0 22px var(--c);background:rgba(255,255,255,.08)}
+      #pq-lb-ov .lb-row .r{font:900 20px system-ui;color:var(--c);text-align:center}
+      #pq-lb-ov .lb-row .nm{font:700 14px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #pq-lb-ov .lb-row .nm small{display:block;color:#94a3b8;font-weight:600;font-size:11px}
+      #pq-lb-ov .lb-row .v{font:900 20px system-ui;text-align:right}
+      #pq-lb-ov .lb-row .v small{display:block;font:600 10px system-ui;color:#94a3b8}
+      #pq-lb-ov .lb-row .fill{position:absolute;left:0;top:0;bottom:0;z-index:-1;background:linear-gradient(90deg,var(--c2),transparent);transform-origin:left;animation:lbGrow 1s cubic-bezier(.2,1.2,.4,1) both}
+      #pq-lb-ov .lb-row{isolation:isolate}
+      #pq-lb-ov .lb-row.t-gold{--c:#fbbf24;--c2:rgba(251,191,36,.35)} #pq-lb-ov .lb-row.t-dgreen{--c:#10b981;--c2:rgba(5,150,105,.35)} #pq-lb-ov .lb-row.t-green{--c:#4ade80;--c2:rgba(74,222,128,.25)}
+      #pq-lb-ov .lb-row.t-yellow{--c:#facc15;--c2:rgba(250,204,21,.22)} #pq-lb-ov .lb-row.t-red{--c:#f43f5e;--c2:rgba(244,63,94,.25)}
+      #pq-lb-ov .lb-row.t-gold .r::after{content:' 👑'}
+      @keyframes lbIn{from{transform:translateX(-30px);opacity:0}}
+      @keyframes lbGrow{from{transform:scaleX(0)}}
+      #pq-lb-ov .lb-empty{color:#94a3b8;padding:20px 0;text-align:center}
+    `);
+
+    const box = document.createElement('div');
+    box.id = 'pq-lb';
+    box.title = 'Leaderboard · click for everyone (Ctrl+Alt+L)';
+    box.addEventListener('click', () => showAll());
+    if (C.widget !== false) document.body.appendChild(box);
+
+    function confetti(n) {
+      const r = box.getBoundingClientRect();
+      const cols = ['#fbbf24', '#f472b6', '#60a5fa', '#4ade80', '#f43f5e', '#a78bfa'];
+      for (let i = 0; i < n; i++) {
+        const c = document.createElement('div');
+        c.className = 'pq-lb-confetti';
+        c.style.left = r.left + r.width / 2 + 'px'; c.style.top = r.top + 10 + 'px';
+        c.style.background = cols[i % cols.length];
+        c.style.setProperty('--x', `${(Math.random() - 0.7) * 420}px`);
+        c.style.setProperty('--y', `${-80 - Math.random() * 320}px`);
+        c.style.setProperty('--r', `${(Math.random() - 0.5) * 1080}deg`);
+        c.style.animationDelay = `${Math.random() * 0.15}s`;
+        document.body.appendChild(c);
+        setTimeout(() => c.remove(), 2000);
+      }
+    }
+    function countUp(el, to) {
+      const from = +el.dataset.v || 0;
+      el.dataset.v = to;
+      if (from === to) { el.textContent = to; return; }
+      const t0 = performance.now();
+      const step = (t) => { const k = Math.min(1, (t - t0) / 700); el.textContent = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+    }
+
+    function render() {
+      if (C.widget === false) return;
+      const list = ranked((data && data.list) || []);
+      const me = list.find((r) => r.id === String(ME.id));
+      const tier = me ? me.tier : 'none';
+      const mins = Math.round(WIN / 60000);
+      const key = JSON.stringify([tier, me && me.rank, me && me.n, list.length]);
+      if (key === shown) return;
+      shown = key;
+      box.className = 't-' + tier;
+      const gap = me && me.rank > 1 ? list[0].n - me.n : 0;
+      const sparks = tier === 'gold' || tier === 'dgreen'
+        ? Array.from({ length: tier === 'gold' ? 7 : 4 }, (_, i) => `<span class="lb-spark" style="left:${15 + i * 13}%;top:${30 + (i % 3) * 18}%;--dx:${(i % 2 ? 1 : -1) * (4 + i)}px;--dy:${-6 - i * 2}px;animation-delay:${i * 0.31}s"></span>`).join('') : '';
+      box.innerHTML = `<div class="lb-card">${tier === 'gold' ? '<span class="lb-crown">👑</span>' : ''}${sparks}<span class="lb-shine"></span>
+        <div class="lb-rank">${me ? '#' + me.rank : '–'}</div>
+        <div class="lb-txt"><span class="lb-tier">${TIER[tier]}</span>
+          <span class="lb-n"><b class="lb-cnt" data-v="${me ? me.n : 0}">${me ? me.n : 0}</b> closed · ${mins} min</span>
+          <span class="lb-sub">${me ? (me.rank === 1 ? `top of ${list.length} 🔥` : `${gap} behind #1 · of ${list.length}`) : list.length ? `${list.length} on the board · close one to join` : 'nobody closed one yet'}</span>
+          <span class="lb-bar"><i style="width:${me ? Math.max(6, Math.round(me.f * 100)) : 4}%"></i></span></div></div>`;
+      if (me && prevRank != null && me.rank !== prevRank) {
+        const up = me.rank < prevRank;
+        box.querySelector('.lb-card').insertAdjacentHTML('beforeend', `<span class="lb-move ${up ? '' : 'down'}">${up ? '▲' : '▼'}${Math.abs(prevRank - me.rank)}</span>`);
+        if (up) confetti(me.rank === 1 ? 70 : 28);
+      }
+      prevRank = me ? me.rank : null;
+      if (open) showAll(true);
+    }
+
+    function showAll(refresh) {
+      const list = ranked((data && data.list) || []);
+      let ov = document.getElementById('pq-lb-ov');
+      if (!ov) {
+        if (refresh) return;
+        ov = document.createElement('div');
+        ov.id = 'pq-lb-ov';
+        ov.addEventListener('click', (e) => { if (e.target === ov) { ov.remove(); open = false; } });
+        document.body.appendChild(ov);
+      }
+      open = true;
+      const mins = Math.round(WIN / 60000);
+      const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
+      ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard</h2>
+        <div class="lb-meta">closed picklists · last ${mins} min${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · checked ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
+        ${list.length ? list.map((r, i) => `<div class="lb-row t-${r.tier}${r.id === String(ME.id) ? ' me' : ''}" style="animation-delay:${i * 0.05}s">
+          <span class="fill" style="width:${Math.round(r.f * 100)}%;animation-delay:${0.2 + i * 0.05}s"></span>
+          <span class="r">#${r.rank}</span><span class="nm">${escHtml(r.name)}<small>${TIER[r.tier]} · ${r.units} products</small></span>
+          <span class="v">${r.n}<small>closed</small></span></div>`).join('') : '<div class="lb-empty">Nobody closed a picklist in the last ' + mins + ' min</div>'}</div>`;
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key || '').toLowerCase() === 'l') { e.preventDefault(); const ov = document.getElementById('pq-lb-ov'); if (ov) { ov.remove(); open = false; } else showAll(); }
+      if (e.key === 'Escape' && open) { const ov = document.getElementById('pq-lb-ov'); if (ov) ov.remove(); open = false; }
+    });
+    window.addEventListener('storage', (e) => { if (e.key === LS_DATA) { data = lsGet(LS_DATA, data); render(); } });
+    render();
+    const due = !data || Date.now() - data.at > POLL;
+    setTimeout(poll, due ? 1500 + Math.random() * 2000 : POLL - (Date.now() - data.at));
+    setInterval(() => { if (!document.hidden || !data || Date.now() - data.at > POLL * 3) poll(); }, POLL);
+  }
+
   function pickStats() {
     const C = CFG.pickStats;
     const LS_B = 'pqsuite_pick2_batches';    // batches this PC watched + every change in their progress
@@ -5833,6 +6087,7 @@
     if (use('autoNext')) safe('autoNext', autoNext);
     if (use('cardColor')) safe('cardColor', cardColor);
     if (use('pickStats')) safe('pickStats', pickStats);
+    if (use('leaderboard')) safe('leaderboard', leaderboard);
     safe('teams', refreshTeams);
     if (use('cardColor') || can('colors') || can('settings')) safe('colors', () => refreshRemote(REMOTE.colors, onColors));
     console.log(`[pq-suite] ${VERSION ? 'v' + VERSION + ' · ' : ''}${ME.name || '?'}${ME.id ? ' #' + ME.id : ''} · team ${teamName()} (teams: ${TEAMS_SRC.from})`);
