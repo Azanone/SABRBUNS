@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.17
+// @version      3.18
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -4414,10 +4414,66 @@
       try { return ['back_forward', 'reload'].includes((performance.getEntriesByType('navigation')[0] || {}).type); } catch (_) { return false; }
     };
 
-    // ---------- true pick all: every product of this picklist via Picqer's own pick call ----------
+    // ---------- true pick all ----------
+    // clicks Picqer's own ✓ (pick this line) on every line, like picking by hand, so Picqer opens its
+    // "Zending maken" popup itself; that popup's button then gets clicked right away (no 3 s countdown)
+    const lineLeft = (it) => {
+      const got = +(it.querySelector('.amount-picked')?.dataset.amount ?? it.querySelector('.amount-picked')?.textContent ?? 0);
+      const need = +(it.querySelector('.amount')?.dataset.amount ?? it.querySelector('.amount')?.textContent ?? 0);
+      return need - got;
+    };
+    const lineBtn = (it) => { const b = it.querySelector('button.product-pick-all'); return b && !b.disabled ? b : null; };
+    const openLines = () => [...document.querySelectorAll('.picklist-product-list__item')].filter((it) => lineLeft(it) > 0 && lineBtn(it));
+    let shipUntil = 0;
+    function shipButton() {
+      for (const b of document.querySelectorAll('.modal button, [role="dialog"] button, .modal-dialog button, button')) {
+        if (nm(b.textContent) !== 'Zending maken' || b.disabled || !b.getClientRects().length) continue;
+        if (!b.closest('.modal, [role="dialog"], .modal-dialog, .modal-content, [class*="modal"]')) continue;
+        return b;
+      }
+      return null;
+    }
+    async function clickShipSoon() {
+      shipUntil = Date.now() + 15000;
+      while (Date.now() < shipUntil) {
+        const b = shipButton();
+        if (b) { shipUntil = 0; setInfo('Zending maken ✓', false, true); b.click(); return true; }
+        await wait(100);
+      }
+      setInfo('everything picked · no "Zending maken" popup came', true);
+      return false;
+    }
+    async function pickByLines() {
+      let clicks = 0;
+      for (let guard = 0; guard < 300; guard++) {
+        const it = openLines()[0];
+        if (!it) break;
+        const before = lineLeft(it);
+        lineBtn(it).click();
+        clicks++;
+        const t0 = Date.now();
+        while (Date.now() - t0 < 3000 && it.isConnected && lineLeft(it) === before && lineBtn(it)) await wait(60);
+        if (it.isConnected && lineLeft(it) === before) { setInfo(`pick all: ${it.dataset.productcode || 'a line'} did not get picked`, true); return clicks; }
+      }
+      return clicks;
+    }
+
     async function truePickAll() {
       if (!PID) return setInfo('open a picklist first', true);
       if (isClosed()) return setInfo('this picklist is closed', true);
+      if (openLines().length) { // the normal way: Picqer's own buttons
+        isProcessing = true;
+        setInfo('picking everything…', false, true);
+        await pickByLines();
+        isProcessing = false;
+        if (!openLines().length && ![...document.querySelectorAll('.picklist-product-list__item')].some((it) => lineLeft(it) > 0)) await clickShipSoon();
+        return;
+      }
+      if ([...document.querySelectorAll('.picklist-product-list__item')].length && ![...document.querySelectorAll('.picklist-product-list__item')].some((it) => lineLeft(it) > 0)) {
+        setInfo('everything is picked already', false, true);
+        return clickShipSoon();
+      }
+      // no pick buttons on this page: Picqer's pick call per location, then reload
       setInfo('picking everything…', false, true);
       let pl;
       try {
@@ -4456,7 +4512,7 @@
       if (cb && cb.style.display === 'flex') return;
       const k = (e.key || '').toLowerCase();
       if (k === pickKey && can('truePickAll') && PID) {
-        if (isProcessing) return;
+        if (isProcessing || shipUntil) return;
         e.preventDefault();
         truePickAll();
       } else if (k === pickKey) {
