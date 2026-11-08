@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.24
+// @version      3.25
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -3556,7 +3556,7 @@
     });
 
     $opt.addEventListener('change', (e) => {
-      if (busy) return;
+      if (busy && !e.target.matches('.cb-bemode')) return; // the BE choice always counts (auto batch can be busy any moment)
       if (e.target.matches('.cb-bemode')) {
         beMode = e.target.value;
         store.set('cb_opt_be', beMode);
