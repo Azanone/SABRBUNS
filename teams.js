@@ -8,32 +8,21 @@
 //  allow : "*" = everything, or a list of:
 //          settings comboBatcher comboAlert replenish shipErr addrFix
 //          banner batchOpt zap dayson unpick pickStats autoNext cardColor
-//          colors pickAll truePickAll bulkSingles leaderboard
+//          colors pickAll truePickAll bulkSingles
 //  leftovers: everyone who is in no team
 // =====================================================================
 window.PQ_TEAMS = {
   "teams": [
     {
-      "name": "shiftleader",
+      "name": "Shift leaders",
       "allow": "*",
       "users": [
         32247, // Ahmad Saber
         "Ahmad Saber",
-        36510 // Sedat Ozbasi
-      ]
-    },
-    {
-      "name": "troubleshooter",
-      "allow": ["comboAlert", "replenish", "shipErr", "addrFix", "banner", "batchOpt", "zap", "dayson", "unpick", "autoNext", "cardColor", "pickAll", "bulkSingles", "leaderboard"],
-      "users": [
-      ]
-    },
-    {
-      "name": "megamulters",
-      "allow": ["comboBatcher", "comboAlert", "replenish", "banner", "batchOpt", "autoNext", "cardColor", "pickAll", "bulkSingles", "leaderboard"],
-      "users": [
+        36510, // Sedat Ozbasi
+        39213 // Ali Al- Turaim
       ]
     }
   ],
-  "leftovers": { "allow": ["comboAlert", "shipErr", "banner", "autoNext", "cardColor", "pickAll", "bulkSingles", "leaderboard"] }
+  "leftovers": { "allow": ["comboAlert"] }
 };
