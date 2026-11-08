@@ -1,0 +1,12 @@
+// Cloudflare builds this on every push to main: the leaderboard middle stop (leaderboard-worker/worker.js)
+// The Picqer API key is NOT here: it is a secret on the worker (Settings -> Variables and Secrets -> PICQER_KEY)
+{
+  "name": "sabrbuns",
+  "main": "leaderboard-worker/worker.js",
+  "compatibility_date": "2025-09-01",
+  "workers_dev": true,
+  "vars": {
+    "PICQER_HOST": "trl-fulfilment.picqer.com",
+    "WAREHOUSE": "Bunsenstraat"
+  }
+}
