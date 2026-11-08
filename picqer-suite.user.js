@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.40
+// @version      3.41
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -4805,8 +4805,8 @@
   //  LEADERBOARD + KING OF THE HILL + PROFILE (Shift+9) + SKINS
   //  points: multi 2 · single 1,334 · lines with has_parts don't count (their parts do)
   //  colors = points in the last 15 min (nothing extrapolated):
-  //    30+ blue · 25+ turquoise · 20+ dark green · 15+ green · 10+ orange · less red
-  //  king of the hill = #1 with 15+ points: +20 coins every minute on top. Packing points are coins too.
+  //    46+ blue · 38+ turquoise · 30+ dark green · 21+ green · 14+ orange · less red
+  //  king of the hill = #1 with 21+ points: +20 coins every minute on top. Packing points are coins too.
   //  The middle stop (Cloudflare worker) asks Picqer once a minute for everyone and keeps today, coins,
   //  the king and the skins. Without it every PC asks Picqer itself (then no king, coins or skins).
   // =====================================================================
@@ -5076,10 +5076,10 @@
 
     // colors: only what they really did in the last 15 min
     const per15 = (pts) => pts * 900000 / WIN;
-    const tierOf = (p) => (p >= 30 ? 'blue' : p >= 25 ? 'turq' : p >= 20 ? 'dgreen' : p >= 15 ? 'green' : p >= 10 ? 'orange' : 'red');
+    const tierOf = (p) => (p >= 46 ? 'blue' : p >= 38 ? 'turq' : p >= 30 ? 'dgreen' : p >= 21 ? 'green' : p >= 14 ? 'orange' : 'red');
     function ranked() {
       const list = (data && data.list) || [];
-      const kingId = data && data.king ? String(data.king.id) : (data && data.via !== 'middle stop' && list[0] && per15(list[0].points) >= 15 ? list[0].id : null);
+      const kingId = data && data.king ? String(data.king.id) : (data && data.via !== 'middle stop' && list[0] && per15(list[0].points) >= 21 ? list[0].id : null);
       let rank = 0, prev = null;
       return list.map((r, i) => {
         if (!prev || r.points !== prev.points) rank = i + 1;
@@ -5278,7 +5278,7 @@
         ${list.length ? list.map((r) => `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.king ? '👑' : '#' + r.rank}</span>
           <span class="nm">${escHtml(r.name)}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single${r.king && r.kingMin != null ? ` · king ${r.kingMin} min` : ''}</small></span>
           <span class="v">${fmt(r.points)}<small>pts</small></span></div>`).join('') : `<div class="lb-empty">Nobody closed a picklist in the last ${mins} min</div>`}
-        <div class="lb-legend"><span class="t-blue"><i></i>30+</span><span class="t-turq"><i></i>25+</span><span class="t-dgreen"><i></i>20+</span><span class="t-green"><i></i>15+</span><span class="t-orange"><i></i>10+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 15+ · +20 coins a minute</span></div>`;
+        <div class="lb-legend"><span class="t-blue"><i></i>46+</span><span class="t-turq"><i></i>38+</span><span class="t-dgreen"><i></i>30+</span><span class="t-green"><i></i>21+</span><span class="t-orange"><i></i>14+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 21+ · +20 coins a minute</span></div>`;
       }
       ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard<button class="lb-gear" title="Leaderboard settings">⚙</button></h2>${tabs}${body}</div>`;
       ov.querySelector('.lb-gear').onclick = () => { close('pq-lb-ov'); lbGear(); };

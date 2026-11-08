@@ -5,7 +5,7 @@
 //  · skins: bought with coins, 1 equipped
 
 export const MULTI = 2, SINGLE = 1.334;
-export const KING_MIN_POINTS = 15;   // green or better in the last 15 min
+export const KING_MIN_POINTS = 21;   // green or better in the last 15 min
 export const KING_PER_MIN = 20;
 export const SKINS = [
   { id: 'midnight', name: 'Midnight', price: 500 },
