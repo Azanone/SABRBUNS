@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.39
+// @version      3.40
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -5117,6 +5117,10 @@
       .pq-lb-ov h2{margin:0;font:700 18px system-ui,sans-serif;display:flex;align-items:center;justify-content:space-between}
       .pq-lb-ov .lb-gear{border:1px solid var(--line);background:var(--soft);color:var(--mut);border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer}
       .pq-lb-ov .lb-gear:hover{color:var(--fg)}
+      .pq-lb-ov .lb-row.click{cursor:pointer;transition:background .12s}
+      .pq-lb-ov .lb-row.click:hover{background:var(--hi)}
+      .pq-lb-ov .lb-back{border:1px solid var(--line);background:var(--soft);color:var(--fg);font:600 12px system-ui;padding:5px 10px;border-radius:7px;cursor:pointer;margin:10px 0 6px}
+      .pq-lb-ov .lb-who{font:700 17px system-ui;margin:4px 0 0}
       .pq-lb-ov .lb-tabs{display:flex;gap:4px;margin:10px 0 2px;padding:3px;background:var(--soft);border:1px solid var(--line);border-radius:9px;width:max-content}
       .pq-lb-ov .lb-tabs button{border:0;background:none;color:var(--mut);font:600 12.5px system-ui;padding:5px 12px;border-radius:7px;cursor:pointer}
       .pq-lb-ov .lb-tabs button.on{background:var(--bg);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12)}
@@ -5203,7 +5207,36 @@
 
     const lbGear = () => openToolSettings && openToolSettings({ title: 'Leaderboard', mods: [{ id: 'leaderboard', keys: can('settings') ? null : ['theme', 'widget'] }] });
     // Ctrl+Alt+L: "15 min" = who is fast right now · "Total" = all packing points ever (from the middle stop)
-    let listTab = 'now', tot = null, totErr = '', totBusy = false;
+    let listTab = 'now', tot = null, totErr = '', totBusy = false, who = null, whoProf = null, whoErr = '';
+    async function loadWho(id) {
+      who = id; whoProf = null; whoErr = '';
+      showList(true);
+      try {
+        const r = await fetch(`${URL_}/profile?id=${encodeURIComponent(id)}`, { credentials: 'omit', cache: 'no-store' });
+        const j = await r.json();
+        if (!r.ok || j.err) throw new Error(j.err || `HTTP ${r.status}`);
+        if (who === id) whoProf = j;
+      } catch (e) { whoErr = e.message; }
+      if (listOpen && who === id) showList(true);
+    }
+    function whoHtml() {
+      const p = whoProf, row = ((tot && tot.list) || []).find((x) => x.id === who) || {};
+      const nm = escHtml(row.name || `#${who}`);
+      const back = '<button class="lb-back" data-lb="back">← Total</button>';
+      if (!p) return `${back}<h3 class="lb-who">${nm}</h3><div class="lb-meta">${whoErr ? '⚠ ' + escHtml(whoErr) : 'Loading…'}</div>`;
+      const t = p.today || {}, maxW = Math.max(1, ...(p.week || []).map((w) => w.points || 0));
+      const tile = (v, l) => `<div class="pf-tile"><b>${v}</b><span>${l}</span></div>`;
+      return `${back}<div class="pf-head"><div><h3 class="lb-who">${nm}</h3><div class="lb-meta" style="margin:2px 0 0">${p.king ? `👑 king right now · ${p.king.min} min` : p.rankToday ? `#${p.rankToday} today of ${p.ofToday}` : 'nothing closed today'}${p.skin ? ' · wears ' + escHtml(p.skin) : ''}</div></div>
+        <div class="pf-bal"><b>${int(p.balance)}</b><span>coins now</span></div></div>
+        <div class="pf-tiles">
+          ${tile(int(p.coins), 'coins earned in total')}${tile(int(p.spent), 'coins spent')}${tile(fmt(p.points), 'packing points in total')}${tile(int(p.picklists), 'closed in total')}
+          ${tile((p.kingBest || 0) + ' min', 'longest king at once')}${tile((p.kingTotal || 0) + ' min', 'king in total')}${tile(int(Math.round((p.kingTotal || 0) * 20)), 'coins from king')}${tile((p.owned || []).length, 'skins owned')}
+          ${tile(t.n || 0, 'closed today')}${tile(fmt(t.points), 'points today')}${tile(`${t.multis || 0} / ${t.singles || 0}`, 'multi / single today')}${tile((t.kingMin || 0) + ' min', 'king today')}
+        </div>
+        <h3>Last days</h3>
+        <div class="pf-week">${(p.week || []).map((w) => `<div title="${escHtml(w.day)} · ${fmt(w.points)} pts · ${w.n} closed"><i style="height:${Math.round(((w.points || 0) / maxW) * 48)}px"></i>${escHtml(w.day.slice(8, 10))}</div>`).join('')}</div>
+        ${(p.owned || []).length ? `<div class="lb-meta" style="margin-top:10px">skins: ${p.owned.map(escHtml).join(', ')}</div>` : ''}`;
+    }
     async function loadTotals() {
       if (!URL_ || totBusy) return;
       totBusy = true;
@@ -5227,16 +5260,16 @@
       let body;
       if (listTab === 'total') {
         const hm = tot && tot.at ? new Date(tot.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
-        const meta = !URL_ ? 'needs the middle stop (Shift+8 → Leaderboard)' : `all packing points ever · king and given coins don't count · ${hm}${totErr ? ' · ⚠ ' + escHtml(totErr) : ''}`;
+        const meta = !URL_ ? 'needs the middle stop (Shift+8 → Leaderboard)' : `coins everyone has now · click someone for everything · ${hm}${totErr ? ' · ⚠ ' + escHtml(totErr) : ''}`;
         const rows = (tot && tot.list) || [];
         let rank = 0, prev = null;
-        body = `<div class="lb-meta">${meta}</div>` + (rows.length ? rows.map((r, i) => {
-          if (prev === null || r.points !== prev) rank = i + 1;
-          prev = r.points;
-          return `<div class="lb-row t-${rank === 1 ? 'gold' : 'none'}${r.id === ME_ID ? ' me' : ''}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
-            <span class="nm">${escHtml(r.name)}<small>${int(r.picklists)} closed${r.kingTotal ? ` · king ${int(r.kingTotal)} min` : ''} · ${int(r.balance)} coins</small></span>
-            <span class="v">${fmt(r.points)}<small>pts</small></span></div>`;
-        }).join('') : `<div class="lb-empty">${URL_ ? (tot ? 'Nobody has points yet' : 'Loading…') : ''}</div>`);
+        body = who ? whoHtml() : `<div class="lb-meta">${meta}</div>` + (rows.length ? rows.map((r, i) => {
+          if (prev === null || r.balance !== prev) rank = i + 1;
+          prev = r.balance;
+          return `<div class="lb-row click t-${rank === 1 ? 'gold' : 'none'}${r.id === ME_ID ? ' me' : ''}" data-who="${escHtml(r.id)}" title="Click for everything about ${escHtml(r.name)}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
+            <span class="nm">${escHtml(r.name)}<small>${int(r.picklists)} closed · ${fmt(r.points)} pts${r.kingTotal ? ` · king ${int(r.kingTotal)} min` : ''}</small></span>
+            <span class="v">${int(r.balance)}<small>coins</small></span></div>`;
+        }).join('') : `<div class="lb-empty">${URL_ ? (tot ? 'Nobody has coins yet' : 'Loading…') : ''}</div>`);
       } else {
         const list = ranked();
         const mins = Math.round(WIN / 60000);
@@ -5249,7 +5282,10 @@
       }
       ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard<button class="lb-gear" title="Leaderboard settings">⚙</button></h2>${tabs}${body}</div>`;
       ov.querySelector('.lb-gear').onclick = () => { close('pq-lb-ov'); lbGear(); };
+      ov.querySelectorAll('[data-who]').forEach((b) => (b.onclick = () => loadWho(b.dataset.who)));
+      ov.querySelector('[data-lb="back"]')?.addEventListener('click', () => { who = null; showList(true); });
       ov.querySelectorAll('[data-lt]').forEach((b) => (b.onclick = () => {
+        who = null;
         listTab = b.dataset.lt;
         showList(true);
         if (listTab === 'total' && (!tot || Date.now() - tot.at > 60000)) loadTotals();

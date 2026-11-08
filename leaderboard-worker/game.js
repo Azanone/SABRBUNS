@@ -93,8 +93,8 @@ function totalPoints(st, id) {
 export function totals(st) {
   return Object.keys(st.acct).map((id) => {
     const a = st.acct[id];
-    return { id, points: totalPoints(st, id), picklists: a.picklists || 0, kingTotal: a.kingTotal || 0, balance: r3(a.coins - a.spent) };
-  }).filter((x) => x.points > 0 || x.picklists > 0).sort((x, y) => y.points - x.points || y.picklists - x.picklists);
+    return { id, points: totalPoints(st, id), picklists: a.picklists || 0, kingTotal: a.kingTotal || 0, kingBest: a.kingBest || 0, coins: a.coins || 0, balance: r3(a.coins - a.spent) };
+  }).filter((x) => x.points > 0 || x.picklists > 0 || x.balance > 0).sort((x, y) => y.balance - x.balance || y.points - x.points);
 }
 
 export function profile(st, id, today) {
@@ -106,7 +106,7 @@ export function profile(st, id, today) {
   const week = Object.entries(st.days).filter(([d]) => d <= today).slice(-7).map(([d, v]) => ({ day: d, ...(v[id] || { n: 0, points: 0, kingMin: 0 }) }));
   return {
     id, today: day[id] || { n: 0, multis: 0, singles: 0, points: 0, kingMin: 0 }, rankToday: pos < 0 ? null : pos + 1, ofToday: ranked.length,
-    balance: r3(a.coins - a.spent), coins: a.coins, spent: a.spent, owned: a.owned, skin: a.skin, kingTotal: a.kingTotal, kingBest: a.kingBest, picklists: a.picklists,
+    balance: r3(a.coins - a.spent), coins: a.coins, spent: a.spent, points: st.acct[id] ? totalPoints(st, id) : 0, owned: a.owned, skin: a.skin, kingTotal: a.kingTotal, kingBest: a.kingBest, picklists: a.picklists,
     king: st.king && st.king.id === id ? { min: Math.floor((Date.now() - st.king.since) / 60000) } : null,
     week, skins: shop(st),
   };
