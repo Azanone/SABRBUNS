@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.31
+// @version      3.32
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -155,6 +155,7 @@
   let ME = { id: null, name: '' };
   // only the owner sees and changes the teams (Shift+8 -> Teams)
   const OWNER_ID = '32247'; // Ahmad Saber
+  let openToolSettings = null; // ⚙ in a tool -> small settings card (set by settingsPanel)
   const isOwner = () => String(ME.id || '') === OWNER_ID;
   let TEAM = null;
   const allowOf = (t) => (t ? t.allow : LEFTOVERS.allow);
@@ -1489,7 +1490,7 @@
       const wrap = document.createElement('div');
       wrap.id = 'zaplog-ov';
       wrap.innerHTML = `<div id="zaplog-card">
-        <div class="zl-head"><h2>ZAP overzicht</h2><span class="zl-sub">wie is er overgenomen &middot; cache ${cacheDays()} dagen</span><button class="zl-x" id="zaplog-x">&times;</button></div>
+        <div class="zl-head"><h2>ZAP overzicht</h2><span class="zl-sub">wie is er overgenomen &middot; cache ${cacheDays()} dagen</span>${can('settings') ? '<button class="zl-x zl-gear" id="zaplog-gear" title="ZAP settings" style="margin-left:auto;font-size:17px">⚙</button>' : ''}<button class="zl-x" id="zaplog-x"${can('settings') ? ' style="margin-left:0"' : ''}>&times;</button></div>
         <div class="zl-tabs"><button class="zl-tab on" data-r="day">Vandaag</button><button class="zl-tab" data-r="week">Deze week</button><button class="zl-tab" data-r="7d">7 dagen</button></div>
         <div class="zl-body" id="zaplog-body"></div>
         <div class="zl-foot"><span id="zaplog-tot"></span><span style="margin-left:auto"></span><span>ik: <b>${escHtml(me.name || 'onbekend')}</b></span>
@@ -1497,6 +1498,7 @@
       document.body.appendChild(wrap);
       wrap.addEventListener('click', (e) => { if (e.target === wrap) closeOverview(); });
       wrap.querySelector('#zaplog-x').addEventListener('click', closeOverview);
+      wrap.querySelector('#zaplog-gear')?.addEventListener('click', () => { closeOverview(); openToolSettings && openToolSettings({ title: 'ZAP', mods: [{ id: 'zap' }, { id: 'zaplog' }, { id: 'dayson' }] }); });
       wrap.querySelectorAll('.zl-tab').forEach((t) => t.addEventListener('click', () => {
         wrap.querySelectorAll('.zl-tab').forEach((x) => x.classList.remove('on'));
         t.classList.add('on');
@@ -1758,6 +1760,13 @@
   /* =========================================================================
    *  COMBO BATCHER (Ctrl+Shift+B)
    * ========================================================================= */
+  // ⚙ in the batcher: per tab only what matters there
+  const CB_TAB_SETTINGS = {
+    single: { title: 'Per combo', mods: [{ id: 'comboBatcher', keys: ['ignoreCodes', 'minGroup', 'skipParked', 'apiKey'] }] },
+    grouped: { title: 'Grouped batch', mods: [{ id: 'comboBatcher', keys: ['ignoreCodes', 'minGroup', 'flyerOrder', 'skipParked'] }] },
+    opt: { title: 'Optimized batches + auto batch', mods: [{ id: 'comboBatcher', keys: ['batchMax', 'highlightTags', 'skipTags', 'skipParked', 'ignoreCodes'] }] },
+    iso: { title: 'Isolated', mods: [{ id: 'comboBatcher', keys: ['skipParked', 'apiKey'] }] },
+  };
   function comboBatcher() {
     const C = CFG.comboBatcher;
     async function api(method, path, body) {
@@ -1784,6 +1793,7 @@
         batchMax: C.batchMax,
         highlightTags: C.highlightTags,
         skipTags: C.skipTags,
+        openSettings: can('settings') ? (tab) => openToolSettings && openToolSettings(CB_TAB_SETTINGS[tab] || CB_TAB_SETTINGS.single) : null,
         autoWarehouse: CFG.pickStats ? CFG.pickStats.warehouse : '', // auto batch: same warehouse as the picker dashboard
       },
     });
@@ -2563,7 +2573,7 @@
         <div class="cb-head">
           <div class="cb-top">
             <div><b>Batches</b><div id="cb-status">-</div></div>
-            <div class="cb-topbtns"><select class="cb-sel cb-snzsel" title="Snoozed picklists">${Object.entries(SNZ_MODES).map(([k, l]) => `<option value="${k}"${k === snoozeMode ? ' selected' : ''}>${l}</option>`).join('')}</select><button class="cb-btn cb-shopbtn">Shops (0)</button><button class="cb-btn cb-scan">Scan</button><button class="cb-btn cb-x">✕</button></div>
+            <div class="cb-topbtns"><select class="cb-sel cb-snzsel" title="Snoozed picklists">${Object.entries(SNZ_MODES).map(([k, l]) => `<option value="${k}"${k === snoozeMode ? ' selected' : ''}>${l}</option>`).join('')}</select><button class="cb-btn cb-shopbtn">Shops (0)</button><button class="cb-btn cb-scan">Scan</button>${conf.openSettings ? '<button class="cb-btn cb-gear" title="Settings for this tab">⚙</button>' : ''}<button class="cb-btn cb-x">✕</button></div>
           </div>
           <div id="cb-shops">
             <input type="text" placeholder="Search shop…">
@@ -2707,6 +2717,8 @@
       if (tab === 'iso') { renderIso(); if (isOpen() && !isoBusy && (!isoData || Date.now() - isoAt > 5 * 60000)) isoCheck(); }
     }
     panel.querySelectorAll('.cb-tab').forEach((t) => { t.onclick = () => showTab(t.dataset.tab); });
+    const gear = panel.querySelector('.cb-gear');
+    if (gear) gear.onclick = () => conf.openSettings(tab);
     showTab(store.get('cb_tab', 'single'));
 
     function visibleShops() {
@@ -4782,28 +4794,103 @@
     sunset: { bg: 'linear-gradient(90deg,#7c2d12,#be185d)', accent: '#f97316' },
     carbon: { bg: 'repeating-linear-gradient(135deg,#18181b 0 6px,#202024 6px 12px)', accent: '#71717a' },
     aurora: { bg: 'linear-gradient(90deg,#312e81,#0e7490 55%,#065f46)', accent: '#8b5cf6' },
+    voidescent: { bg: 'radial-gradient(circle at 20% 30%,rgba(255,0,52,.35),transparent 45%),linear-gradient(90deg,#08080b,#1d040b)', accent: '#ff0034', void: true },
     gold: { bg: '#1c1917', accent: '#d4a017', line: '#fbbf24' },
     crown: { bg: 'linear-gradient(90deg,#1c1917,#3f2d0c)', accent: '#d4a017', line: '#fbbf24', crown: true },
   };
+  // skins belong to a Picqer account: saved per user id on this PC
+  const LS_SKIN = 'pqsuite_skin_v2';
+  const skinOf = (uid) => ((lsGet(LS_SKIN, null) || {})[String(uid || '')] || null);
+  const skinSave = (uid, id) => { if (!uid) return; const all = lsGet(LS_SKIN, null) || {}; all[String(uid)] = { id: id || null, at: Date.now() }; lsSet(LS_SKIN, all); };
+
+  // ---------- Voidescent: the whole of Picqer dark, #ff0034 ----------
+  //  skins/voidescent.css (on GitHub) = every color of Picqer's own CSS turned dark, made from picqer.css.
+  //  Loaded once a day, kept on this PC. On top of that: header, glow and movement from here.
+  const VOID_LS = 'pqsuite_void_css_v1';
+  const VOID_BASE = `
+    html.pq-void{color-scheme:dark;background:#08080b}
+    html.pq-void body{background:#08080b;color:hsl(345,10%,92%)}
+    html.pq-void .layout{background:#08080b}
+    html.pq-void ::selection{background:#ff0034;color:#fff}
+    html.pq-void .layout-header{--header-background-color:#0a0a0e;background:linear-gradient(90deg,#0a0a0e 0%,#170309 50%,#0a0a0e 100%) !important;color:#f4f4f6;position:relative;overflow:hidden;box-shadow:0 1px 0 rgba(255,0,52,.45),0 10px 30px -18px rgba(255,0,52,.6)}
+    html.pq-void .layout-header > *{position:relative;z-index:1}
+    html.pq-void .layout-header-logo img,html.pq-void .layout-header-logo svg{filter:drop-shadow(0 0 6px rgba(255,0,52,.55))}
+    html.pq-void .layout-navigation{background:linear-gradient(180deg,#0c0c11,#09090c);box-shadow:inset -1px 0 0 rgba(255,0,52,.14)}
+    html.pq-void .menu a.active,html.pq-void .menu button.active{text-shadow:0 0 12px rgba(255,0,52,.55)}
+    html.pq-void .btn.btn-primary,html.pq-void .btn-primary{background:#ff0034 !important;border-color:#ff0034 !important;color:#fff !important;transition:box-shadow .2s ease,transform .15s ease}
+    html.pq-void .btn.btn-primary:hover,html.pq-void .btn-primary:hover{box-shadow:0 0 0 1px rgba(255,0,52,.6),0 6px 22px rgba(255,0,52,.45);transform:translateY(-1px)}
+    html.pq-void .btn{transition:background-color .15s ease,box-shadow .2s ease}
+    html.pq-void .card{transition:box-shadow .25s ease}
+    html.pq-void .card:hover{box-shadow:0 0 0 1px rgba(255,0,52,.28),0 12px 30px -14px rgba(255,0,52,.35) !important}
+    html.pq-void .page-heading h1,html.pq-void .page-title{background:linear-gradient(90deg,#fff,#ffb3c1);-webkit-background-clip:text;background-clip:text;color:transparent}
+    html.pq-void input,html.pq-void select,html.pq-void textarea{caret-color:#ff0034}
+    html.pq-void :focus-visible{outline-color:#ff0034}
+    html.pq-void ::-webkit-scrollbar{width:11px;height:11px}
+    html.pq-void ::-webkit-scrollbar-track{background:#0b0b0f}
+    html.pq-void ::-webkit-scrollbar-thumb{background:#2a1117;border-radius:8px;border:2px solid #0b0b0f}
+    html.pq-void ::-webkit-scrollbar-thumb:hover{background:#ff0034}
+    #pq-void-fx{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+    #pq-void-fx .st{position:absolute;inset:-20px;opacity:.35;will-change:opacity;animation:pqvTw 5s ease-in-out infinite alternate;
+      background-image:radial-gradient(1px 1px at 8% 30%,#fff,transparent),radial-gradient(1px 1px at 23% 70%,#ffd1da,transparent),radial-gradient(1.5px 1.5px at 41% 22%,#fff,transparent),
+        radial-gradient(1px 1px at 57% 64%,#fff,transparent),radial-gradient(1.5px 1.5px at 73% 35%,#ff8099,transparent),radial-gradient(1px 1px at 88% 58%,#fff,transparent),radial-gradient(1px 1px at 96% 20%,#ffd1da,transparent)}
+    #pq-void-fx .st.b{animation-duration:7s;animation-delay:-3s;transform:translateX(37px)}
+    #pq-void-fx .sw{position:absolute;left:0;bottom:0;height:2px;width:30%;background:linear-gradient(90deg,transparent,#ff0034,#ff7a93,#ff0034,transparent);
+      will-change:transform;animation:pqvSw 6.5s cubic-bezier(.45,0,.2,1) infinite;filter:drop-shadow(0 0 6px #ff0034)}
+    #pq-void-fx .orb{position:absolute;top:-60px;left:12%;width:220px;height:160px;border-radius:50%;background:radial-gradient(closest-side,rgba(255,0,52,.35),transparent);
+      will-change:transform,opacity;animation:pqvOrb 14s ease-in-out infinite alternate}
+    @keyframes pqvTw{from{opacity:.15}to{opacity:.6}}
+    @keyframes pqvSw{from{transform:translateX(-110%)}to{transform:translateX(440%)}}
+    @keyframes pqvOrb{0%{transform:translateX(0);opacity:.55}50%{opacity:.9}100%{transform:translateX(520%);opacity:.5}}
+    @media (prefers-reduced-motion:reduce){#pq-void-fx *{animation:none !important}}`;
+  function voidCss() {
+    const c = lsGet(VOID_LS, null);
+    if (!c || Date.now() - c.at > 86400000) {
+      fetch(`${RAW}skins/voidescent.css?t=${Math.floor(Date.now() / 3600000)}`, { credentials: 'omit', cache: 'no-store' })
+        .then((r) => (r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status))))
+        .then((css) => {
+          if (!/\.pq-void/.test(css)) return;
+          const fresh = !c || c.css !== css;
+          lsSet(VOID_LS, { at: Date.now(), css });
+          if (fresh && document.getElementById('pq-skin-void')) document.getElementById('pq-skin-void').textContent = css;
+        })
+        .catch((e) => console.info('[suite] voidescent.css not loaded:', e.message));
+    }
+    return c ? c.css : '';
+  }
+  function voidFx() {
+    const h = document.querySelector('.layout-header');
+    if (!h || h.querySelector('#pq-void-fx')) return !!h;
+    const fx = document.createElement('div');
+    fx.id = 'pq-void-fx';
+    fx.innerHTML = '<div class="orb"></div><div class="st"></div><div class="st b"></div><div class="sw"></div>';
+    h.prepend(fx);
+    return true;
+  }
   function applySkin(id) {
-    const old = document.getElementById('pq-skin');
-    if (old) old.remove();
+    ['pq-skin', 'pq-skin-void', 'pq-void-fx'].forEach((x) => document.getElementById(x)?.remove());
+    document.documentElement.classList.remove('pq-void');
     const k = SKIN_LOOK[id];
     if (!k) return;
+    if (k.void) {
+      document.documentElement.classList.add('pq-void');
+      addStyle('pq-skin-void', voidCss());
+      addStyle('pq-skin', VOID_BASE);
+      if (!voidFx()) { let n = 0; const iv = setInterval(() => { if (voidFx() || ++n > 30) clearInterval(iv); }, 500); }
+      return;
+    }
     addStyle('pq-skin', `
       .layout-header{background:${k.bg} !important;box-shadow:inset 0 -3px 0 ${k.line || k.accent} !important}
       .btn-primary,.btn-primary:hover,.btn-primary:focus{background:${k.accent} !important;border-color:${k.accent} !important}
       .card{border-top:2px solid ${k.accent} !important}
       ${k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : ''}`);
   }
-  // the skin is known on this PC right away (no waiting for the internet)
 
   function leaderboard() {
     const C = CFG.leaderboard || {};
     const WIN = Math.max(1, +C.windowMin || 15) * 60000;
     const POLL = Math.max(20, +C.pollSec || 60) * 1000;
     const URL_ = norm(String(C.url || '')).replace(/\/+$/, '');
-    const LS_DATA = 'pqsuite_lb_v3', LS_LOCK = 'pqsuite_lb_lock_v1', LS_USERS = 'pqsuite_lb_users_v1', LS_SKIN = 'pqsuite_skin_v1';
+    const LS_DATA = 'pqsuite_lb_v3', LS_LOCK = 'pqsuite_lb_lock_v1', LS_USERS = 'pqsuite_lb_users_v1';
     const TAB = Math.random().toString(36).slice(2);
     const ME_ID = String(ME.id || '');
     const proxies = new Set(((CFG.zaplog && CFG.zaplog.proxyIds) || []).map(String));
@@ -4914,6 +5001,7 @@
     }
 
     const theme = () => {
+      if (document.documentElement.classList.contains('pq-void')) return 'dark';
       const t = low(C.theme || 'auto');
       if (t === 'light' || t === 'dark') return t;
       try { return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (_) { return 'light'; }
@@ -4937,7 +5025,9 @@
       @keyframes lbFlash{0%{transform:translateY(6px);opacity:.4}40%{transform:none;opacity:1}}
       .pq-lb-ov{position:fixed;inset:0;z-index:2147483002;background:rgba(15,23,42,.38);display:flex;align-items:center;justify-content:center;padding:16px}
       .pq-lb-ov .lb-panel{width:min(560px,100%);max-height:calc(100vh - 48px);overflow:auto;background:var(--bg);border-radius:14px;border:1px solid var(--line);box-shadow:0 24px 60px rgba(0,0,0,.25);padding:18px 20px}
-      .pq-lb-ov h2{margin:0;font:700 18px system-ui,sans-serif}
+      .pq-lb-ov h2{margin:0;font:700 18px system-ui,sans-serif;display:flex;align-items:center;justify-content:space-between}
+      .pq-lb-ov .lb-gear{border:1px solid var(--line);background:var(--soft);color:var(--mut);border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer}
+      .pq-lb-ov .lb-gear:hover{color:var(--fg)}
       .pq-lb-ov .lb-meta{color:var(--mut);font-size:12px;margin:2px 0 14px}
       .pq-lb-ov .lb-row{display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;border-left:3px solid var(--c)}
       .pq-lb-ov .lb-row+.lb-row{margin-top:4px}
@@ -5018,6 +5108,7 @@
     }
     function close(id) { document.getElementById(id)?.remove(); if (id === 'pq-lb-ov') listOpen = false; }
 
+    const lbGear = () => openToolSettings && openToolSettings({ title: 'Leaderboard', mods: [{ id: 'leaderboard', keys: can('settings') ? null : ['theme', 'widget'] }] });
     function showList(refresh) {
       if (refresh && !document.getElementById('pq-lb-ov')) return;
       close('pq-pf-ov');
@@ -5026,12 +5117,13 @@
       const list = ranked();
       const mins = Math.round(WIN / 60000);
       const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
-      ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard</h2>
+      ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard<button class="lb-gear" title="Leaderboard settings">⚙</button></h2>
         <div class="lb-meta">last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
         ${list.length ? list.map((r) => `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.king ? '👑' : '#' + r.rank}</span>
           <span class="nm">${escHtml(r.name)}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single${r.king && r.kingMin != null ? ` · king ${r.kingMin} min` : ''}</small></span>
           <span class="v">${fmt(r.points)}<small>pts</small></span></div>`).join('') : `<div class="lb-empty">Nobody closed a picklist in the last ${mins} min</div>`}
         <div class="lb-legend"><span class="t-blue"><i></i>30+</span><span class="t-turq"><i></i>25+</span><span class="t-dgreen"><i></i>20+</span><span class="t-green"><i></i>15+</span><span class="t-orange"><i></i>10+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 15+ · +20 coins a minute</span></div></div>`;
+      ov.querySelector('.lb-gear').onclick = () => { close('pq-lb-ov'); lbGear(); };
     }
 
     // ---------- profile (Shift+9) ----------
@@ -5041,14 +5133,14 @@
       const j = await r.json();
       if (!r.ok || j.err) throw new Error(j.err || `HTTP ${r.status}`);
       prof = j;
-      lsSet(LS_SKIN, { id: j.skin || null, at: Date.now() });
+      skinSave(ME_ID, j.skin);
       applySkin(j.skin);
       return j;
     }
     async function change(kind, skin) {
       const r = await fetch(`${URL_}/${kind}`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ME_ID, skin }) });
       const j = await r.json();
-      if (j.profile) { prof = j.profile; lsSet(LS_SKIN, { id: prof.skin || null, at: Date.now() }); applySkin(prof.skin); }
+      if (j.profile) { prof = j.profile; skinSave(ME_ID, prof.skin); applySkin(prof.skin); }
       return j;
     }
     function showProfile(note) {
@@ -5110,7 +5202,7 @@
     setTimeout(poll, due ? 1500 + Math.random() * 2000 : POLL - (Date.now() - data.at));
     setInterval(() => { if (!document.hidden || !data || Date.now() - data.at > POLL * 3) poll(); }, POLL);
     // the skin follows the account (bought or changed on another PC): check every 10 min
-    const sk = lsGet(LS_SKIN, null);
+    const sk = skinOf(ME_ID);
     if (URL_ && ME_ID && (!sk || Date.now() - sk.at > 10 * 60000)) setTimeout(() => loadProfile().catch(() => {}), 4000 + Math.random() * 4000);
   }
 
@@ -5468,7 +5560,7 @@
         : `<span class="pk-sub">checked ${meta.lastPoll ? hm(meta.lastPoll) : '–'} · every ${Math.round(POLL / 1000)} s${meta.since ? ` · watching on this PC since ${dm(meta.since)} ${hm(meta.since)}` : ''}</span>`;
     }
     const whLabel = () => (wh ? wh.name : (lsGet(LS_META, {}).whName || (WH ? WH : 'all warehouses')));
-    const btns = (other) => `<button class="pk-btn" data-a="${other}">${other === 'stats' ? 'Stats' : 'In progress'}</button><button class="pk-btn" data-a="refresh" title="Check now">⟳</button><button class="pk-btn" data-a="tv" title="Copy the TV link">TV link</button><button class="pk-btn" data-a="close" title="Esc">✕</button>`;
+    const btns = (other) => `<button class="pk-btn" data-a="${other}">${other === 'stats' ? 'Stats' : 'In progress'}</button><button class="pk-btn" data-a="refresh" title="Check now">⟳</button><button class="pk-btn" data-a="tv" title="Copy the TV link">TV link</button>${can('settings') ? '<button class="pk-btn" data-a="gear" title="Dashboard settings">⚙</button>' : ''}<button class="pk-btn" data-a="close" title="Esc">✕</button>`;
     // only the batches being picked right now: who, how long, how many SKUs
     function renderNow(ov) {
       const now = Date.now();
@@ -5558,6 +5650,7 @@
         if (el.dataset.r) { range = el.dataset.r; render(); }
         else if (el.dataset.s) { sortKey = el.dataset.s; render(); }
         else if (el.dataset.a === 'close') close();
+        else if (el.dataset.a === 'gear') openToolSettings && openToolSettings({ title: 'Picker dashboard', mods: [{ id: 'pickStats' }] });
         else if (el.dataset.a === 'stats' || el.dataset.a === 'now') { view = el.dataset.a; render(); }
         else if (el.dataset.a === 'refresh') { await poll(true); render(); }
         else if (el.dataset.a === 'tv') {
@@ -5617,6 +5710,10 @@
   /* =========================================================================
    *  SETTINGS PANEL (Shift+8 / *) + TEAMS EDITOR
    * ========================================================================= */
+  const MOD_ICON = { comboBatcher: '📦', comboAlert: '🔔', replenish: '🔄', shipErr: '🚚', addrFix: '🏠', banner: '🚩', batchOpt: '🏷️', zap: '⚡', dayson: '📋',
+    zaplog: '🧾', unpick: '↩️', autoNext: '⏭️', pickStats: '📊', leaderboard: '🏆', cardColor: '🎨' };
+  // these have a ⚙ in their own window: Shift+8 only shows their on/off switch
+  const OWN_GEAR = { comboBatcher: 'Ctrl+Shift+B → ⚙', pickStats: 'Ctrl+Alt+P → ⚙', leaderboard: 'Ctrl+Alt+L → ⚙', zap: 'Ctrl+Alt+Z → ⚙', zaplog: 'Ctrl+Alt+Z → ⚙' };
   function settingsPanel() {
     addStyle('pqs-style', `
       #pqs-ov{position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,.4);display:flex;align-items:center;justify-content:center;padding:16px}
@@ -5636,9 +5733,14 @@
       .pqs-mod:last-child{border-bottom:0}
       .pqs-top{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
       .pqs-top .t{font-weight:600;flex:1}
-      .pqs-top .h{color:#6b7280;font-size:12px}
+      .pqs-top .h{color:#6b7280;font-size:12px;max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .pqs-top .car{color:#9ca3af;width:12px}
-      .pqs-fields{display:none;margin:10px 0 2px 22px;gap:8px;flex-direction:column}
+      .pqs-top .ic{width:22px;text-align:center;font-size:15px}
+      .pqs-mod.gear .t{font-weight:500}
+      .pqs-sec{padding:14px 18px 4px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9ca3af}
+      #pqs-card.mini{width:520px}
+      #pqs-card.mini .pqs-fields{margin-left:32px}
+      .pqs-fields{display:none;margin:10px 0 2px 32px;gap:8px;flex-direction:column}
       .pqs-mod.open .pqs-fields{display:flex}
       .pqs-f{display:flex;align-items:center;justify-content:space-between;gap:12px}
       .pqs-f label{color:#374151}
@@ -5713,22 +5815,64 @@
     }
 
     // ---------- tools tab (this PC) ----------
-    const toolsHtml = () => SCHEMA.map((m) => `
-      <div class="pqs-mod" data-m="${m.id}">
+    const fieldHtml = (m, f) => {
+      const v = CFG[m.id][f.k];
+      const a = `data-m="${m.id}" data-k="${f.k}" data-t="${f.type}"`;
+      if (f.type === 'bool') return `<div class="pqs-f"><label>${escHtml(f.label)}</label>${sw(v, a)}</div>`;
+      if (f.type === 'num') return `<div class="pqs-f"><label>${escHtml(f.label)}</label><input type="number" value="${escHtml(v)}" ${a}></div>`;
+      const val = f.type === 'list' ? (v || []).join(', ') : v;
+      return `<div class="pqs-f"><label>${escHtml(f.label)}</label><input type="text" value="${escHtml(val)}" ${a}></div>`;
+    };
+    const modHtml = (m, { keys, open, gear } = {}) => {
+      const fields = gear ? [] : m.fields.filter((f) => !keys || keys.includes(f.k));
+      return `
+      <div class="pqs-mod${open ? ' open' : ''}${gear ? ' gear' : ''}" data-m="${m.id}">
         <div class="pqs-top">
-          <span class="car">${m.fields.length ? '▸' : ''}</span>
-          <span class="t">${escHtml(m.title)}</span><span class="h">${escHtml(m.hint || '')}</span>
+          <span class="ic">${MOD_ICON[m.id] || '•'}</span>
+          <span class="t">${escHtml(m.title)}</span><span class="h">${escHtml(gear || m.hint || '')}</span>
+          ${fields.length && !open ? '<span class="car">▸</span>' : ''}
           ${m.always ? '' : sw(CFG[m.id].enabled, `data-en="${m.id}"`)}
         </div>
-        <div class="pqs-fields">${m.fields.map((f) => {
-          const v = CFG[m.id][f.k];
-          const a = `data-m="${m.id}" data-k="${f.k}" data-t="${f.type}"`;
-          if (f.type === 'bool') return `<div class="pqs-f"><label>${escHtml(f.label)}</label>${sw(v, a)}</div>`;
-          if (f.type === 'num') return `<div class="pqs-f"><label>${escHtml(f.label)}</label><input type="number" value="${escHtml(v)}" ${a}></div>`;
-          const val = f.type === 'list' ? (v || []).join(', ') : v;
-          return `<div class="pqs-f"><label>${escHtml(f.label)}</label><input type="text" value="${escHtml(val)}" ${a}></div>`;
-        }).join('')}</div>
-      </div>`).join('');
+        <div class="pqs-fields">${fields.map((f) => fieldHtml(m, f)).join('')}</div>
+      </div>`;
+    };
+    // Shift+8 · Tools: everything without its own ⚙, then the ones with a ⚙ (only on/off)
+    const toolsHtml = () => {
+      const plain = SCHEMA.filter((m) => !OWN_GEAR[m.id]), own = SCHEMA.filter((m) => OWN_GEAR[m.id] && !m.always);
+      return plain.map((m) => modHtml(m)).join('') +
+        `<div class="pqs-sec">Settings in the tool itself (⚙)</div>` + own.map((m) => modHtml(m, { gear: OWN_GEAR[m.id] })).join('');
+    };
+    // read the inputs of a card into the saved settings (only the modules in it) and reload
+    function saveFrom(root) {
+      const out = lsGet(LS_CFG, {}) || {};
+      for (const m of SCHEMA) out[m.id] = { ...CFG[m.id], ...(out[m.id] || {}) };
+      root.querySelectorAll('[data-en]').forEach((el) => { out[el.dataset.en].enabled = el.checked; });
+      root.querySelectorAll('[data-k]').forEach((el) => {
+        const { m, k, t: ty } = el.dataset;
+        if (!out[m]) return;
+        out[m][k] = ty === 'bool' ? el.checked : ty === 'num' ? Number(el.value) : ty === 'list' ? el.value.split(',').map((x) => x.trim()).filter(Boolean) : el.value.trim();
+      });
+      lsSet(LS_CFG, out);
+      location.reload();
+    }
+    // ⚙ inside a tool: a small card with just its settings
+    openToolSettings = (spec) => {
+      document.getElementById('pqs-ov')?.remove();
+      const ov = document.createElement('div');
+      ov.id = 'pqs-ov';
+      const mods = (spec.mods || []).map((x) => ({ m: SCHEMA.find((y) => y.id === x.id), keys: x.keys })).filter((x) => x.m);
+      ov.innerHTML = `<div id="pqs-card" class="mini">
+        <div class="hd"><div><b>⚙ ${escHtml(spec.title || 'Settings')}</b><small>this PC</small></div><button class="pqs-b" data-x="close">✕</button></div>
+        <div class="bd">${mods.map((x) => modHtml(x.m, { keys: x.keys, open: true })).join('')}</div>
+        <div class="ft"><span>Everything else: Shift+8</span><div><button class="pqs-b" data-x="close">Cancel</button><button class="pqs-b p" data-x="msave">Save &amp; reload</button></div></div>
+      </div>`;
+      ov.addEventListener('click', (e) => {
+        const x = e.target.closest('[data-x]')?.dataset.x;
+        if (e.target === ov || x === 'close') ov.remove();
+        if (x === 'msave') saveFrom(ov);
+      });
+      document.body.appendChild(ov);
+    };
 
     // ---------- teams tab (builds the TEAMS block for GitHub) ----------
     const DRAFT_KEY = 'pqsuite_teams_draft_v1';
@@ -5993,7 +6137,7 @@
       const full = can('settings');
       const tabs = full ? (isOwner() ? ['tools', 'teams', 'colors'] : ['tools', 'colors']) : ['colors'];
       const first = tabs[0];
-      const label = { tools: 'Tools', teams: 'Teams', colors: 'Colors' };
+      const label = { tools: '🧰 Tools', teams: '👥 Teams', colors: '🎨 Colors' };
       const hide = (t) => (t === first ? '' : ' style="display:none"');
       ov.innerHTML = `<div id="pqs-card">
         <div class="hd"><div><b>Picqer Suite</b><small>${VERSION ? 'v' + escHtml(VERSION) + ' · ' : ''}Shift+8</small>
@@ -6036,7 +6180,7 @@
       ov.querySelectorAll('.pqs-top').forEach((t) => t.addEventListener('click', (e) => {
         if (e.target.closest('.pqs-sw')) return;
         const mod = t.parentElement;
-        if (!mod.querySelector('.pqs-f')) return;
+        if (!mod.querySelector('.pqs-f') || !t.querySelector('.car')) return;
         mod.classList.toggle('open');
         t.querySelector('.car').textContent = mod.classList.contains('open') ? '▾' : '▸';
       }));
@@ -6118,17 +6262,7 @@
         const x = e.target.closest('[data-x]')?.dataset.x;
         if (x === 'close') close();
         if (x === 'reset' && confirm('Reset all tool settings on this PC to default?')) { lsSet(LS_CFG, {}); location.reload(); }
-        if (x === 'save') {
-          const out = {};
-          for (const m of SCHEMA) out[m.id] = { ...CFG[m.id] };
-          ov.querySelectorAll('[data-en]').forEach((el) => { out[el.dataset.en].enabled = el.checked; });
-          ov.querySelectorAll('[data-k]').forEach((el) => {
-            const { m, k, t: ty } = el.dataset;
-            out[m][k] = ty === 'bool' ? el.checked : ty === 'num' ? Number(el.value) : ty === 'list' ? el.value.split(',').map((s) => s.trim()).filter(Boolean) : el.value.trim();
-          });
-          lsSet(LS_CFG, out);
-          location.reload();
-        }
+        if (x === 'save') saveFrom(ov.querySelector('[data-pane="tools"]'));
         if (x === 'tstart' && confirm('Throw away your changes and start from the teams.js this PC has now?')) {
           draft = fromScript();
           try { localStorage.removeItem(DRAFT_KEY); localStorage.removeItem(BASE_KEY); } catch (_) {}
@@ -6319,7 +6453,7 @@
     if (use('autoNext')) safe('autoNext', autoNext);
     if (use('cardColor')) safe('cardColor', cardColor);
     if (use('pickStats')) safe('pickStats', pickStats);
-    safe('skin', () => applySkin((lsGet('pqsuite_skin_v1', null) || {}).id));
+    safe('skin', () => applySkin((skinOf(ME.id) || {}).id));
     if (use('leaderboard')) safe('leaderboard', leaderboard);
     safe('teams', refreshTeams);
     if (use('cardColor') || can('colors') || can('settings')) safe('colors', () => refreshRemote(REMOTE.colors, onColors));

@@ -14,6 +14,7 @@ export const SKINS = [
   { id: 'sunset', name: 'Sunset', price: 1500 },
   { id: 'carbon', name: 'Carbon', price: 2500 },
   { id: 'aurora', name: 'Aurora', price: 4000 },
+  { id: 'voidescent', name: 'Voidescent', price: 6000 },
   { id: 'gold', name: 'Gold', price: 8000 },
   { id: 'crown', name: 'Crown', price: 15000 },
 ];

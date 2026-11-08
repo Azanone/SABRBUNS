@@ -1,0 +1,929 @@
+.pq-void body{color:hsl(345,10%,92%)}
+.pq-void a{color:hsl(350,100%,68%)}
+.pq-void a:hover{color:hsl(350,100%,68%)}
+.pq-void hr{border-color:hsl(345,10%,18%) currentcolor currentcolor;border-top-color:hsl(345,10%,18%)}
+.pq-void h1 small,.pq-void h2 small,.pq-void h3 small{color:hsl(345,10%,60%)}
+.pq-void h2{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .horizontal-key-value-pairs .key-value-group .key{color:hsl(345,10%,72%)}
+@media (min-width: 768px){
+.pq-void .bottom-button-bar{background-color:hsl(345,8%,10%);border-top-color:hsl(345,10%,18%)}
+}
+.pq-void .productfields-list .title{color:hsl(345,10%,66%)}
+.pq-void .product-fields .title{color:hsl(345,10%,60%)}
+.pq-void .card .index-table .picqer-table tr:hover td,.pq-void #location-wizard-status .new-locations .index-table .picqer-table tr:hover td,.pq-void #location-wizard-status .existing-locations .index-table .picqer-table tr:hover td{background-color:hsl(345,10%,6%)}
+.pq-void .request-headers,.pq-void .request-body{background-color:hsl(345,10%,6%)}
+.pq-void .extra-info{color:hsl(345,10%,60%)}
+.pq-void .less-important,.pq-void .deactivation-fulfilment-customer .deactivation-fulfilment-customer-message,.pq-void .rights-apikeys .rights-apikey .created,.pq-void .rights-user-details .user-last-login,.pq-void .location-picker-container .location-picker .locations .selectable-location .location-remarks{color:hsl(345,10%,72%)}
+.pq-void .positive{color:hsl(162,90%,64%)}
+.pq-void .negative{color:hsl(0,65%,64%)}
+.pq-void .text-info{color:hsl(350,100%,68%)}
+.pq-void .text-success,.pq-void .small-oke-message{color:hsl(162,90%,64%)}
+.pq-void .text-warning{color:hsl(23,90%,64%)}
+.pq-void .text-danger{color:hsl(0,65%,64%)}
+.pq-void .text-paused{color:hsl(262,82%,64%)}
+.pq-void .text-muted{color:hsl(345,10%,60%)}
+.pq-void .icon-warning{color:hsl(23,90%,64%)}
+.pq-void .bg-danger{background-color:hsl(0,38%,13%)}
+.pq-void .avatar.avatar-fulfilment-placeholder,.pq-void .avatar-fulfilment-placeholder.user-avatar{color:hsl(345,10%,72%);background-color:hsl(345,8%,13%)}
+.pq-void .horizontal-list > :not(:last-child)::after{color:hsl(345,10%,60%)}
+.pq-void .horizontal-list__icon{color:hsl(345,10%,72%)}
+.pq-void .remarks-indication-icon,.pq-void .comments-indication-icon,.pq-void .via-portal-icon{color:hsl(345,10%,60%)}
+.pq-void .floating-bar{background-color:hsl(345,8%,13%);border-color:hsl(345,10%,18%)}
+.pq-void .floating-bar__label{color:hsl(345,10%,92%)}
+.pq-void .system-user{color:hsl(345,10%,60%)}
+.pq-void .pulse{background-color:hsl(345,15%,4%)}
+.pq-void .page .page-section .page-section-header h2{color:hsl(345,10%,72%)}
+.pq-void .page-heading .header-breadcrumbs{color:hsl(345,10%,72%)}
+.pq-void .page-heading .header-breadcrumbs a{color:hsl(345,10%,60%)}
+.pq-void .page-heading .header-breadcrumbs ul.breadcrumbs li a{color:hsl(345,10%,60%)}
+.pq-void .page-heading .header-breadcrumbs ul.breadcrumbs li::after{color:hsl(345,10%,60%)}
+.pq-void .gau-top-navigation.scrolling{box-shadow:hsla(345,10%,18%,0.8) 0px 1px 0px 0px}
+.pq-void .gau-top-navigation__action,.pq-void .gau-top-navigation__back{color:hsl(345,10%,92%)}
+.pq-void .gau-top-navigation__action:hover,.pq-void .gau-top-navigation__action:focus,.pq-void .gau-top-navigation__action:active,.pq-void .gau-top-navigation__back:hover,.pq-void .gau-top-navigation__back:focus,.pq-void .gau-top-navigation__back:active{color:hsl(345,10%,92%)}
+.pq-void .gau-top-navigation__action:active,.pq-void .gau-top-navigation__back:active{background-color:hsl(345,8%,15%)}
+.pq-void .layout{background-color:hsl(345,10%,6%)}
+.pq-void .layout-header-notices li{background-color:hsl(345,6%,26%)}
+.pq-void .layout-header-navigation > a .unread-badge{border-color:hsl(345,12%,10%)}
+@media (max-width: 767px){
+.pq-void .layout-navigation{border-bottom-color:hsl(345,10%,18%)}
+}
+.pq-void .menu > li:not(.trial-note) :where(a, button){color:hsl(345,10%,72%)}
+.pq-void .menu > li:not(.trial-note) :where(a, button):hover{color:hsl(345,10%,92%);background-color:hsl(345,8%,15%)}
+.pq-void .menu > li:not(.trial-note) :where(a, button).active{color:hsl(350,100%,68%)}
+.pq-void .menu ul a::before{background-color:hsl(345,6%,42%)}
+.pq-void .menu ul a.active::before{background-color:hsl(348,100%,50%)}
+.pq-void .menu.menu--pinnable ul > li:has(> .menu__pin:hover) > a{color:hsl(345,10%,92%);background-color:hsl(345,8%,15%)}
+.pq-void .menu.menu--pinnable a .badge{color:hsl(345,10%,72%);border-color:hsl(345,10%,18%)}
+.pq-void .menu.menu--pinnable .menu__pin{color:hsl(345,10%,60%)}
+.pq-void .menu.menu--pinnable .menu__pin:hover{color:hsl(345,10%,92%)}
+.pq-void .menu.menu--pinnable .menu__pin:focus-visible{outline-color:hsl(348,100%,52%)}
+.pq-void .menu-classic h3{color:hsl(345,10%,60%)}
+.pq-void .menu-classic li:not(.trial-note) :where(a, button){color:hsl(345,10%,92%)}
+.pq-void .menu-classic li:not(.trial-note) :where(a, button):hover{background-color:hsl(345,8%,15%)}
+.pq-void .menu-classic li:not(.trial-note) :where(a, button).active{color:hsl(350,100%,68%)}
+.pq-void .menu-classic li:not(.trial-note) :where(a, button):not(.active) i,.pq-void .menu-classic li:not(.trial-note) :where(a, button):not(.active) .badge{color:hsl(345,10%,72%)}
+.pq-void .trial-note{background-color:hsla(0,0%,100%,0.048)}
+.pq-void #help-feedback-menu .help-feedback-menu__header{color:hsl(345,10%,72%)}
+.pq-void .highlighted-blog{background-color:hsl(345,8%,10%)}
+.pq-void .highlighted-blog__type{color:hsl(345,10%,72%)}
+.pq-void .highlighted-blog__title{color:hsl(345,10%,92%)}
+.pq-void .btn{color:hsl(345,10%,92%);background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .btn:hover{color:hsl(345,10%,92%);background-color:hsl(345,10%,6%)}
+.pq-void .btn:active{background-color:hsl(345,8%,13%)}
+.pq-void .btn:has(> input:focus-visible){outline-color:hsl(348,100%,52%)}
+.pq-void .btn i.fa,.pq-void .btn i.fas,.pq-void .btn i.far,.pq-void .btn i.fal{color:hsl(345,10%,92%)}
+.pq-void .btn.btn-primary{background-color:hsl(348,100%,50%);border-color:hsl(348,100%,52%)}
+.pq-void .btn.btn-primary:hover{background-color:hsl(348,100%,50%)}
+.pq-void .btn.btn-primary:active{background-color:hsl(348,100%,43%)}
+.pq-void .btn.btn-default.active{color:hsl(350,100%,68%);background-color:hsl(220,38%,13%);border-color:hsl(348,100%,52%)}
+.pq-void .btn.btn-ghost:hover{background-color:hsl(345,10%,6%)}
+.pq-void .btn.btn-ghost:active{background-color:hsl(345,8%,13%)}
+.pq-void .btn.btn-ghost i{color:hsl(345,10%,60%)}
+.pq-void .btn.btn-link{color:hsl(350,100%,68%)}
+.pq-void .btn.btn-link i{color:hsl(350,100%,68%)}
+.pq-void .btn.btn-link:hover{color:hsl(350,100%,68%)}
+.pq-void .btn-group.numeric-plus-minus-control input.input--success,.pq-void .input-group .btn-group input.input--success{background-color:hsl(161,38%,13%) !important}
+.pq-void .btn-group.numeric-plus-minus-control input.input--warning,.pq-void .input-group .btn-group input.input--warning{background-color:hsl(29,38%,13%) !important}
+.pq-void .form-control,.pq-void .receipts-edit .receipt-amount-changer .picqer-form-input,.pq-void .picqer-form-input,.pq-void .btn-group.numeric-plus-minus-control input:not(:first-child):not(:last-child),.pq-void .input-group .btn-group input:not(:first-child):not(:last-child){color:hsl(345,10%,92%);background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .card,.pq-void #location-wizard-status .new-locations,.pq-void #location-wizard-status .existing-locations{background-color:hsl(345,8%,10%);box-shadow:hsl(345,10%,18%) 0px 0px 0px 1px, rgba(21, 7, 38, 0.09) 0px 1px 2px 0px}
+@media screen and (min-width: 768px){
+.pq-void .card,.pq-void #location-wizard-status .new-locations,.pq-void #location-wizard-status .existing-locations{box-shadow:hsl(345,10%,18%) 0px 0px 0px 1px, rgba(21, 7, 38, 0.09) 0px 1px 4px 0px}
+}
+.pq-void .card .card-header:not(:last-child),.pq-void #location-wizard-status .new-locations .card-header:not(:last-child),.pq-void #location-wizard-status .existing-locations .card-header:not(:last-child){border-bottom-color:hsl(345,10%,18%)}
+.pq-void .card summary.card-header .card-heading::before,.pq-void #location-wizard-status .new-locations summary.card-header .card-heading::before,.pq-void #location-wizard-status .existing-locations summary.card-header .card-heading::before{color:hsl(345,10%,60%)}
+.pq-void .card .card-subheading,.pq-void #location-wizard-status .new-locations .card-subheading,.pq-void #location-wizard-status .existing-locations .card-subheading{color:hsl(345,10%,60%)}
+.pq-void .card .card-footer,.pq-void #location-wizard-status .new-locations .card-footer,.pq-void #location-wizard-status .existing-locations .card-footer{border-top-color:hsl(345,10%,18%)}
+.pq-void .card .card-footer--sticky,.pq-void #location-wizard-status .new-locations .card-footer--sticky,.pq-void #location-wizard-status .existing-locations .card-footer--sticky{background-color:hsl(345,8%,10%)}
+.pq-void .card .card-section-title,.pq-void #location-wizard-status .new-locations .card-section-title,.pq-void #location-wizard-status .existing-locations .card-section-title{color:hsl(345,10%,92%)}
+.pq-void .card .card-section-subtitle,.pq-void #location-wizard-status .new-locations .card-section-subtitle,.pq-void #location-wizard-status .existing-locations .card-section-subtitle{color:hsl(345,10%,60%)}
+.pq-void .card .card-section summary.card-section-header .card-section-title::before,.pq-void #location-wizard-status .new-locations .card-section summary.card-section-header .card-section-title::before,.pq-void #location-wizard-status .existing-locations .card-section summary.card-section-header .card-section-title::before{color:hsl(345,10%,60%)}
+.pq-void .card .card-section + .card-section:not(.card-section--borderless),.pq-void #location-wizard-status .new-locations .card-section + .card-section:not(.card-section--borderless),.pq-void #location-wizard-status .existing-locations .card-section + .card-section:not(.card-section--borderless){border-top-color:hsl(345,10%,18%)}
+.pq-void .card--customer-remarks{background-color:hsl(49,38%,13%)}
+.pq-void .card__progress{background-color:hsl(219,38%,13%)}
+.pq-void .card__progress::-webkit-progress-bar{background-color:hsl(219,38%,13%)}
+.pq-void .card__progress::-webkit-progress-value{background-color:hsl(220,65%,38%)}
+.pq-void .preset-group .preset{border-top-color:hsl(345,10%,18%)}
+.pq-void .preset-group .preset:hover{background-color:hsl(345,8%,11%)}
+.pq-void .preset-filter__search{box-shadow:hsl(345,10%,18%) 0px 0px 0px 1px, rgba(21, 7, 38, 0.09) 0px 1px 4px 0px}
+.pq-void .preset-filter__empty{color:hsl(345,10%,72%)}
+.pq-void .confetti-piece:nth-child(7n+1){background-color:hsl(345,15%,4%)}
+.pq-void .confetti-piece:nth-child(7n+6){background-color:hsl(261,38%,13%)}
+.pq-void .confetti-piece:nth-child(7n+7){background-color:hsl(260,38%,13%)}
+.pq-void .collapsible-icon-prefix .picqer-modal-section-title::before,.pq-void .collapsible-icon-prefix .card-heading::before,.pq-void .collapsible-icon-prefix .collapsible-caret::before,.pq-void .collapsible-icon-prefix .card-section-title::before{color:hsl(345,10%,60%)}
+.pq-void .combobox-popover{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .combobox-input{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .combobox-listbox-no-options{color:hsl(345,10%,72%)}
+.pq-void .combobox-listbox-loading-more{color:hsl(345,10%,72%)}
+@media (hover: hover){
+.pq-void .combobox-listbox-option:not([disabled]):not([aria-disabled="true"]):hover{background-color:hsl(345,10%,6%)}
+}
+.pq-void .combobox-listbox-option:state(active-descendant)::before{background-color:hsl(348,100%,50%)}
+.pq-void .combobox-listbox-option[aria-selected="true"]{background-color:hsl(220,38%,13%)}
+.pq-void .combobox-listbox-option[aria-selected="true"]::after{color:hsl(345,10%,60%)}
+.pq-void .combobox-listbox-option-description{color:hsl(345,10%,60%)}
+.pq-void .combobox-filters{background-color:hsl(345,10%,6%)}
+.pq-void .combobox-filters .combobox-filters-tab label{color:hsl(345,10%,60%)}
+.pq-void .combobox-filters .combobox-filters-tab label:hover{color:hsl(345,10%,72%);background-color:hsl(345,8%,13%)}
+.pq-void .combobox-filters .combobox-filters-tab label.combobox-filters-tab__active{color:hsl(345,10%,92%);background-color:hsl(345,8%,10%);box-shadow:hsl(345,10%,18%) 0px 0px 0px 1px inset, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px}
+.pq-void .label,.pq-void .location-label,.pq-void .rule-conditions .existing-condition .condition-operator,.pq-void .comment .comment-avatar-content-wrapper .comment-content .comment-header .comment-fulfilment-customer-label,.pq-void .label-webshop-order-status,.pq-void .picklist-batch-status-label,.pq-void .order-status-label,.pq-void .singles-batch-label,.pq-void .singles-batch-label-experimental,.pq-void .picklist-batch-presets-table__singles-label,.pq-void .customernumber,.pq-void .purchaseorder-status-label,.pq-void .receipt-status-label,.pq-void .return-status-label,.pq-void .icon-label,.pq-void .badge{color:hsl(345,10%,92%);background-color:hsl(345,8%,15%)}
+.pq-void .label--bordered,.pq-void .label--type,.pq-void .singles-batch-label-experimental,.pq-void .picklist-batch-presets-table__singles-label{border-color:hsl(345,10%,18%)}
+.pq-void .label-default,.pq-void .label-picklist-closed,.pq-void .label-movement-cancelled{background-color:hsl(345,8%,17%)}
+.pq-void .label-blue,.pq-void .label-movement-collecting,.pq-void .label-movement-open,.pq-void .label-movement-transit,.pq-void .label-movement-stowing,.pq-void .label-webshop-order-status-pending,.pq-void .label-webshop-order-status-expected,.pq-void .label-moveStock,.pq-void .order-status-label-processing,.pq-void .order-status-label-partially-processed,.pq-void .purchaseorder-status-label-purchased,.pq-void .purchaseorder-status-label-expected,.pq-void .receipt-status-label-processing{background-color:hsl(220,65%,38%);border-color:hsl(220,65%,45%)}
+.pq-void .badge-dot__indicator{box-shadow:hsl(345,10%,18%) 0px 0px 0px 1px}
+.pq-void .status-badges-v2 .order-status-label-processing,.pq-void .status-badges-v2 .order-status-label-partially-processed,.pq-void .status-badges-v2 .picklist-batch-status-label-open,.pq-void .status-badges-v2 .label-picklist-new,.pq-void .status-badges-v2 .label-movement-open,.pq-void .status-badges-v2 .label-movement-collecting,.pq-void .status-badges-v2 .label-movement-transit,.pq-void .status-badges-v2 .label-movement-stowing,.pq-void .status-badges-v2 .purchaseorder-status-label-expected,.pq-void .status-badges-v2 .purchaseorder-status-label-purchased,.pq-void .status-badges-v2 .receipt-status-label-processing,.pq-void .status-badges-v2 .label-webshop-order-status-pending,.pq-void .status-badges-v2 .label-webshop-order-status-expected{background-color:hsl(220,65%,38%);border-color:hsl(220,65%,45%)}
+.pq-void .status-badges-v2 .order-status-label-cancelled,.pq-void .status-badges-v2 .picklist-batch-status-label-canceled,.pq-void .status-badges-v2 .label-picklist-cancelled,.pq-void .status-badges-v2 .label-movement-cancelled,.pq-void .status-badges-v2 .purchaseorder-status-label-cancelled,.pq-void .status-badges-v2 .receipt-status-label-cancelled{color:hsl(345,10%,92%);background-color:hsl(345,8%,17%);border-color:hsl(345,10%,18%)}
+.pq-void .btn-primary .badge-light{color:hsl(216,90%,72%);background-color:hsl(345,8%,10%)}
+.pq-void .chip{color:hsl(345,10%,92%);background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .chip:hover{background-color:hsl(345,10%,6%)}
+.pq-void .chip__bulk-label{color:hsl(345,10%,60%)}
+.pq-void .chip picqer-product-lot{color:hsl(345,10%,60%)}
+.pq-void .chip--dropdown::after{color:hsl(345,10%,60%)}
+.pq-void .data-list .data-list-item dt{color:hsl(345,10%,60%)}
+.pq-void .dropdown-menu,.pq-void .comment-section .add-comment__mentions__menu{background-color:hsl(345,8%,10%)}
+.pq-void .dropdown-menu .divider,.pq-void .comment-section .add-comment__mentions__menu .divider{background-color:hsl(345,8%,15%)}
+.pq-void .dropdown-menu > li :where(a, button),.pq-void .comment-section .add-comment__mentions__menu > li :where(a, button){color:hsl(345,10%,92%)}
+.pq-void .dropdown-menu > li :where(a, button):disabled,.pq-void .comment-section .add-comment__mentions__menu > li :where(a, button):disabled{color:hsl(345,10%,58%)}
+.pq-void .dropdown-menu > li :where(a, button):hover,.pq-void .comment-section .add-comment__mentions__menu > li :where(a, button):hover,.pq-void .dropdown-menu > li :where(a, button):focus-visible,.pq-void .comment-section .add-comment__mentions__menu > li :where(a, button):focus-visible{color:hsl(345,10%,92%);background-color:hsl(345,10%,6%)}
+.pq-void .dropdown-menu > .active :where(a, button),.pq-void .comment-section .add-comment__mentions__menu > .active :where(a, button),.pq-void .dropdown-menu > .active :where(a, button):hover,.pq-void .dropdown-menu > .active :where(a, button):focus-visible{color:hsl(345,10%,92%);background-color:hsl(345,10%,6%)}
+.pq-void .dropdown-menu > .disabled :where(a, button),.pq-void .comment-section .add-comment__mentions__menu > .disabled :where(a, button),.pq-void .dropdown-menu > .disabled :where(a, button):hover,.pq-void .dropdown-menu > .disabled :where(a, button):focus-visible{color:hsl(345,10%,58%)}
+.pq-void .dropdown-header{color:hsl(345,10%,72%)}
+.pq-void .dropdown-menu .dropdown-menu-section,.pq-void .comment-section .add-comment__mentions__menu .dropdown-menu-section{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .dropdown-menu .dropdown-menu-section .dropdown-menu-section-heading,.pq-void .comment-section .add-comment__mentions__menu .dropdown-menu-section .dropdown-menu-section-heading{color:hsl(345,10%,72%)}
+.pq-void .dropdown-menu picqer-product-lot,.pq-void .comment-section .add-comment__mentions__menu picqer-product-lot{color:hsl(345,10%,60%)}
+.pq-void .empty-state__icon{background-color:hsl(220,38%,13%)}
+.pq-void .empty-state__icon i{color:hsl(350,100%,68%)}
+.pq-void .empty-state__icon--error{background-color:hsl(0,38%,13%)}
+.pq-void .empty-state__icon--error i{color:hsl(0,75%,64%)}
+.pq-void .empty-state__icon--warning{background-color:hsl(29,38%,13%)}
+.pq-void .empty-state__icon--warning i{color:hsl(30,90%,64%)}
+.pq-void .empty-state__icon--success{background-color:hsl(161,38%,13%)}
+.pq-void .empty-state__icon--success i{color:hsl(160,90%,64%)}
+.pq-void .empty-state__description{color:hsl(345,10%,60%)}
+.pq-void .exception-group__branch--removing{background-color:hsl(345,10%,6%)}
+.pq-void .exception-group__item--removing::before{background-color:hsl(345,10%,6%)}
+.pq-void .exception-group__fallback-explanation{color:hsl(345,10%,72%)}
+.pq-void .exception-group__value-text{color:hsl(345,10%,92%)}
+.pq-void .exception-group__value-text--placeholder{color:hsl(345,10%,60%)}
+.pq-void .exception-group__value-text:hover{text-decoration-color:hsl(345,10%,60%)}
+.pq-void .exception-group__value-text:focus-visible{outline-color:hsl(348,100%,52%)}
+.pq-void .exception-group__name-label{color:hsl(345,10%,72%)}
+.pq-void .exception-group__value-secondary{color:hsl(345,10%,60%)}
+.pq-void .exception-group__split{color:hsl(345,10%,60%)}
+.pq-void .exception-group__split:hover,.pq-void .exception-group__split:focus-visible{color:hsl(345,10%,72%)}
+.pq-void .exception-group__title{color:hsl(345,10%,60%)}
+.pq-void .exception-group__branch--undecided .exception-group__title{color:hsl(345,10%,92%)}
+.pq-void .exception-group__dimension{color:hsl(345,10%,72%)}
+.pq-void .heading .heading-title ul.breadcrumbs li a{color:hsl(345,10%,60%)}
+.pq-void .heading .heading-title ul.breadcrumbs li::after{color:hsl(345,10%,60%)}
+.pq-void .multi-actions-bar{background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void .multi-actions-bar .multi-actions-bar-title > i.fa{color:hsl(26,90%,64%)}
+.pq-void .picqer-table > thead > tr > th,.pq-void .picqer-table > thead > tr > td,.pq-void .picqer-table > tbody > tr > th,.pq-void .picqer-table > tbody > tr > td,.pq-void .picqer-table > tfoot > tr > th,.pq-void .picqer-table > tfoot > tr > td{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .picqer-table > thead > tr > th{color:hsl(345,10%,72%)}
+.pq-void .picqer-table > tfoot.table-totals > tr > td{color:hsl(345,10%,72%);border-top-color:hsl(345,10%,18%)}
+.pq-void .picqer-table .free-stock{color:hsl(345,10%,72%)}
+.pq-void .table-second-rule{color:hsl(345,10%,72%)}
+.pq-void .picqer-table-vertical > thead > tr > th,.pq-void .picqer-table-vertical > tbody > tr > th,.pq-void .picqer-table-vertical > tfoot > tr > th,.pq-void .picqer-table-vertical > tr > th{color:hsl(345,10%,60%)}
+.pq-void .card .picqer-table-vertical > thead > tr > th,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > thead > tr > th,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > thead > tr > th,.pq-void .card .picqer-table-vertical > thead > tr > td,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > thead > tr > td,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > thead > tr > td,.pq-void .card .picqer-table-vertical > tbody > tr > th,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > tbody > tr > th,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > tbody > tr > th,.pq-void .card .picqer-table-vertical > tbody > tr > td,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > tbody > tr > td,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > tbody > tr > td,.pq-void .card .picqer-table-vertical > tfoot > tr > th,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > tfoot > tr > th,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > tfoot > tr > th,.pq-void .card .picqer-table-vertical > tfoot > tr > td,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > tfoot > tr > td,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > tfoot > tr > td,.pq-void .card .picqer-table-vertical > tr > th,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > tr > th,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > tr > th,.pq-void .card .picqer-table-vertical > tr > td,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > tr > td,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > tr > td{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .card .picqer-table-vertical > thead > tr > th,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > thead > tr > th,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > thead > tr > th,.pq-void .card .picqer-table-vertical > tbody > tr > th,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > tbody > tr > th,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > tbody > tr > th,.pq-void .card .picqer-table-vertical > tfoot > tr > th,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > tfoot > tr > th,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > tfoot > tr > th,.pq-void .card .picqer-table-vertical > tr > th,.pq-void #location-wizard-status .new-locations .picqer-table-vertical > tr > th,.pq-void #location-wizard-status .existing-locations .picqer-table-vertical > tr > th{color:hsl(345,10%,60%)}
+.pq-void tr.inactive-table-row td{color:hsl(345,10%,60%)}
+.pq-void tr.inactive-table-row td a{color:hsl(345,10%,60%)}
+.pq-void .table-sticky tr{background-color:hsl(345,8%,10%)}
+.pq-void .table-sticky tbody tr:hover{background-color:hsl(345,10%,6%)}
+.pq-void .card-section .picqer-table tfoot > tr > td,.pq-void .picqer-modal-section .picqer-table tfoot > tr > td,.pq-void .modal-body .picqer-table tfoot > tr > td{border-top-color:hsl(345,10%,18%)}
+@media (min-width: 768px){
+.pq-void .hybrid-table tr:hover td{background-color:hsl(345,10%,6%)}
+.pq-void .hybrid-table th,.pq-void .hybrid-table td{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .hybrid-table thead th{color:hsl(345,10%,72%);background-color:hsl(345,8%,10%)}
+}
+@media (max-width: 767px){
+.pq-void .hybrid-table tr + tr{border-top-color:hsl(345,10%,18%)}
+.pq-void .hybrid-table__title{color:hsl(345,10%,92%)}
+.pq-void .hybrid-table__property,.pq-void .hybrid-table__timestamp{color:hsl(345,10%,72%)}
+.pq-void .hybrid-table__count{color:hsl(345,10%,60%)}
+.pq-void .hybrid-table__image a{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+}
+.pq-void .small-link{color:hsl(345,10%,72%)}
+.pq-void a.inline-help{color:hsl(345,10%,60%)}
+.pq-void a.inline-help:hover{color:hsl(345,10%,72%)}
+.pq-void .system-status-dot{background-color:hsl(345,15%,4%)}
+.pq-void .support-search-results p.description{color:hsl(345,10%,72%)}
+.pq-void .small-footer-tip{color:hsl(345,10%,72%)}
+.pq-void .nav-tabs{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .nav-tabs > li > a,.pq-void .nav-tabs > li > button{color:hsl(345,10%,72%)}
+.pq-void .nav-tabs > li > a:hover,.pq-void .nav-tabs > li > button:hover{color:hsl(345,10%,92%)}
+.pq-void .nav-tabs > li > a:hover::after,.pq-void .nav-tabs > li > button:hover::after{background-color:hsl(345,6%,42%)}
+.pq-void .nav-tabs > li.active > a,.pq-void .nav-tabs > li.active > button{color:hsl(345,10%,92%)}
+.pq-void .nav-tabs > li.active > a::after,.pq-void .nav-tabs > li.active > button::after{background-color:hsl(348,100%,50%)}
+.pq-void .tab-component .nav-tab-loading{color:hsl(345,10%,60%);background-color:hsl(345,10%,6%)}
+.pq-void .pills > * > a{color:hsl(345,10%,72%)}
+.pq-void .pills > * > a:hover{color:hsl(345,10%,92%)}
+.pq-void .pills > .active a{color:hsl(345,10%,92%);background-color:hsla(0,0%,100%,0.112)}
+.pq-void body > .filters-background{background-color:hsl(345,15%,4%)}
+.pq-void .page-navigation{color:hsl(345,10%,92%)}
+.pq-void .page-navigation .pagination{color:hsl(345,10%,72%)}
+.pq-void .page-navigation .filters .filters-form-popover{color:hsl(345,10%,92%);background-color:hsl(345,8%,10%)}
+.pq-void .page-navigation-container .active-filters .active-filter .filter-label{color:hsl(345,10%,60%)}
+.pq-void .page-navigation-container .active-filters .active-filter .filter-remove-label{color:hsl(345,10%,60%)}
+.pq-void .picqer-modal .picqer-modal-content{background-color:hsl(345,8%,10%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-header{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-header--muted{background-color:hsl(345,10%,6%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-header .modal-subtitle{color:hsl(345,10%,60%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-header .scan-barcode,.pq-void .picqer-modal .picqer-modal-content .picqer-modal-header .close-modal{color:hsl(345,10%,92%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-tabs{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-tabs .tab-item{color:hsl(345,10%,72%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-tabs .tab-item:hover{color:hsl(345,10%,92%);border-color:hsl(345,10%,18%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-tabs .tab-item.active{color:hsl(345,10%,92%);border-color:hsl(348,100%,52%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-tabs .tab-item i.fa,.pq-void .picqer-modal .picqer-modal-content .picqer-modal-tabs .tab-item i.fas,.pq-void .picqer-modal .picqer-modal-content .picqer-modal-tabs .tab-item i.far,.pq-void .picqer-modal .picqer-modal-content .picqer-modal-tabs .tab-item i.fal{color:hsl(345,10%,72%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-body--muted{background-color:hsl(345,10%,6%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-footer{background-color:hsl(345,8%,10%);border-top-color:hsl(345,10%,18%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-footer--muted{background-color:hsl(345,10%,6%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-section-title{color:hsl(345,10%,92%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-section--muted{background-color:hsl(345,10%,6%)}
+.pq-void .picqer-modal .picqer-modal-content .picqer-modal-section + .picqer-modal-section{border-top-color:hsl(345,10%,18%)}
+.pq-void .picqer-modal-backdrop{background-color:hsl(345,15%,4%)}
+.pq-void .menu-list__item__label{color:hsl(345,10%,92%)}
+.pq-void .menu-list__item + .menu-list__item{border-top-color:hsl(345,10%,18%)}
+.pq-void .modal{background-color:hsl(345,8%,10%)}
+.pq-void .modal::backdrop{background-color:hsl(345,15%,4%)}
+.pq-void .modal-header{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .modal-body-heading{color:hsl(345,10%,92%)}
+.pq-void .modal-footer{border-top-color:hsl(345,10%,18%)}
+.pq-void .modal-columns .modal-column-left{border-right-color:hsl(345,10%,18%)}
+.pq-void .modal-alert{background-color:hsla(345,15%,4%,0.75)}
+.pq-void .modal-alert-message{background-color:hsl(345,8%,10%)}
+.pq-void picqer-image-modal dialog{background-color:hsl(345,8%,10%)}
+.pq-void picqer-image-modal dialog::backdrop{background-color:hsla(345,15%,4%,0.75)}
+.pq-void picqer-image-modal dialog .close i{color:hsl(345,10%,60%)}
+.pq-void #stock-change-modal .stock-location{color:hsl(345,10%,92%);border-color:hsl(345,10%,18%)}
+.pq-void #stock-change-modal .stock-location:hover{background-color:hsl(345,10%,6%)}
+.pq-void #stock-change-modal .stock-location .stock-warehouse-name{color:hsl(345,10%,60%)}
+.pq-void #stock-change-modal .stock-location .stock-location-amount .reserved-amount{color:hsl(345,10%,60%)}
+.pq-void #stock-change-modal .stock-location-static{background-color:hsl(345,8%,13%)}
+.pq-void #stock-change-modal .stock-location-dropdown .stock-location{background-color:hsl(345,8%,10%)}
+.pq-void #stock-change-modal .stock-location-dropdown.stock-location-dropdown--scan-confirmed > .stock-location{background-color:hsl(149,38%,13%)}
+.pq-void #stock-change-modal .stock-location-dropdown .stock-location-dropdown-menu{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void #stock-change-modal .stock-location-dropdown .stock-location-dropdown-menu .stock-location-note{color:hsl(345,10%,60%)}
+.pq-void #stock-change-modal .stock-location-dropdown .stock-location-dropdown-menu .stock-location-amount .reserved-amount{color:hsl(345,10%,60%)}
+.pq-void #stock-change-modal .stock-location-dropdown .warehouse-heading{color:hsl(345,10%,72%);border-top-color:hsl(345,10%,18%)}
+.pq-void #stock-change-modal .stock-location-dropdown .stock-location-dropdown-location:hover{background-color:hsl(345,10%,6%)}
+.pq-void #stock-change-modal .stock-location-dropdown .stock-location-dropdown-location.selected{background-color:hsl(348,100%,50%)}
+.pq-void #stock-change-modal .stock-location-dropdown .stock-location-dropdown-location + .stock-location-dropdown-location{border-top-color:hsl(345,10%,18%)}
+.pq-void .stock-level__label{border-color:hsl(345,10%,18%)}
+.pq-void .stock-locations__table{border-color:hsl(345,10%,18%)}
+.pq-void .stock-locations__table tr td{background-color:hsl(345,10%,6%)}
+.pq-void .stock-locations__table tr + tr > td{border-top-color:hsl(345,10%,18%)}
+.pq-void select.form-control:hover,.pq-void .receipts-edit .receipt-amount-changer select.picqer-form-input:hover,.pq-void select.picqer-form-input:hover{border-color:hsl(345,8%,30%)}
+.pq-void legend{color:hsl(345,10%,92%);border-color:currentcolor currentcolor hsl(345,10%,18%);border-bottom-color:hsl(345,10%,18%)}
+.pq-void label{color:hsl(345,10%,92%)}
+.pq-void output{color:hsl(345,10%,72%)}
+.pq-void .form-control:focus,.pq-void .receipts-edit .receipt-amount-changer .picqer-form-input:focus,.pq-void .picqer-form-input:focus,.pq-void .btn-group.numeric-plus-minus-control input:focus:not(:first-child):not(:last-child),.pq-void .input-group .btn-group input:focus:not(:first-child):not(:last-child){border-color:hsl(348,100%,52%);box-shadow:rgba(0, 0, 0, 0.075) 0px 1px 1px inset, hsla(348,100%,52%,0.6) 0px 0px 0px 1px}
+.pq-void .form-control::placeholder,.pq-void .receipts-edit .receipt-amount-changer .picqer-form-input::placeholder,.pq-void .picqer-form-input::placeholder,.pq-void .btn-group.numeric-plus-minus-control input:not(:first-child):not(:last-child)::placeholder,.pq-void .input-group .btn-group input:not(:first-child):not(:last-child)::placeholder{color:hsl(345,10%,60%)}
+.pq-void .form-control[disabled],.pq-void .receipts-edit .receipt-amount-changer [disabled].picqer-form-input,.pq-void [disabled].picqer-form-input,.pq-void .btn-group.numeric-plus-minus-control input[disabled]:not(:first-child):not(:last-child),.pq-void .input-group .btn-group input[disabled]:not(:first-child):not(:last-child),.pq-void .form-control[readonly]:not(.date-input__field),.pq-void [readonly].picqer-form-input:not(.date-input__field),.pq-void .btn-group.numeric-plus-minus-control input[readonly]:not(.date-input__field):not(:first-child):not(:last-child),.pq-void .input-group .btn-group input[readonly]:not(.date-input__field):not(:first-child):not(:last-child),.pq-void fieldset[disabled] .form-control,.pq-void fieldset[disabled] .receipts-edit .receipt-amount-changer .picqer-form-input,.pq-void .receipts-edit .receipt-amount-changer fieldset[disabled] .picqer-form-input,.pq-void fieldset[disabled] .picqer-form-input,.pq-void fieldset[disabled] .btn-group.numeric-plus-minus-control input:not(:first-child):not(:last-child),.pq-void .btn-group.numeric-plus-minus-control fieldset[disabled] input:not(:first-child):not(:last-child),.pq-void fieldset[disabled] .input-group .btn-group input:not(:first-child):not(:last-child),.pq-void .input-group .btn-group fieldset[disabled] input:not(:first-child):not(:last-child){background-color:hsl(345,10%,6%)}
+.pq-void .radio label.disabled,.pq-void .checkbox label.disabled{color:hsl(345,10%,60%)}
+.pq-void .has-success .control-label,.pq-void .has-success .form-control-label,.pq-void .has-success .radio,.pq-void .has-success .checkbox,.pq-void .has-success .radio-inline,.pq-void .has-success .checkbox-inline,.pq-void .has-success.radio label,.pq-void .has-success.checkbox label,.pq-void .has-success.radio-inline label,.pq-void .has-success.checkbox-inline label{color:hsl(162,90%,64%)}
+.pq-void .has-success .input-group-addon{color:hsl(162,90%,64%);background-color:hsl(149,38%,13%)}
+.pq-void .has-success .form-control-feedback{color:hsl(162,90%,64%)}
+.pq-void .has-warning .control-label,.pq-void .has-warning .form-control-label,.pq-void .has-warning .radio,.pq-void .has-warning .checkbox,.pq-void .has-warning .radio-inline,.pq-void .has-warning .checkbox-inline,.pq-void .has-warning.radio label,.pq-void .has-warning.checkbox label,.pq-void .has-warning.radio-inline label,.pq-void .has-warning.checkbox-inline label{color:hsl(23,90%,64%)}
+.pq-void .has-warning .input-group-addon{color:hsl(23,90%,64%);background-color:hsl(40,38%,13%)}
+.pq-void .has-warning .form-control-feedback{color:hsl(23,90%,64%)}
+.pq-void .has-error .control-label,.pq-void .has-error .form-control-label,.pq-void .has-error .radio,.pq-void .has-error .checkbox,.pq-void .has-error .radio-inline,.pq-void .has-error .checkbox-inline,.pq-void .has-error.radio label,.pq-void .has-error.checkbox label,.pq-void .has-error.radio-inline label,.pq-void .has-error.checkbox-inline label{color:hsl(0,65%,64%)}
+.pq-void .has-error .input-group-addon{color:hsl(0,65%,64%);background-color:hsl(0,38%,13%)}
+.pq-void .has-error .form-control-feedback{color:hsl(0,65%,64%)}
+.pq-void .form-control-label.has-error{color:hsl(0,65%,64%)}
+.pq-void .form-summary{color:hsl(345,10%,72%)}
+.pq-void .form-control-description{color:hsl(345,10%,72%)}
+.pq-void .price-meta-wrapper{color:hsl(345,10%,72%)}
+.pq-void input[type="file"]::file-selector-button{color:hsl(345,10%,92%);background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void input[type="file"]::file-selector-button:hover{color:hsl(345,10%,92%);background-color:hsl(345,10%,6%)}
+.pq-void input[type="file"]::file-selector-button:active{background-color:hsl(345,8%,13%)}
+.pq-void .picqer-form-input:focus{border-color:hsl(348,100%,52%)}
+.pq-void .picqer-form-input:disabled{color:hsl(345,10%,60%);background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void .dimensions-field-seperator{color:hsl(345,10%,60%)}
+.pq-void .radio-group-item{border-color:hsl(345,10%,18%)}
+.pq-void .radio-group-item:hover{background-color:hsl(345,10%,6%);border-color:hsl(345,8%,30%)}
+.pq-void .radio-group-item:has(.radio-group-input:checked){background-color:hsl(217,38%,13%);border-color:hsl(348,100%,52%)}
+.pq-void .radio-group-description{color:hsl(345,10%,60%)}
+.pq-void .radio-menu-label{border-top-color:hsl(345,10%,18%)}
+.pq-void .radio-menu-label:hover,.pq-void .radio-menu-label:focus-within{background-color:hsl(345,10%,6%)}
+.pq-void .radio-menu-label:has(.radio-menu-input:checked){background-color:hsl(217,38%,13%)}
+.pq-void picqer-character-counter .counter{color:hsl(345,10%,72%)}
+.pq-void [data-sortable-item].is-drop-above::before,.pq-void [data-sortable-item].is-drop-below::after{background-color:hsl(348,100%,50%)}
+.pq-void [data-sortable-group].is-drop-above::before,.pq-void [data-sortable-group-handle].is-drop-below::after,.pq-void [data-sortable-group].is-drop-below::after{border-color:hsl(348,100%,52%)}
+.pq-void [data-sortable-group].is-drop-into-group{background-color:hsl(217,38%,13%);box-shadow:hsl(348,100%,52%) 0px 0px 0px 1px inset}
+.pq-void .grouped-drag-sort__ghost{color:hsl(345,10%,92%);background-color:hsl(345,8%,10%)}
+.pq-void .alert,.pq-void .deactivation-fulfilment-customer,.pq-void .quick-stock-change-errors,.pq-void .big-success-message,.pq-void .tipblock,.pq-void .starter-message{background-color:hsl(345,8%,15%);border-color:hsl(345,10%,18%)}
+.pq-void .alert-success,.pq-void .big-success-message{background-color:hsl(149,38%,13%)}
+.pq-void .alert-info,.pq-void .tipblock{background-color:hsl(212,38%,13%);border-color:hsl(348,100%,52%)}
+.pq-void .alert-warning{background-color:hsl(40,38%,13%);border-color:hsl(345,10%,18%)}
+.pq-void .alert-danger,.pq-void .quick-stock-change-errors{background-color:hsl(0,38%,13%);border-color:hsl(345,10%,18%)}
+.pq-void .alert-news{background-color:hsl(348,100%,50%)}
+.pq-void .alert-introduction{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .alert-paused{background-color:hsl(250,38%,13%);border-color:hsl(345,10%,18%)}
+.pq-void .informational-text{color:hsl(345,10%,60%)}
+.pq-void .informational-text--lead :first-child{color:hsl(345,10%,92%)}
+.pq-void .input-group-addon{color:hsl(345,10%,92%);background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void .input-group-addon--subtle-fixed-width{color:hsl(345,10%,60%)}
+.pq-void .input-group-addon--subtle{color:hsl(345,10%,60%)}
+.pq-void .input-group--stepper{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .input-group--stepper .btn:hover{background-color:hsl(345,10%,6%)}
+.pq-void .input-group--stepper .btn:active{background-color:hsl(345,8%,13%)}
+.pq-void .input-group--stepper.success{background-color:hsl(149,38%,13%) !important}
+.pq-void .input-group--stepper.success .btn:hover{background-color:hsla(0,0%,100%,0.064)}
+.pq-void .input-group--stepper.success .btn:active{background-color:hsla(0,0%,100%,0.128)}
+.pq-void .input-group--stepper.warning{background-color:hsl(40,38%,13%) !important}
+.pq-void .input-group--stepper.warning .btn:hover{background-color:hsla(0,0%,100%,0.064)}
+.pq-void .input-group--stepper.warning .btn:active{background-color:hsla(0,0%,100%,0.128)}
+.pq-void .input-group--stepper:has(.form-control:focus, .receipts-edit .receipt-amount-changer .picqer-form-input:focus, .btn-group.numeric-plus-minus-control input:focus:not(:first-child):not(:last-child), .input-group .btn-group input:focus:not(:first-child):not(:last-child), .picqer-form-input:focus){border-color:hsl(348,100%,52%)}
+.pq-void .input-group-order-levels .expected-storage-time{color:hsl(345,10%,72%)}
+.pq-void .selection-display-empty-label{color:hsl(345,10%,60%)}
+.pq-void .selection-display-edit-cue{color:hsl(345,10%,72%)}
+.pq-void .location-picker-container .location-picker{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .location-picker-container .location-picker .filters{background-color:hsl(345,10%,6%);border-bottom-color:hsl(345,10%,18%)}
+.pq-void .location-picker-container .location-picker .loading-warehouses,.pq-void .location-picker-container .location-picker .loading-locations{color:hsl(345,10%,60%)}
+.pq-void .location-picker-container .location-picker .locations .no-results-text{color:hsl(345,10%,72%)}
+@media not all and (hover: none){
+.pq-void .location-picker-container .location-picker .locations .selectable-location:hover{background-color:hsl(345,10%,6%)}
+}
+.pq-void .location-picker-container .location-picker .locations .selectable-location.selected{background-color:hsl(348,100%,50%)}
+@media not all and (hover: none){
+.pq-void .location-picker-container .location-picker .locations .selectable-location.selected:hover{background-color:hsl(348,100%,50%)}
+}
+.pq-void .location-picker-container .location-picker .location-section-header{color:hsl(345,10%,60%)}
+.pq-void .location-picker-container .loading-container{background-color:hsla(0,0%,0%,0.75)}
+.pq-void .location-picker-container .loading-container i{color:hsl(350,100%,68%)}
+.pq-void picqer-product-lot{color:hsl(345,10%,72%);border-color:hsl(345,10%,18%)}
+.pq-void picqer-product-lot .product-lot__link:hover{color:hsl(350,100%,68%)}
+.pq-void picqer-product-lot .product-lot__link:focus-visible{outline-color:hsl(348,100%,52%)}
+.pq-void picqer-product-lot .product-lot__segment--expired{color:hsl(0,65%,64%)}
+.pq-void picqer-product-lot .product-lot__mark,.pq-void picqer-product-lot .product-lot__icon{color:hsl(345,10%,60%)}
+.pq-void picqer-toast dialog{background-color:hsl(345,15%,4%)}
+.pq-void picqer-toast dialog.toast-success i{color:hsl(157,57%,64%)}
+.pq-void picqer-toast dialog.toast-error i{color:hsl(0,80%,71%)}
+.pq-void picqer-tooltip picqer-popover{background-color:hsl(345,15%,4%)}
+.pq-void picqer-tooltip picqer-popover a:hover{color:hsl(345,10%,60%)}
+.pq-void picqer-tooltip .arrow::before{background-color:hsl(345,15%,4%)}
+.pq-void .info-bubble{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .info-bubble-inner{background-color:hsl(345,8%,10%)}
+.pq-void .info-bubble-tip{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .info-bubble .name{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .info-bubble .stock-label{color:hsl(345,10%,72%)}
+.pq-void .info-bubble .small-key-value .small-label{color:hsl(345,10%,72%)}
+.pq-void ul.steps{color:hsl(345,10%,72%);background-color:hsl(345,8%,15%);border-color:hsl(345,10%,18%)}
+.pq-void ul.steps li::before{color:hsl(345,10%,60%)}
+.pq-void ul.steps li.active{color:hsl(345,10%,92%)}
+.pq-void ol.steps{color:hsl(345,10%,72%)}
+.pq-void ol.steps li::before{background-color:hsl(149,38%,13%)}
+.pq-void ol.steps li:not(:last-child)::after{background-color:hsl(345,8%,13%)}
+.pq-void ol.steps li.active{color:hsl(345,10%,92%)}
+.pq-void ol.steps li.active::before{background-color:hsl(212,38%,13%)}
+.pq-void ol.steps li.active ~ li{color:hsl(345,10%,60%)}
+.pq-void ol.steps li.active ~ li::before{background-color:hsl(345,8%,13%)}
+.pq-void .steps-card{background-color:hsl(345,8%,10%);box-shadow:hsl(345,10%,18%) 0px 0px 0px 1px, rgba(21, 7, 38, 0.09) 0px 1px 2px 0px}
+@media screen and (min-width: 768px){
+.pq-void .steps-card{box-shadow:hsl(345,10%,18%) 0px 0px 0px 1px, rgba(21, 7, 38, 0.09) 0px 1px 4px 0px}
+}
+.pq-void ol.steps.steps--compact li:not(:last-child)::after{color:hsl(345,10%,60%)}
+.pq-void ol.steps.steps--compact .steps__icon{color:hsl(345,10%,72%)}
+.pq-void ol.steps.steps--compact .steps__label{color:hsl(345,10%,92%)}
+.pq-void ol.steps.steps--compact .steps__step--current{color:hsl(345,10%,92%)}
+.pq-void ol.steps.steps--compact .steps__step--current .steps__icon{color:hsl(350,100%,68%)}
+.pq-void ol.steps.steps--compact .steps__step--completed .steps__icon{color:hsl(162,90%,64%)}
+.pq-void ol.steps.steps--compact .steps__step--todo{color:hsl(345,10%,72%)}
+.pq-void ol.steps.steps--compact .steps__step--todo .steps__icon{color:hsl(345,10%,72%)}
+.pq-void ol.steps.steps--compact .steps__step--todo .steps__label{color:hsl(345,10%,72%)}
+@media (max-width: 767px){
+.pq-void .steps-card__mobile-step{color:hsl(345,10%,72%)}
+.pq-void .steps-card__mobile-step:not(:last-child)::after{color:hsl(345,10%,60%)}
+.pq-void .steps-card__mobile-check{color:hsl(162,90%,64%)}
+.pq-void .steps-card__mobile-step--completed{color:hsl(345,10%,72%)}
+.pq-void .steps-card__mobile-step--current{color:hsl(345,10%,92%)}
+}
+.pq-void .picqer-tag{color:hsl(345,10%,92%);background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .task-list__item + .task-list__item{border-top-color:hsl(345,10%,18%)}
+.pq-void .task-list__title{color:hsl(345,10%,92%)}
+.pq-void .task-list__description{color:hsl(345,10%,60%)}
+.pq-void .task-list__metadata{color:hsl(345,10%,72%)}
+.pq-void .task-list__due-date--overdue{color:hsl(0,65%,64%)}
+.pq-void .task-list__checkbox{background-color:hsl(345,8%,10%);border-color:hsl(345,8%,30%)}
+.pq-void .task-list__checkbox:not(.task-list__checkbox--is-checked):hover{border-color:hsl(345,8%,30%)}
+.pq-void .part-of-batch{background-color:hsl(345,8%,15%);border-color:hsl(345,10%,18%)}
+.pq-void .log-timeline__item:last-child .log-timeline__line__dot{border-color:hsl(345,10%,18%)}
+.pq-void .log-timeline__line__top{border-left-color:hsl(345,10%,18%)}
+.pq-void .log-timeline__line__bottom{border-left-color:hsl(345,10%,18%)}
+.pq-void .log-timeline__line__dot{background-color:hsl(345,6%,42%);box-shadow:hsl(345,10%,18%) 0px 0px 0px 4px}
+.pq-void .log-timeline__line__expand{color:hsl(345,10%,58%);box-shadow:hsl(345,10%,18%) 0px 0px 0px 4px}
+.pq-void .log-timeline__content a{color:hsl(345,10%,92%)}
+.pq-void .picklist-product-list__item + .picklist-product-list__item{border-top-color:hsl(345,10%,18%)}
+.pq-void .picklist-product-list__item__label{color:hsl(345,10%,92%)}
+.pq-void .picklist-product-list__item__secondary-detail{color:hsl(345,10%,60%)}
+.pq-void .picklist-product-list__item__product-fields__title{color:hsl(345,10%,72%)}
+.pq-void .picklist-product-list__item .thumbnail .placeholder,.pq-void .picklist-product-list__item .thumbnail-picklist-alias .placeholder{color:hsl(345,10%,60%)}
+.pq-void .popout-area-backdrop{background-color:hsla(345,15%,4%,0.75)}
+.pq-void .popout-area:not(.popout-area-popped-out):hover .popout-area-helper-description{background-color:hsla(0,0%,0%,0.8);border-color:hsl(345,10%,18%)}
+.pq-void .popout-area.popout-area-popped-out{background-color:hsl(345,8%,10%)}
+.pq-void .popout-area.popout-area-popped-out .popout-area-close-button{border-top-color:hsl(345,10%,18%)}
+.pq-void .picklist-filter-builder__row{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .picklist-filter-builder__field-tooltip{color:hsl(345,10%,60%)}
+.pq-void .picklist-filter-builder__label{background-color:hsl(345,10%,6%)}
+.pq-void .picklist-filter-builder__delete{color:hsl(345,10%,60%)}
+.pq-void .multi-select-popover__trigger--solid{border-color:hsl(345,10%,18%)}
+.pq-void .multi-select-popover__selected-group{color:hsl(345,10%,60%)}
+.pq-void .multi-select-popover__editor{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .multi-select-popover__filter{background-color:hsl(345,10%,6%);border-bottom-color:hsl(345,10%,18%)}
+.pq-void .multi-select-popover__options{background-color:hsl(345,8%,10%)}
+.pq-void .multi-select-popover__footer{background-color:hsl(345,10%,6%);border-top-color:hsl(345,10%,18%)}
+.pq-void .multi-select-popover__group-label{color:hsl(345,10%,72%);background-color:hsl(345,10%,6%)}
+.pq-void .multi-select-popover__option .multi-select-popover__option-focus{background-color:hsl(348,100%,50%)}
+.pq-void .multi-select-popover__option .multi-select-popover__option-tick{color:hsl(345,10%,60%)}
+.pq-void .multi-select-popover__option .multi-select-popover__option-unselect{color:hsla(345,10%,94%,0.4)}
+.pq-void .preview-table__composition-row{background-color:hsl(345,10%,6%)}
+.pq-void .preview-table__part-icon{color:hsl(345,10%,60%)}
+.pq-void .picqer-modal.product-selection-modal .search-result input:focus{background-color:hsl(345,8%,10%)}
+.pq-void .packing-station-switcher.no-packing-station .fa-circle-exclamation{color:hsl(26,90%,64%)}
+.pq-void .picqer-progress-bar .progress-title{color:hsl(345,10%,60%)}
+.pq-void .picqer-progress-bar .progress-textual{color:hsl(345,10%,60%)}
+.pq-void .picqer-progress-bar .progress-textual-of-separator{color:hsl(345,10%,60%)}
+.pq-void .picqer-progress-bar .progress-track{background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void .picqer-progress-bar .progress-fill-primary{background-color:hsl(216,65%,38%)}
+.pq-void .picqer-progress-bar .progress-fill-secondary{background-color:hsl(219,38%,13%)}
+.pq-void .picqer-micro-progress-bar{background-color:hsl(345,10%,6%)}
+.pq-void .picqer-micro-progress-bar .progress-current{background-color:hsl(216,65%,38%)}
+.pq-void #singles-picklist-dialogue{background-color:hsla(345,15%,4%,0.75)}
+.pq-void #singles-picklist-dialogue .dialogue{background-color:hsl(345,8%,10%)}
+.pq-void #singles-picklist-dialogue .header .product-name-block .productcode{color:hsl(345,10%,72%)}
+.pq-void #singles-picklist-dialogue .header .pieces-text{color:hsl(345,10%,72%)}
+.pq-void #singles-picklist-dialogue .process-picklist-focused-block{background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void #singles-picklist-dialogue .orderfields{border-top-color:hsl(345,10%,18%)}
+.pq-void #singles-picklist-dialogue .create-shipment-block .shipment-creation-timer{color:hsl(345,10%,72%)}
+.pq-void #singles-picklist-dialogue .create-shipment-block .shipment-creation-timer .timer{background-color:hsl(348,100%,50%)}
+.pq-void .search-input .search-input-field .clear-search-input-button{color:hsl(345,10%,72%)}
+.pq-void .picqer-thumbnail-list-item-background{border-color:hsl(345,10%,18%)}
+.pq-void .picqer-thumbnail-list-item:hover .picqer-thumbnail-list-item-background{border-color:hsl(348,100%,52%)}
+.pq-void .scan-feedback{background-color:hsla(345,15%,4%,0.9)}
+.pq-void .scan-feedback .scan-feedback-success::before{color:hsl(160,90%,64%)}
+.pq-void .scan-feedback .scan-feedback-error::before{color:hsl(0,75%,64%)}
+.pq-void .scan-feedback .scan-feedback-warn::before{color:hsl(30,90%,64%)}
+.pq-void .livesearch-component .results{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .livesearch-component .results .no-results{color:hsl(345,10%,72%)}
+.pq-void .livesearch-component .results .result{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .livesearch-component .results .result.highlighted{background-color:hsl(348,100%,50%)}
+.pq-void .livesearch-component .results .result.highlighted span.query-mark{color:hsl(345,10%,92%)}
+.pq-void .livesearch-component .results .result span.query-mark{background-color:hsl(29,38%,13%)}
+.pq-void .comment-card .comment-list.comment-list-divided .comment:not(:last-child){border-bottom-color:hsl(345,10%,18%)}
+.pq-void .comment-editor .comment-form .comment-textarea-container{border-color:hsl(345,10%,18%)}
+.pq-void .comment-editor .comment-form .comment-textarea-container:focus-within{border-color:hsl(348,100%,52%);box-shadow:hsl(348,100%,52%) 0px 0px 0px 1px}
+.pq-void .comment-editor .comment-form .comment-textarea-container .comment-editor-actions .comment-visibility-option label{color:hsl(345,10%,60%)}
+.pq-void .comment-editor .comment-form .mention-dropdown-toggle .highlight{color:hsl(345,10%,92%);background-color:hsl(345,8%,13%)}
+.pq-void .comment-editor .comment-form-footer{border-top-color:hsl(345,10%,18%)}
+@media (hover: hover){
+.pq-void .comment:hover{background-color:hsl(345,10%,6%)}
+}
+.pq-void .comment--unread{background-color:hsl(220,38%,13%);box-shadow:hsl(348,100%,52%) 4px 0px 0px inset}
+.pq-void .comment .comment-visibility{color:hsl(345,10%,60%)}
+.pq-void .comment .comment-avatar-content-wrapper .comment-avatar .comment-avatar-placeholder{color:hsl(345,10%,72%);background-color:hsl(345,8%,13%)}
+.pq-void .comment .comment-avatar-content-wrapper .comment-content .comment-header .comment-date{color:hsl(345,10%,60%)}
+.pq-void .comment .comment-avatar-content-wrapper .comment-content .comment-header .comment-visible-fulfilment{color:hsl(345,10%,60%)}
+.pq-void .comment .comment-avatar-content-wrapper .comment-content .comment-source{color:hsl(345,10%,60%)}
+.pq-void .comment .comment-avatar-content-wrapper .comment-content .comment-body{color:hsl(345,10%,72%)}
+.pq-void .comment .comment-avatar-content-wrapper .comment-content .comment-body .comment-mention[data-mention-type="user"],.pq-void .comment .comment-avatar-content-wrapper .comment-content .comment-body .comment-mention[data-mention-type="fulfilment-customer"],.pq-void .comment .comment-avatar-content-wrapper .comment-content .comment-body .comment-mention[data-mention-type="company"]{color:hsl(350,100%,68%);background-color:hsl(220,38%,13%)}
+.pq-void .comment-reactions__reaction{color:hsl(345,10%,72%);background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .comment-reactions__reaction:is(button):hover{background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void .comment-reactions__reaction--own,.pq-void .comment-reactions__reaction--own:is(button):hover{color:hsl(350,100%,68%);background-color:hsl(212,38%,13%);border-color:hsl(348,100%,52%)}
+.pq-void .comment-images__link{background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void .comment-images__link:focus-visible{outline-color:hsl(348,100%,52%)}
+.pq-void .comment-images__remove{color:hsl(345,10%,72%);background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .comment-images__remove:hover{background-color:hsl(345,10%,6%)}
+.pq-void .comment-images__remove:focus-visible{outline-color:hsl(348,100%,52%)}
+.pq-void .comment-image-dropzone__overlay{color:hsl(350,100%,68%);background-color:hsl(212,38%,13%);border-color:hsl(348,100%,52%)}
+.pq-void .comment-reacted-to__quote{color:hsl(345,10%,60%)}
+.pq-void .comment-section .add-comment:not(:last-child){border-bottom-color:hsl(345,10%,18%)}
+.pq-void .comment-section .add-comment__form-footer{border-top-color:hsl(345,10%,18%)}
+.pq-void .comment-section .add-comment__textarea-container{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .comment-section .add-comment__textarea{color:hsl(345,10%,92%)}
+.pq-void .comment-section .add-comment__checkbox label{color:hsl(345,10%,60%)}
+.pq-void .comment-section .add-comment.is-focused .add-comment__textarea-container{border-color:hsl(348,100%,52%);box-shadow:hsl(348,100%,52%) 0px 0px 0px 1px}
+.pq-void .comment-section .comments__comment{border-top-color:hsl(345,10%,18%)}
+.pq-void .comment-section .comments__comment__source{color:hsl(345,10%,60%)}
+.pq-void .comment-section .comments__comment__body{color:hsl(345,10%,72%)}
+.pq-void .comment-section .comments__comment__date{color:hsl(345,10%,60%)}
+.pq-void .comment-section .comments__comment__mention{color:hsl(350,100%,68%);background-color:hsl(220,38%,13%)}
+.pq-void .comment-section .comments__comment--unread{background-color:hsl(220,38%,13%);box-shadow:hsl(348,100%,52%) 4px 0px 0px inset}
+.pq-void .kpi + .kpi{border-left-color:hsl(345,10%,18%)}
+.pq-void .kpi-metric a{color:hsl(345,10%,92%)}
+.pq-void .kpi-metric a:hover{color:hsl(350,100%,68%)}
+.pq-void .kpi-metric-title{color:hsl(345,10%,60%)}
+.pq-void .receipt-locations-list .reverted{color:hsl(0,75%,64%)}
+.pq-void .receipt-locations-list__detail{color:hsl(345,10%,60%)}
+.pq-void picqer-inline-editable-element > :hover,.pq-void picqer-inline-editable-element > :focus{border-color:hsl(345,10%,18%)}
+.pq-void picqer-inline-editable-element > ::after{color:hsl(345,10%,60%)}
+.pq-void .assignee-changer__button:hover,.pq-void .assignee-changer__button:focus-visible{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .assignee-changer__icon{color:hsl(345,10%,60%)}
+.pq-void input[type="checkbox"]:where([role="switch"]){background-color:hsl(345,8%,15%)}
+.pq-void input[type="checkbox"]:where([role="switch"])::before{background-color:hsl(345,8%,10%)}
+.pq-void input[type="checkbox"]:where([role="switch"]):disabled::before{background-color:hsl(345,10%,6%)}
+.pq-void input[type="checkbox"]:where([role="switch"]):focus-visible{outline-color:hsl(348,100%,52%)}
+.pq-void picqer-copy-button .copy-button{color:hsl(345,10%,60%)}
+.pq-void picqer-copy-button .copy-button:hover,.pq-void picqer-copy-button .copy-button:focus-visible{color:hsl(345,10%,92%)}
+.pq-void picqer-copy-text:hover{color:hsl(350,100%,68%)}
+.pq-void picqer-copy-text:focus-visible{outline-color:hsl(348,100%,52%)}
+.pq-void picqer-popover.copy-tooltip{background-color:hsl(345,15%,4%)}
+.pq-void picqer-popover.copy-tooltip .arrow::before{background-color:hsl(345,15%,4%)}
+.pq-void .css-assistant__intro{color:hsl(345,10%,60%)}
+.pq-void .css-assistant__message--user{background-color:hsl(212,38%,13%)}
+.pq-void .css-assistant__message--assistant{background-color:hsl(345,8%,13%)}
+.pq-void .css-assistant__message--loading{color:hsl(345,10%,60%)}
+.pq-void .css-assistant__message--undo{color:hsl(345,10%,60%)}
+.pq-void .css-assistant__error{color:hsl(0,65%,64%)}
+.pq-void .css-assistant__unsaved{color:hsl(345,10%,60%)}
+.pq-void .css-assistant__preview{border-left-color:hsl(345,10%,18%)}
+.pq-void .css-assistant__frame{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void picqer-product-lot{color:hsl(345,10%,72%);border-color:hsl(345,10%,18%)}
+.pq-void picqer-product-lot .product-lot__link:hover{color:hsl(350,100%,68%)}
+.pq-void picqer-product-lot .product-lot__link:focus-visible{outline-color:hsl(348,100%,52%)}
+.pq-void picqer-product-lot .product-lot__segment--expired{color:hsl(0,65%,64%)}
+.pq-void picqer-product-lot .product-lot__mark,.pq-void picqer-product-lot .product-lot__icon{color:hsl(345,10%,60%)}
+.pq-void .filter .filter-menu{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .filter .filter-menu__section{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .filter-dropdown__menu{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .filter-dropdown__category,.pq-void .filter-dropdown__actions{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .experimental-feature-list__item + .experimental-feature-list__item{border-top-color:hsl(345,10%,18%)}
+.pq-void .experimental-feature-list__item__title{color:hsl(345,10%,92%)}
+.pq-void .experimental-feature-list__item__description{color:hsl(345,10%,72%)}
+.pq-void .key-value-pair .key{color:hsl(345,10%,60%)}
+.pq-void .key-value-pair .value{color:hsl(345,10%,92%)}
+.pq-void .index-list__item + .index-list__item{border-top-color:hsl(345,10%,18%)}
+.pq-void .index-list__item__title{color:hsl(345,10%,92%)}
+.pq-void .index-list__item__properties,.pq-void .index-list__item__timestamp{color:hsl(345,10%,72%)}
+.pq-void .index-list__item__related-count{color:hsl(345,10%,60%)}
+.pq-void .object-list--divided .object-list__item + .object-list__item,.pq-void .object-list--divided .object-list__item-slot + .object-list__item-slot{border-top-color:hsl(345,10%,18%)}
+.pq-void button.object-list__item:hover::before,.pq-void button.object-list__item:focus-visible::before{background-color:hsl(345,10%,6%)}
+.pq-void .object-list__item__label{color:hsl(345,10%,92%)}
+.pq-void .object-list__item__detail,.pq-void .object-list__item__metadata{color:hsl(345,10%,72%)}
+.pq-void .object-list__item__secondary-detail{color:hsl(345,10%,60%)}
+.pq-void .object-list__item__product-fields{color:hsl(345,10%,60%)}
+.pq-void .object-list__item__checkbox{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .object-list__item--receivable__highlight{background-color:hsl(220,38%,13%)}
+.pq-void .object-list__item--receivable__highlight-transition{background-color:hsl(345,8%,10%)}
+.pq-void .object-list__item--receivable__title--suffix{color:hsl(345,10%,72%)}
+.pq-void .object-list__item--receivable__field--title{color:hsl(345,10%,72%)}
+.pq-void .object-list__item--receivable__detail{color:hsl(345,10%,60%)}
+.pq-void .object-list__item--receivable__counter{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .object-list__item--receivable__counter--new{background-color:hsl(348,100%,50%);border-color:hsl(348,100%,52%)}
+.pq-void .order-product-list__item__amount__warning__popover{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .stack--divided:not(.stack--vertical) > * + *{border-left-color:hsl(345,10%,18%)}
+.pq-void .stack--vertical.stack--divided > * + *{border-top-color:hsl(345,10%,18%)}
+.pq-void .stock-history-list__item + .stock-history-list__item{border-top-color:hsl(345,10%,18%)}
+.pq-void .stock-history-list__item__title{color:hsl(345,10%,92%)}
+.pq-void .stock-history-list__item__properties{color:hsl(345,10%,72%)}
+.pq-void .thumbnail,.pq-void .thumbnail-picklist-alias{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void a:visited .thumbnail,.pq-void a:visited .thumbnail-picklist-alias{border-color:hsl(345,10%,18%)}
+.pq-void .thumbnail-picklist-alias{background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void .config-categories .config-category .icon{color:hsl(350,100%,68%);background-color:hsl(220,38%,13%)}
+.pq-void .config-categories .config-category .description{color:hsl(345,10%,72%)}
+.pq-void .rule-conditions .existing-condition .unknown-order-field{color:hsl(0,75%,64%)}
+.pq-void .rule-conditions .add-new-condition-form,.pq-void .rule-actions .add-new-action-form{background-color:hsl(345,8%,13%)}
+.pq-void .sender-domain-verified-label{color:hsl(160,90%,64%)}
+.pq-void .sender-domain-unverified-label{color:hsl(0,75%,64%)}
+.pq-void .form-control-description.sender-domain-verified{color:hsl(160,90%,64%)}
+.pq-void .form-control-description.sender-domain-unverified{color:hsl(0,75%,64%)}
+.pq-void .ignored-productcodes .ignored-productcodes-summary{color:hsl(345,10%,72%)}
+.pq-void .advanced-settings summary .advanced-settings-toggle{color:hsl(350,100%,68%)}
+.pq-void .data-processing-addendum-preview{border-color:hsl(345,10%,18%)}
+.pq-void .rate-split-start__label{color:hsl(345,10%,72%)}
+.pq-void .integration-card__description{color:hsl(345,10%,60%)}
+.pq-void .rights-user-header{background-color:hsl(345,10%,6%)}
+.pq-void .rights-user-header .user-last-login{color:hsl(345,10%,72%)}
+.pq-void .user-rights-group .user-rights .user-right.user-right-denied .right-label{color:hsl(345,10%,60%)}
+.pq-void .user-rights-group .user-rights .user-right .user-right-icon.user-right-granted-icon{color:hsl(160,90%,64%)}
+.pq-void .user-rights-group .user-rights .user-right .user-right-icon.user-right-denied-icon{color:hsl(0,75%,64%)}
+.pq-void .rights-matrix__count{color:hsl(345,10%,72%)}
+.pq-void .rights-matrix__group-start{border-left-color:hsl(345,10%,18%)}
+.pq-void .rights-matrix__cell--changed{background-color:hsl(212,38%,13%)}
+.pq-void .rights-matrix-changes{color:hsl(345,10%,72%)}
+.pq-void .plan-list .plan{background-color:hsl(345,8%,10%);box-shadow:hsl(345,10%,18%) 0px 0px 0px 1px, rgba(21, 7, 38, 0.09) 0px 1px 4px 0px}
+.pq-void .plan-list .plan.plan-current{border-color:hsl(348,100%,52%)}
+.pq-void .plan-list .plan .plan-column-left .plan-included-orders{color:hsl(345,10%,60%)}
+.pq-void .plan-list .plan .plan-column-right .plan-prices .plan-price-per-extra-order{color:hsl(345,10%,60%)}
+.pq-void .card-plan-comparison .plan-comparison-table tr th,.pq-void .card-plan-comparison .plan-comparison-table tr td{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .container-row__amounts__reserved{color:hsl(345,10%,60%)}
+.pq-void .modal-container-move-all .stock-location[data-invalid]{color:hsl(0,65%,64%);background-color:hsl(0,38%,13%)}
+.pq-void .stock-levels-column .stock-levels-wrapper .stock-level-bar-container .stock-level-bar{background-color:hsl(345,8%,13%)}
+.pq-void .stock-levels-column .stock-levels-wrapper .stock-level-bar-container .stock-level-bar .stock-level{background-color:hsl(348,100%,50%)}
+.pq-void .stock-levels-column .stock-levels-wrapper .stock-level-bar-container .stock-level-bar-exceeded{background-color:hsl(345,8%,13%)}
+.pq-void .stock-levels-column .stock-levels-wrapper .stock-level-bar-container .stock-level-bar-exceeded.is-exceeded{background-color:hsl(348,100%,43%)}
+.pq-void .stock-levels-column .stock-levels-wrapper .stock-level-value-container .stock-level-value{background-color:hsl(345,8%,13%)}
+.pq-void .input-group-replenish-levels .expected-storage-time{color:hsl(345,10%,72%)}
+.pq-void .dashboard-bar-chart.empty{background-color:hsl(345,10%,6%)}
+.pq-void .dashboard-grid-mobile a{color:hsl(345,10%,92%)}
+.pq-void .chart-tooltip{color:hsl(345,10%,92%);background-color:hsl(345,8%,10%)}
+.pq-void .dashboard-stats .stats-widget .stats-grid .stat .figure{color:hsl(350,100%,68%)}
+.pq-void .dashboard-stats .stats-widget .stats-grid .stat .description{color:hsl(345,10%,72%)}
+.pq-void .layout-navigation .introduction a{background-color:hsl(250,38%,13%)}
+.pq-void .layout-navigation .introduction.active a{color:hsl(262,82%,64%)}
+.pq-void .welcome-path .welcome-path-line{stroke:hsl(345,10%,18%)}
+.pq-void .welcome-path .welcome-path-icon{background-color:hsl(345,8%,10%)}
+.pq-void .guide-step:has(+ .guide-step){border-left-color:hsl(345,10%,18%)}
+.pq-void .guide-step::before{background-color:hsl(345,8%,10%)}
+.pq-void .guide-step.guide-step--loading::after{border-color:rgb(127, 77, 255) hsl(345,10%,18%) hsl(345,10%,18%);border-bottom-color:hsl(345,10%,18%);border-left-color:hsl(345,10%,18%);border-right-color:hsl(345,10%,18%)}
+.pq-void .guide-step.guide-step--disabled::after{border-color:hsl(345,10%,18%)}
+.pq-void .introduction-steps li:not(.current) + li:not(.current){border-top-color:hsl(345,10%,18%)}
+.pq-void .introduction-steps li::before{color:hsl(345,10%,72%);border-color:hsl(345,10%,18%)}
+.pq-void .introduction-steps li.current{background-color:hsl(250,38%,13%)}
+.pq-void .introduction-steps li.current::before{color:hsl(260,90%,64%)}
+.pq-void .introduction-steps li .text p{color:hsl(345,10%,72%)}
+.pq-void .introduction-support-people img{border-color:hsl(345,10%,18%)}
+.pq-void .introduction-celebration-image i{color:hsl(262,82%,64%);background-color:hsl(345,8%,10%)}
+.pq-void .dimensions-seperator{color:hsl(345,10%,60%)}
+.pq-void #product-images-dropzone{background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void #product-images-dropzone.dz-drag-hover{background-color:hsl(345,8%,13%)}
+.pq-void #images ul li.product-image{border-color:hsl(345,10%,18%)}
+.pq-void .picklist-rule-done .picklist-column-pickbuttons .product-pick-status,.pq-void .picklist-line-done .product-pick-status{background-color:hsl(161,38%,13%)}
+.pq-void .unlimited-stock-divider{color:hsl(345,10%,60%)}
+.pq-void .pickup-point-data .pickup-point-data-item .key{color:hsl(345,10%,60%)}
+.pq-void .picklist-product-fields .picklist-product-field .title{color:hsl(345,10%,60%)}
+.pq-void .picklist-product-fields .picklist-product-field .title::after{color:hsl(345,10%,60%)}
+.pq-void .picklist-progressbar{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .picklist-progressbar .btn:disabled{color:hsl(345,10%,60%);border-color:hsl(345,10%,18%)}
+.pq-void .picklist-progressbar .btn.picklist-progressbar-divider{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .picklist-progressbar .btn.picklist-progressbar-divider i{color:hsl(345,10%,60%)}
+.pq-void .picklist-progressbar i.picklist-progressbar-done{color:hsl(160,90%,64%);background-color:hsl(345,8%,10%)}
+.pq-void .picqer-modal.shipment-modal .automatic-shipment-creation{color:hsl(345,10%,66%)}
+.pq-void .picqer-modal.shipment-modal .automatic-shipment-creation .timer{background-color:hsl(348,100%,50%)}
+.pq-void .shipment-cancelled{color:hsl(345,10%,58%)}
+.pq-void .picklist-assembled-products .assembled-product > .product-details{color:hsl(345,10%,66%)}
+.pq-void .picklist-assembled-products .child-products{border-color:hsl(345,10%,18%)}
+.pq-void .picklist-assembled-products .assembled-product + .assembled-product{border-top-color:hsl(345,10%,18%)}
+.pq-void .assembled-product .extra-product-details .picklist-product-field{color:hsl(345,10%,60%)}
+.pq-void .assembled-product .child-products{border-color:hsl(345,10%,18%)}
+.pq-void li.picklist-urgent-label{color:hsl(0,65%,64%)}
+.pq-void .picklist-container{background-color:hsl(345,8%,15%);border-color:hsl(345,10%,18%)}
+.pq-void .batch-picklists-table tr.picklist-closed td{background-color:hsl(161,38%,13%)}
+.pq-void .batch-picklists-table tr.picklist-closed .picklist-alias,.pq-void .batch-picklists-table tr.picklist-closed .picklist-done-icon{color:hsl(160,90%,64%)}
+.pq-void .batch-picklists-table .picklist-notes .picklist-notes-header{color:hsl(0,75%,64%)}
+.pq-void .picklist-part-of-batch{background-color:hsl(345,8%,13%)}
+.pq-void .picqer-modal.link-containers-modal .linking-progress{color:hsl(345,10%,66%)}
+.pq-void .picqer-modal.link-containers-modal .linkable-picklist .picklist-alias{background-color:hsl(345,6%,22%)}
+.pq-void #create-picklist-batch .preset-selector button:disabled .preset-picklists{color:hsl(345,10%,60%)}
+.pq-void #create-picklist-batch .preset-selector .preset-picklists{color:hsl(345,10%,72%)}
+.pq-void #create-picklist-batch .no-singles-found-hint{color:hsl(345,10%,72%)}
+.pq-void #create-picklist-batch .preview-figures .preview-figure{background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void #create-picklist-batch .preview-figures .preview-figure span.figure-title{color:hsl(345,10%,72%)}
+.pq-void .picklist-batch-presets-table__form{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .picklist-batch-presets-table__group{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .picklist-batch-presets-table__group-row:hover{background-color:hsl(345,10%,6%)}
+.pq-void .picklist-batch-presets-table__group-row--indent{border-top-color:hsl(345,10%,18%)}
+.pq-void .picklist-batch-presets-table__group-row--inactive{color:hsl(345,10%,60%)}
+.pq-void .picklist-batch-presets-table__group-row--inactive a{color:hsl(345,10%,60%)}
+.pq-void .picklist-batch-presets-table__preset-details{color:hsl(345,10%,60%)}
+.pq-void .picklist-batch-presets-table__fulfilment-customer,.pq-void .picklist-batch-presets-table__other-title,.pq-void .picklist-batch-presets-table__other-info{color:hsl(345,10%,60%)}
+.pq-void .one-line-order-summary{color:hsl(345,10%,72%)}
+.pq-void .order-rule-amounts{color:hsl(345,10%,72%)}
+.pq-void .order-rule-current-stock > tbody > tr > th{color:hsl(345,10%,60%)}
+.pq-void #order-create .product-row-name-wrapper .order-edit-product-add-description,.pq-void #order-edit .product-row-name-wrapper .order-edit-product-add-description{color:hsl(345,10%,60%)}
+.pq-void .customer-remarks{background-color:hsl(49,38%,13%);border-color:hsl(345,10%,18%)}
+.pq-void .customer-remarks h3{color:hsl(345,10%,72%)}
+.pq-void .picklist-shipments .shipment .front-line-icon{color:hsl(345,10%,60%)}
+.pq-void .return-status-update__comment{color:hsl(345,10%,72%)}
+.pq-void .return-status-update__meta-data{color:hsl(345,10%,60%)}
+.pq-void .unchangeable-return-product,.pq-void .unchangeable-replacement-product{color:hsl(345,10%,60%)}
+.pq-void .return-totals-vat{color:hsl(345,10%,60%)}
+.pq-void .return-receive-traceability__field .input-group-addon{color:hsl(345,10%,72%);border-color:hsl(345,10%,18%)}
+.pq-void .return-receive-traceability__field input{border-color:hsl(345,10%,18%)}
+.pq-void .conditions-for-subscription{color:hsl(345,10%,72%)}
+.pq-void #changeplan p{color:hsl(350,100%,68%)}
+.pq-void .default-account-chooseplan .description{color:hsl(160,90%,64%)}
+.pq-void .plans-overview .plan{border-color:hsl(345,10%,18%)}
+.pq-void .plans-overview .plan.plan-current{border-color:hsl(348,100%,52%)}
+.pq-void .plans-overview .plan h4{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .plans-overview .plan ul.features{color:hsl(345,10%,72%)}
+.pq-void .warehouse-name-movement-table{border-color:hsl(345,10%,18%)}
+.pq-void .movement-product{border-top-color:hsl(345,10%,18%)}
+.pq-void .movement-completed-history summary{color:hsl(350,100%,68%)}
+.pq-void .movement-completed-history .locations-list{background-color:hsl(345,8%,10%);box-shadow:hsl(345,10%,18%) 0px 0px 0px 1px, rgba(21, 7, 38, 0.09) 0px 1px 2px 0px}
+.pq-void .movement-completed-history .locations-list__direction{color:hsl(345,10%,60%)}
+.pq-void .movement-completed-history .locations-list__row{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .movement-completed-history .locations-list__row__amount{color:hsl(345,10%,60%)}
+@media (min-width: 768px){
+.pq-void .movement-completed-history .locations-list--fill-border .locations-list__row:last-child{border-bottom-color:hsl(345,10%,18%)}
+}
+.pq-void .movement-transit-card__visual{background-color:hsl(212,38%,13%)}
+.pq-void .movement-transit-card__icon{color:hsl(350,100%,68%)}
+.pq-void .movement-transit-card__icon::before,.pq-void .movement-transit-card__icon::after{background-color:hsl(212,38%,13%)}
+.pq-void .location-wizard .preview-locations-list{background-color:hsl(345,10%,6%)}
+.pq-void .location-wizard .locations-to-create .locations-to-create{border-left-color:hsl(345,10%,18%)}
+.pq-void .location-wizard .location-level-separator{background-color:hsl(345,10%,6%)}
+.pq-void .location-wizard .remove-level-link{color:hsl(0,75%,64%)}
+.pq-void #location-wizard-status .results-location-list{background-color:hsl(345,10%,6%)}
+.pq-void .purchase-order-total-warning{color:hsl(345,10%,72%)}
+.pq-void .purchaseorder-products .delivery-date{color:hsl(345,10%,72%)}
+.pq-void .purchaseorder-products .delivery-date-input{color:hsl(345,10%,72%);background-color:hsl(345,8%,10%)}
+.pq-void #purchaseorder-form .purchaseorder-products .delivery-date-bubble-trigger{color:hsl(345,10%,72%)}
+.pq-void #purchaseorder-form .purchaseorder-products .delivery-date-bubble-trigger i{color:hsl(345,10%,60%)}
+.pq-void #purchaseorder-form .purchaseorder-products td.product-amount .invalid-product-amount-warning{color:hsl(0,75%,64%)}
+.pq-void .product-delivery-date-bubble .clear-delivery-date a{color:hsl(345,10%,92%)}
+.pq-void .create-purchase-order-receipt .product-is-received{color:hsl(345,10%,72%);background-color:hsl(345,10%,6%)}
+.pq-void .create-purchase-order-receipt .product-is-received .product-image-column{background-color:hsl(345,8%,10%)}
+.pq-void .create-purchase-order-receipt .receiving-exact-expected-amount{background-color:hsl(161,38%,13%)}
+.pq-void .create-purchase-order-receipt .receiving-exact-expected-amount .product-image-column{background-color:hsl(345,8%,10%)}
+.pq-void .create-purchase-order-receipt .receiving-more-than-expected{background-color:hsl(29,38%,13%)}
+.pq-void .create-purchase-order-receipt .receiving-more-than-expected .product-image-column{background-color:hsl(345,8%,10%)}
+.pq-void .create-purchase-order-receipt .scan-highlight{background-color:hsl(28,38%,13%)}
+.pq-void .create-purchase-order-receipt .product-search .product-search-field .clear-product-search-button{color:hsl(345,10%,72%)}
+.pq-void .purchasing-tools .purchasing-tool .icon{color:hsl(350,100%,68%);background-color:hsl(220,38%,13%)}
+.pq-void .purchasing-tools .purchasing-tool .description{color:hsl(345,10%,72%)}
+.pq-void .delivery-date-passed{color:hsl(0,65%,64%)}
+.pq-void .purchase-advice-reason-icon.purchase-advice-reason-orderquantities{color:hsl(350,100%,68%)}
+.pq-void .purchase-advice-reason-icon.purchase-advice-reason-forecasting{color:hsl(160,90%,64%)}
+.pq-void .purchase-advice-reason-icon.purchase-advice-reason-levels{color:hsl(30,90%,64%)}
+.pq-void .purchase-advice-reason-icon.purchase-advice-reason-backorders{color:hsl(0,75%,64%)}
+.pq-void table.purchase-advice-table > thead > tr > th{background-color:hsl(345,8%,10%)}
+.pq-void .table-delivery-date-picker button{color:hsl(345,10%,60%)}
+.pq-void .table-delivery-date-picker:hover,.pq-void .table-delivery-date-picker:focus-within{border-color:hsl(345,10%,18%)}
+.pq-void .table-delivery-date-picker:has(input:focus-visible){border-color:hsl(348,100%,52%);box-shadow:rgba(0, 0, 0, 0.075) 0px 1px 1px inset, hsla(348,100%,52%,0.6) 0px 0px 0px 1px}
+.pq-void .user-message-list__item + .user-message-list__item{border-top-color:hsl(345,10%,18%)}
+.pq-void .user-message-list__item__description{color:hsl(345,10%,72%)}
+.pq-void .product-label{color:hsl(345,10%,92%);background-color:hsl(345,8%,15%)}
+.pq-void .container-banner{color:hsl(345,10%,72%);background-color:hsl(345,8%,10%);border-bottom-color:hsl(345,10%,18%)}
+.pq-void .container-banner__linked{background-color:hsl(212,38%,13%)}
+.pq-void .container-banner .btn,.pq-void .container-banner .btn i{color:hsl(350,100%,68%)}
+.pq-void .receipts-edit .product-row.scan-highlight{background-color:hsl(28,38%,13%)}
+.pq-void .receipts-edit .product-search .product-search-field .clear-product-search-button{color:hsl(345,10%,72%)}
+.pq-void .receipts-edit .receipt-product-completed{color:hsl(345,10%,72%);background-color:hsl(345,10%,6%)}
+.pq-void .receipts-edit .receipt-product-completed .product-image-column{background-color:hsl(345,8%,10%)}
+.pq-void .receipts-edit .receipt-product-received-exact{background-color:hsl(161,38%,13%)}
+.pq-void .receipts-edit .receipt-product-received-exact.scan-highlight.scan-highlight-transition{background-color:hsl(161,38%,13%)}
+.pq-void .receipts-edit .receipt-product-received-exact .product-image-column{background-color:hsl(345,8%,10%)}
+.pq-void .receipts-edit .receipt-product-received-more-than-expected{background-color:hsl(29,38%,13%)}
+.pq-void .receipts-edit .receipt-product-received-more-than-expected.scan-highlight.scan-highlight-transition{background-color:hsl(29,38%,13%)}
+.pq-void .receipts-edit .receipt-product-received-more-than-expected .product-image-column{background-color:hsl(345,8%,10%)}
+.pq-void .receipt-totals .receipt-total .title{color:hsl(345,10%,72%)}
+.pq-void .receipt-product-location-picker .receipt-product-location-picker-option input:checked + .receipt-product-location-picker-location{background-color:hsl(220,38%,13%);border-color:hsl(348,100%,52%)}
+.pq-void .receipt-product-location-picker .receipt-product-location-picker-option .receipt-product-location-picker-location{color:hsl(345,10%,92%)}
+.pq-void .receipt-product-location-picker .receipt-product-location-picker-option .receipt-product-location-picker-location:hover{background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void .receipt-product-location-picker .receipt-product-location-picker-option .receipt-product-location-picker-location .radio-button-icon-checked{color:hsl(350,100%,68%)}
+.pq-void .receipt-product-location-picker .receipt-product-location-picker-option .receipt-product-location-picker-location .radio-button-icon-unchecked{color:hsl(345,10%,72%)}
+.pq-void .scan-indicator{color:hsl(350,100%,68%)}
+.pq-void .staged-product__traceability-field .input-group-addon{color:hsl(345,10%,72%);border-color:hsl(345,10%,18%)}
+.pq-void .staged-product__traceability-field input{border-color:hsl(345,10%,18%)}
+@media (max-width: 767px){
+.pq-void .staged-product__chips > .stack__item .chip{border-color:hsl(345,10%,18%)}
+}
+.pq-void .search-bar-area{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .status-indicator{border-color:hsl(345,10%,18%)}
+.pq-void .status-indicator__progress{border-color:hsl(220,65%,45%)}
+.pq-void .status-indicator__new{background-color:hsl(220,65%,38%);border-color:hsl(220,65%,45%)}
+.pq-void .webshop-summary li.inactive{color:hsl(345,10%,60%)}
+.pq-void .quick-stock-change-form{background-color:hsl(345,8%,13%)}
+.pq-void .quick-stock-change-mutations .quick-stock-change-new-stock-table > tbody > tr > th{color:hsl(345,10%,72%)}
+.pq-void body.login-body{background-color:hsl(345,10%,6%)}
+.pq-void body.login-body .questions{color:hsl(345,10%,60%)}
+.pq-void .small-window{background-color:hsl(345,8%,10%)}
+.pq-void .small-window.login{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .small-window.login .content p{color:hsl(345,10%,72%)}
+.pq-void .small-window .social{color:hsl(345,10%,60%)}
+.pq-void .accounts-redirect-list{border-color:hsl(345,10%,18%)}
+.pq-void .accounts-redirect-list li{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .accounts-redirect-list li a{color:hsl(345,10%,92%)}
+.pq-void .accounts-redirect-list li a:hover{background-color:hsl(345,10%,6%)}
+.pq-void .product-import-match-field-preview span{color:hsl(345,10%,72%)}
+.pq-void .product-import-changed-field{color:hsl(345,10%,72%);border-color:hsl(345,10%,18%)}
+.pq-void .deactivation-fulfilment-customer .deactivation-fulfilment-customer-complete i{color:hsl(160,90%,64%)}
+.pq-void select.process-backorders-warehouse-select:hover{background-color:hsl(345,10%,6%);border-color:hsl(345,10%,18%)}
+.pq-void .stock-count-metrics-grid__label{color:hsl(345,10%,60%)}
+.pq-void .stock-locations-preview .preview-list{background-color:hsl(345,10%,6%)}
+.pq-void .design-system .status-dot--future{background-color:hsl(216,65%,38%)}
+.pq-void .design-system .ds-navigation-collapsible summary{color:hsl(345,10%,60%)}
+.pq-void .design-system .ds-navigation-collapsible summary:hover{color:hsl(345,10%,72%);background-color:hsl(345,8%,15%)}
+.pq-void .design-system .ds-navigation-collapsible .menu-classic a:not(.active){color:hsl(345,10%,72%)}
+.pq-void .design-system .status-badge--latest{color:hsl(162,90%,64%);background-color:hsl(150,38%,13%)}
+.pq-void .design-system .status-badge--in-progress{color:hsl(23,90%,64%);background-color:hsl(39,38%,13%)}
+.pq-void .design-system .status-badge--future{color:hsl(223,90%,72%);background-color:hsl(217,38%,13%)}
+.pq-void .design-system .status-badge--deprecated{color:hsl(0,65%,64%);background-color:hsl(0,38%,13%)}
+.pq-void .design-system .ds-page-intro__title{color:hsl(345,10%,92%)}
+.pq-void .design-system .ds-page-intro__lead{color:hsl(345,10%,72%)}
+.pq-void .design-system .ds-section + .ds-section{border-top-color:hsl(345,10%,18%)}
+.pq-void .design-system .ds-section__title{color:hsl(345,10%,92%)}
+.pq-void .design-system .ds-section__content > h3{color:hsl(345,10%,92%)}
+.pq-void .design-system .ds-section__content > p{color:hsl(345,10%,72%)}
+.pq-void .design-system .ds-section__content > ul,.pq-void .design-system .ds-section__content > ol{color:hsl(345,10%,72%)}
+.pq-void .design-system .ds-heading-link{color:hsl(345,10%,60%)}
+.pq-void .design-system .ds-heading-link:hover,.pq-void .design-system .ds-heading-link:focus-visible{color:hsl(345,10%,92%)}
+.pq-void .design-system .ds-page-shell{border-color:hsl(345,10%,18%)}
+.pq-void .design-system .ds-page-shell__header{background-color:hsl(345,10%,6%)}
+.pq-void .design-system .ds-page-shell__body{background-color:hsl(345,10%,6%)}
+.pq-void .design-system .ds-page-shell__card{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .design-system .ds-page-shell__skeleton{background-color:hsl(345,8%,15%)}
+.pq-void .design-system .ds-when-to-use ul li{color:hsl(345,10%,72%)}
+.pq-void .design-system .ds-status-color-grid__card{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .design-system .ds-status-color-grid__meaning{color:hsl(345,10%,72%)}
+.pq-void .design-system .ds-status-color-grid__list li + li{border-top-color:hsl(345,10%,18%)}
+.pq-void .design-system .ds-status-color-grid__entity{color:hsl(345,10%,72%)}
+.pq-void .design-system .ds-image-do-dont__label--do{color:hsl(159,81%,64%)}
+.pq-void .design-system .ds-image-do-dont__label--dont{color:hsl(0,75%,64%)}
+.pq-void .design-system .ds-image-do-dont__caption{color:hsl(345,10%,72%)}
+.pq-void .design-system .image-caption li{color:hsl(345,10%,72%)}
+.pq-void .design-system .image-caption li strong{color:hsl(345,10%,92%)}
+.pq-void .design-system .ds-image-text__content h3{color:hsl(345,10%,92%)}
+.pq-void .design-system .ds-image-text__content p{color:hsl(345,10%,72%)}
+.pq-void .design-system .ds-image-text__content ul,.pq-void .design-system .ds-image-text__content ol{color:hsl(345,10%,72%)}
+.pq-void .design-system .lead{color:hsl(345,10%,72%)}
+.pq-void .design-system .ds-content > p{color:hsl(345,10%,72%)}
+.pq-void .design-system .ds-page-example{background-color:hsl(345,8%,13%);border-color:hsl(345,10%,18%)}
+.pq-void .design-system .ds-page-content-example__block{background-color:hsl(345,8%,10%);border-color:hsl(345,10%,18%)}
+.pq-void .design-system .ds-code-collapsible__toggle{color:hsl(345,10%,58%);background-color:hsl(345,15%,4%)}
+.pq-void .design-system .ds-code-collapsible__toggle:hover{color:hsl(345,10%,58%)}
+.pq-void .design-system .hljs{color:hsl(345,10%,58%);background-color:hsl(345,15%,4%)}
+.pq-void .design-system .hljs-keyword,.pq-void .design-system .hljs-literal,.pq-void .design-system .hljs-name,.pq-void .design-system .hljs-symbol{color:hsl(350,100%,68%)}
+.pq-void .design-system .hljs-link{color:hsl(350,100%,68%)}
+.pq-void .design-system .hljs-built_in,.pq-void .design-system .hljs-type{color:hsl(168,53%,64%)}
+.pq-void .design-system .hljs-class,.pq-void .design-system .hljs-number{color:hsl(96,39%,74%)}
+.pq-void .design-system .hljs-meta .hljs-string,.pq-void .design-system .hljs-string{color:hsl(18,50%,68%)}
+.pq-void .design-system .hljs-regexp,.pq-void .design-system .hljs-template-tag{color:hsl(18,50%,64%)}
+.pq-void .design-system .hljs-formula,.pq-void .design-system .hljs-function,.pq-void .design-system .hljs-params,.pq-void .design-system .hljs-subst,.pq-void .design-system .hljs-title{color:hsl(345,10%,58%)}
+.pq-void .design-system .hljs-comment,.pq-void .design-system .hljs-quote{color:hsl(112,38%,64%)}
+.pq-void .design-system .hljs-doctag{color:hsl(345,10%,64%)}
+.pq-void .design-system .hljs-meta,.pq-void .design-system .hljs-meta .hljs-keyword,.pq-void .design-system .hljs-tag{color:hsl(345,10%,58%)}
+.pq-void .design-system .hljs-template-variable,.pq-void .design-system .hljs-variable{color:hsl(295,46%,64%)}
+.pq-void .design-system .hljs-attr,.pq-void .design-system .hljs-attribute{color:hsl(350,100%,68%)}
+.pq-void .design-system .hljs-bullet,.pq-void .design-system .hljs-selector-attr,.pq-void .design-system .hljs-selector-class,.pq-void .design-system .hljs-selector-id,.pq-void .design-system .hljs-selector-pseudo,.pq-void .design-system .hljs-selector-tag{color:hsl(41,53%,67%)}
+.pq-void .design-system .hljs-addition{background-color:hsl(345,15%,4%)}
+.pq-void .design-system .hljs-deletion{background-color:hsl(345,15%,4%)}
+.pq-void .visual-warehouse-container .aisle .end-location{background-color:hsl(345,8%,15%)}
+.pq-void .visual-warehouse-container .aisle .end-location.products-linked.no-stock{background-color:hsl(348,100%,50%)}
+.pq-void .visual-warehouse-container .location-bulk-label{background-color:hsl(345,6%,44%)}
+.pq-void .visual-warehouse-container .end-location{background-color:hsl(345,8%,13%);border-color:hsl(345,10%,18%)}
+.pq-void .visual-warehouse-container .end-location.no-products-linked{background-color:hsl(120,38%,13%)}
+.pq-void .visual-warehouse-container .end-location.products-linked.no-stock{background-color:hsl(206,38%,13%);border-color:hsl(348,100%,52%)}
+.pq-void .visual-warehouse-container .end-location.products-linked.no-stock .location-bulk-label{background-color:hsl(206,65%,38%)}
+.pq-void .visual-warehouse-container .location-name{color:hsl(345,10%,92%)}
+.pq-void .visual-warehouse-container .warehouse .location-name--aisle i{color:hsl(345,10%,60%)}
+.pq-void .visual-warehouse-container .products .stock-count{background-color:hsl(345,8%,10%);box-shadow:hsl(345,10%,18%) 0px 0px 0px 1px}
+.pq-void .visual-warehouse-container .aisle__placeholder .skeleton__rack{background-color:hsl(345,8%,15%)}
+.pq-void .visual-warehouse-container .aisle__placeholder .skeleton__label{background-color:hsl(345,8%,17%)}
+.pq-void .tower-user-activity-list .user-row-wrapper:hover{background-color:hsl(345,10%,6%)}
+.pq-void .tower-user-activity-list .user-row.highlight{background-color:hsl(212,38%,13%)}
+.pq-void .locations-grid th,.pq-void .locations-grid td{border-color:hsl(345,10%,18%)}
+.pq-void .locations-grid td.locations-grid-no-location{background-color:hsl(345,10%,6%)}
+.pq-void .locations-grid .location h3{background-color:hsl(345,10%,6%)}
+.pq-void .locations-grid .location h3 a{color:hsl(345,10%,72%)}
+.pq-void .locations-grid .location-available{color:hsl(160,90%,64%)}
+.pq-void .locations-grid .products .product:not(:first-child){border-top-color:hsl(345,10%,18%)}
+.pq-void .locations-grid .products .product .name{color:hsl(345,10%,72%)}
+.pq-void .locations-grid .products .product .stock{color:hsl(345,10%,72%)}
+.pq-void .location-label .location-is-bulk{color:hsl(345,10%,72%)}
+.pq-void a.location-label:hover{color:hsl(345,10%,92%)}
+.pq-void .location-is-bulk{color:hsl(345,10%,60%)}
+.pq-void .location-note{color:hsl(345,10%,60%)}
+.pq-void .location-grid__location{border-color:hsl(345,10%,18%)}
+.pq-void .location-grid__location--available{background-color:hsl(161,38%,13%)}
+.pq-void .location-grid__location--no-stock{background-color:hsl(29,38%,13%)}
+.pq-void .location-grid__location--no-location{background-color:hsl(345,10%,6%)}
+.pq-void .location-grid__location-name a{color:hsl(345,10%,92%)}
+.pq-void .card--fullscreen .location-grid__products .icon-label{border-color:hsl(345,10%,18%)}
+.pq-void .today-report .today-report-date{color:hsl(345,10%,72%)}
+.pq-void .today-report-block h2{color:hsl(345,10%,72%)}
+.pq-void .today-report-block .figures .figure{background-color:hsl(345,8%,13%)}
+.pq-void .today-report-block .figures .figure .figure-title{color:hsl(345,10%,72%)}
+.pq-void .flatpickr-calendar{background-color:hsl(345,8%,10%)}
+.pq-void .flatpickr-calendar.multiMonth .flatpickr-days .dayContainer:nth-child(n+2) .flatpickr-day.inRange:nth-child(7n+1){box-shadow:hsl(345,10%,18%) -2px 0px 0px, hsl(345,10%,18%) 5px 0px 0px}
+.pq-void .flatpickr-calendar.hasTime .flatpickr-time{border-top-color:hsl(345,10%,18%)}
+.pq-void .flatpickr-calendar.arrowTop::before{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .flatpickr-calendar.arrowTop::after{border-bottom-color:hsl(345,10%,18%)}
+.pq-void .flatpickr-calendar.arrowBottom::before{border-top-color:hsl(345,10%,18%)}
+.pq-void .flatpickr-calendar.arrowBottom::after{border-top-color:hsl(345,10%,18%)}
+.pq-void .flatpickr-months .flatpickr-month{color:hsl(345,10%,72%);fill:hsl(345,10%,72%)}
+.pq-void .flatpickr-months .flatpickr-prev-month,.pq-void .flatpickr-months .flatpickr-next-month{color:hsl(345,10%,60%);fill:hsl(345,10%,60%)}
+.pq-void .flatpickr-months .flatpickr-prev-month:hover,.pq-void .flatpickr-months .flatpickr-next-month:hover{background-color:hsl(345,8%,13%)}
+.pq-void .flatpickr-months .flatpickr-prev-month:hover svg,.pq-void .flatpickr-months .flatpickr-next-month:hover svg{fill:hsl(345,10%,92%)}
+.pq-void .numInputWrapper span{border-color:hsla(345,12%,10%,0.15)}
+.pq-void .numInputWrapper span:hover{background-color:hsla(0,0%,100%,0.14)}
+.pq-void .numInputWrapper span.arrowUp::after{border-bottom-color:hsla(345,12%,10%,0.6)}
+.pq-void .numInputWrapper span.arrowDown::after{border-top-color:hsla(345,12%,10%,0.6)}
+.pq-void .numInputWrapper span svg path{fill:hsla(345,10%,79%,0.5)}
+.pq-void .numInputWrapper:hover{background-color:hsla(0,0%,100%,0.08)}
+.pq-void .flatpickr-current-month span.cur-month:hover{background-color:hsla(0,0%,100%,0.08)}
+.pq-void .flatpickr-current-month .numInputWrapper span.arrowUp::after{border-bottom-color:hsl(345,12%,10%)}
+.pq-void .flatpickr-current-month .numInputWrapper span.arrowDown::after{border-top-color:hsl(345,12%,10%)}
+.pq-void .flatpickr-current-month input.cur-year[disabled],.pq-void .flatpickr-current-month input.cur-year[disabled]:hover{color:hsl(345,10%,72%)}
+.pq-void .flatpickr-current-month .flatpickr-monthDropdown-months:hover{background-color:hsla(0,0%,100%,0.08)}
+.pq-void span.flatpickr-weekday{color:hsl(345,10%,92%)}
+.pq-void .dayContainer + .dayContainer{box-shadow:hsl(345,10%,18%) -1px 0px 0px}
+.pq-void .flatpickr-day{color:hsl(345,10%,77%)}
+.pq-void .flatpickr-day.inRange,.pq-void .flatpickr-day.prevMonthDay.inRange,.pq-void .flatpickr-day.nextMonthDay.inRange,.pq-void .flatpickr-day.today.inRange,.pq-void .flatpickr-day.prevMonthDay.today.inRange,.pq-void .flatpickr-day.nextMonthDay.today.inRange,.pq-void .flatpickr-day:hover,.pq-void .flatpickr-day.prevMonthDay:hover,.pq-void .flatpickr-day.nextMonthDay:hover,.pq-void .flatpickr-day:focus,.pq-void .flatpickr-day.prevMonthDay:focus,.pq-void .flatpickr-day.nextMonthDay:focus{background-color:hsl(345,8%,13%);border-color:hsl(345,10%,18%)}
+.pq-void .flatpickr-day.today{color:hsl(350,100%,68%)}
+.pq-void .flatpickr-day.today::after{background-color:hsl(348,100%,50%)}
+.pq-void .flatpickr-day.selected,.pq-void .flatpickr-day.startRange,.pq-void .flatpickr-day.endRange,.pq-void .flatpickr-day.selected.inRange,.pq-void .flatpickr-day.startRange.inRange,.pq-void .flatpickr-day.endRange.inRange,.pq-void .flatpickr-day.selected:focus,.pq-void .flatpickr-day.startRange:focus,.pq-void .flatpickr-day.endRange:focus,.pq-void .flatpickr-day.selected:hover,.pq-void .flatpickr-day.startRange:hover,.pq-void .flatpickr-day.endRange:hover,.pq-void .flatpickr-day.selected.prevMonthDay,.pq-void .flatpickr-day.startRange.prevMonthDay,.pq-void .flatpickr-day.endRange.prevMonthDay,.pq-void .flatpickr-day.selected.nextMonthDay,.pq-void .flatpickr-day.startRange.nextMonthDay,.pq-void .flatpickr-day.endRange.nextMonthDay{background-color:hsl(348,100%,50%);border-color:hsl(348,100%,52%)}
+.pq-void .flatpickr-day.selected.startRange + .endRange:not(:nth-child(7n+1)),.pq-void .flatpickr-day.startRange.startRange + .endRange:not(:nth-child(7n+1)),.pq-void .flatpickr-day.endRange.startRange + .endRange:not(:nth-child(7n+1)){box-shadow:hsl(348,100%,52%) -10px 0px 0px}
+.pq-void .flatpickr-day.inRange{box-shadow:hsl(345,10%,18%) -5px 0px 0px, hsl(345,10%,18%) 5px 0px 0px}
+.pq-void .flatpickr-day.flatpickr-disabled,.pq-void .flatpickr-day.flatpickr-disabled:hover,.pq-void .flatpickr-day.prevMonthDay,.pq-void .flatpickr-day.nextMonthDay,.pq-void .flatpickr-day.notAllowed,.pq-void .flatpickr-day.notAllowed.prevMonthDay,.pq-void .flatpickr-day.notAllowed.nextMonthDay{color:hsla(345,10%,81%,0.3);border-color:hsl(345,10%,18%)}
+.pq-void .flatpickr-day.flatpickr-disabled,.pq-void .flatpickr-day.flatpickr-disabled:hover{color:hsl(345,10%,60%)}
+.pq-void .flatpickr-day.week.selected{box-shadow:hsl(348,100%,52%) -5px 0px 0px, hsl(348,100%,52%) 5px 0px 0px}
+.pq-void .flatpickr-weekwrapper .flatpickr-weeks{box-shadow:hsl(345,10%,18%) 1px 0px 0px}
+.pq-void .flatpickr-weekwrapper span.flatpickr-day,.pq-void .flatpickr-weekwrapper span.flatpickr-day:hover{color:hsl(345,10%,72%)}
+.pq-void .flatpickr-time .numInputWrapper span.arrowUp::after{border-bottom-color:hsl(345,12%,10%)}
+.pq-void .flatpickr-time .numInputWrapper span.arrowDown::after{border-top-color:hsl(345,12%,10%)}
+.pq-void .flatpickr-time input{color:hsl(345,10%,77%)}
+.pq-void .flatpickr-time .flatpickr-time-separator,.pq-void .flatpickr-time .flatpickr-am-pm{color:hsl(345,10%,77%)}
+.pq-void .flatpickr-time input:hover,.pq-void .flatpickr-time .flatpickr-am-pm:hover,.pq-void .flatpickr-time input:focus,.pq-void .flatpickr-time .flatpickr-am-pm:focus{background-color:hsl(345,8%,13%)}
+.pq-void span.flatpickr-day.today:not(.selected),.pq-void span.flatpickr-day.prevMonthDay.today:not(.selected),.pq-void span.flatpickr-day.nextMonthDay.today:not(.selected){text-decoration-color:hsl(345,10%,58%)}
+.pq-void span.flatpickr-day.startRange,.pq-void span.flatpickr-day.prevMonthDay.startRange,.pq-void span.flatpickr-day.nextMonthDay.startRange,.pq-void span.flatpickr-day.endRange,.pq-void span.flatpickr-day.prevMonthDay.endRange,.pq-void span.flatpickr-day.nextMonthDay.endRange{border-color:hsl(348,100%,52%)}
