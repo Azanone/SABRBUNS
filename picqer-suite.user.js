@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.26
+// @version      3.27
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -244,7 +244,7 @@
       { k: 'excludeIds', label: 'Leave these user ids out, comma separated', type: 'list', def: [] },
     ]},
     { id: 'leaderboard', title: 'Leaderboard', hint: 'closed picklists in the last minutes · your rank bottom right · Ctrl+Alt+L = everyone', fields: [
-      { k: 'url', label: 'Middle stop (Cloudflare worker link, empty = every PC asks Picqer itself)', type: 'text', def: '' },
+      { k: 'url', label: 'Middle stop (Cloudflare worker link, empty = every PC asks Picqer itself)', type: 'text', def: 'https://sabrbuns.nitroxylazanone.workers.dev' },
       { k: 'windowMin', label: 'Count closed picklists of the last (min)', type: 'num', def: 15 },
       { k: 'pollSec', label: 'Check every (sec)', type: 'num', def: 60 },
       { k: 'warehouse', label: 'Only this warehouse (name or id, empty = all)', type: 'text', def: 'Bunsenstraat' },
@@ -4700,7 +4700,8 @@
   //  multi (2+ different products) = 2 points, single = 1.334. Lines with has_parts (a set) don't count, their parts do.
   //  With a middle stop (Cloudflare worker) Picqer gets asked once for everyone, else each PC asks itself
   //  (GET /picklists?status=closed&closed_after=…). 1 tab per PC asks, the other tabs read along.
-  //  per hour: 120+ blue · 100+ turquoise · 80+ dark green · 60+ green · 40+ orange · less red · #1 gold if 60+
+  //  colors (per 15 min): 30+ blue · 25+ turquoise · 20+ dark green · 15+ green · 10+ orange · less red · #1 gold if 15+
+  //  (= 120 / 100 / 80 / 60 / 40 an hour; with another window it scales)
   // =====================================================================
   function leaderboard() {
     const C = CFG.leaderboard || {};
@@ -4752,12 +4753,16 @@
       try {
         let people, whName = '';
         const URL_ = norm(String(C.url || '')).replace(/\/+$/, '');
+        let via = '';
         if (URL_) { // the middle stop asked Picqer for everyone
-          const r = await fetch(`${URL_}/leaderboard?min=${Math.round(WIN / 60000)}`, { credentials: 'omit', cache: 'no-store' });
-          const j = await r.json();
-          if (!r.ok || !j.people) throw new Error(j.err || `middle stop HTTP ${r.status}`);
-          people = j.people; whName = j.wh || '';
-        } else {
+          try {
+            const r = await fetch(`${URL_}/leaderboard?min=${Math.round(WIN / 60000)}`, { credentials: 'omit', cache: 'no-store' });
+            const j = await r.json();
+            if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
+            people = j.people; whName = j.wh || ''; via = 'middle stop';
+          } catch (e) { console.warn('[leaderboard] middle stop:', e.message, '· asking Picqer myself'); }
+        }
+        if (!people) {
           const w = await warehouse();
           whName = w && w.name;
           const rows = [];
@@ -4772,7 +4777,7 @@
         const list = people.filter((r) => !proxies.has(String(r.id)))
           .map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}`, n: r.picklists }))
           .sort((a2, b2) => b2.points - a2.points || b2.n - a2.n);
-        data = { at: Date.now(), win: WIN, wh: whName, list, err: '', via: URL_ ? 'middle stop' : 'Picqer' };
+        data = { at: Date.now(), win: WIN, wh: norm(whName || ''), list, err: '', via: via || 'Picqer' };
       } catch (e) {
         data = { ...(data || { list: [] }), at: Date.now(), err: e.message };
       }
@@ -4924,9 +4929,9 @@
         ? Array.from({ length: tier === 'gold' || tier === 'blue' ? 7 : 4 }, (_, i) => `<span class="lb-spark" style="left:${15 + i * 13}%;top:${30 + (i % 3) * 18}%;--dx:${(i % 2 ? 1 : -1) * (4 + i)}px;--dy:${-6 - i * 2}px;animation-delay:${i * 0.31}s"></span>`).join('') : '';
       box.innerHTML = `<span class="lb-glow"></span><div class="lb-card">${tier === 'gold' ? '<span class="lb-crown">👑</span>' : ''}${sparks}<span class="lb-shine"></span>
         <div class="lb-rank">${me ? '#' + me.rank : '–'}</div>
-        <div class="lb-txt"><span class="lb-tier">${TIER[tier]}</span>
-          <span class="lb-n"><b>${me ? me.ph : 0}</b> pts/h · ${me ? me.n : 0} closed</span>
-          <span class="lb-sub">${me ? (me.rank === 1 ? `top of ${list.length} 🔥 · last ${mins} min` : `${fmtPts(gap)} pts behind #1 · of ${list.length}`) : list.length ? `${list.length} on the board · close one to join` : 'nobody closed one yet'}</span>
+        <div class="lb-txt">
+          <span class="lb-n"><b>${me ? fmtPts(me.points) : 0}</b> pts · ${mins} min</span>
+          <span class="lb-sub">${me ? `${me.n} closed · ${me.rank === 1 ? `#1 of ${list.length}` : `${fmtPts(gap)} behind #1`}` : list.length ? `${list.length} on the board` : 'nobody closed one yet'}</span>
           <span class="lb-bar"><i style="width:${me ? Math.max(6, Math.round(me.f * 100)) : 4}%"></i></span></div></div>`;
       if (me && prevRank != null && me.rank !== prevRank) {
         const up = me.rank < prevRank;
@@ -4951,11 +4956,11 @@
       const mins = Math.round(WIN / 60000);
       const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
       ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard</h2>
-        <div class="lb-meta">points per hour · last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · checked ${at}${data && data.via ? ' via ' + data.via : ''}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
+        <div class="lb-meta">points · last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · checked ${at}${data && data.via ? ' via ' + data.via : ''}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
         ${list.length ? list.map((r, i) => `<div class="lb-row t-${r.tier}${r.id === String(ME.id) ? ' me' : ''}" style="animation-delay:${i * 0.05}s">
           <span class="fill" style="width:${Math.round(r.f * 100)}%;animation-delay:${0.2 + i * 0.05}s"></span>
-          <span class="r">#${r.rank}</span><span class="nm">${escHtml(r.name)}<small>${TIER[r.tier]} · ${r.n} closed · ${r.multis} multi · ${r.singles} single · ${fmtPts(r.points)} pts</small></span>
-          <span class="v">${r.ph}<small>pts/h</small></span></div>`).join('') : '<div class="lb-empty">Nobody closed a picklist in the last ' + mins + ' min</div>'}</div>`;
+          <span class="r">#${r.rank}</span><span class="nm">${escHtml(r.name)}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single</small></span>
+          <span class="v">${fmtPts(r.points)}<small>pts</small></span></div>`).join('') : '<div class="lb-empty">Nobody closed a picklist in the last ' + mins + ' min</div>'}</div>`;
     }
 
     document.addEventListener('keydown', (e) => {

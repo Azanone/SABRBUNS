@@ -18,7 +18,7 @@ const cors = (h = {}) => ({ 'Access-Control-Allow-Origin': '*', 'Access-Control-
 
 async function picqer(env, path) {
   const r = await fetch(`https://${env.PICQER_HOST}/api/v1${path}`, {
-    headers: { Authorization: 'Basic ' + btoa(`${env.PICQER_KEY}:`), Accept: 'application/json', 'User-Agent': 'SABR Picqer Suite leaderboard' },
+    headers: { Authorization: 'Basic ' + btoa(`${String(env.PICQER_KEY || '').trim()}:`), Accept: 'application/json', 'User-Agent': 'SABR Picqer Suite leaderboard' },
   });
   if (!r.ok) throw new Error(`Picqer HTTP ${r.status}`);
   return r.json();
