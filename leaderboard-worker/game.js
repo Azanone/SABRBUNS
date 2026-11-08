@@ -14,7 +14,7 @@ export const SKINS = [
   { id: 'sunset', name: 'Sunset', price: 1500 },
   { id: 'carbon', name: 'Carbon', price: 2500 },
   { id: 'aurora', name: 'Aurora', price: 4000 },
-  { id: 'voidescent', name: 'Voidescent', price: 6000, limit: 10 }, // only 10 people can own it
+  { id: 'voidescent', name: 'Voidescent', price: 50000, limit: 10 }, // only 10 people can own it
   { id: 'gold', name: 'Gold', price: 8000 },
   { id: 'crown', name: 'Crown', price: 15000 },
 ];

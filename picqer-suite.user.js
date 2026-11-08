@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.35
+// @version      3.36
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -16,6 +16,26 @@
   'use strict';
   if (window.__pqSuite) return;
   window.__pqSuite = true;
+
+  // SKIN FIRST (before anything else, document-start): the last skin this PC showed, exactly as it was,
+  // so the new page is drawn in the skin right away instead of white first. The real check comes later.
+  const EARLY_SKIN = (() => {
+    try {
+      const l = JSON.parse(localStorage.getItem('pqsuite_skin_last_v1') || 'null');
+      if (!l || !l.id || !l.base) return null;
+      const r = document.documentElement;
+      const put = (id, css) => { const st = document.createElement('style'); st.id = id; st.textContent = css; (document.head || r).appendChild(st); };
+      if (l.vars) {
+        r.classList.add('pq-dark');
+        if (l.cls) r.classList.add(l.cls);
+        for (const [k, v] of Object.entries(l.vars)) r.style.setProperty(k, v);
+        const d = JSON.parse(localStorage.getItem('pqsuite_dark_css_v1') || 'null');
+        put('pq-skin-dark', (d && d.css) || '');
+      }
+      put('pq-skin', l.base);
+      return l.id;
+    } catch (_) { return null; }
+  })();
 
   /* =========================================================================
    *  SHARED FILES in the GitHub repo (not in this file):
@@ -4795,7 +4815,7 @@
     sunset: { bg: 'linear-gradient(90deg,#7c2d12,#be185d)', accent: '#f97316' },
     carbon: { bg: 'repeating-linear-gradient(135deg,#141416 0 6px,#1c1c20 6px 12px)', accent: '#a1a1aa', dark: { th: 240, ah: 240, as: '6%', fx: 'line' } },
     aurora: { bg: 'radial-gradient(circle at 25% 20%,rgba(139,92,246,.45),transparent 50%),linear-gradient(90deg,#120f2e,#0b2a33 55%,#062a22)', accent: '#8b5cf6', dark: { th: 252, ah: 258, as: '90%', fx: 'full' } },
-    voidescent: { bg: 'radial-gradient(circle at 20% 30%,rgba(255,0,52,.35),transparent 45%),linear-gradient(90deg,#08080b,#1d040b)', accent: '#ff0034', dark: { th: 345, ah: 348, as: '100%', fx: 'full' } },
+    voidescent: { bg: 'radial-gradient(circle at 20% 30%,rgba(255,0,52,.35),transparent 45%),linear-gradient(90deg,#08080b,#1d040b)', accent: '#ff0034', dark: { th: 345, ah: 348, as: '100%', fx: 'full', stars: true } },
     gold: { bg: 'linear-gradient(90deg,#120e08,#2a1f0a)', accent: '#d4a017', line: '#fbbf24', dark: { th: 38, ah: 43, as: '81%', fx: 'line' } },
     crown: { bg: 'radial-gradient(circle at 18% 30%,rgba(251,191,36,.3),transparent 45%),linear-gradient(90deg,#120e08,#3f2d0c)', accent: '#d4a017', line: '#fbbf24', crown: true, dark: { th: 38, ah: 43, as: '81%', fx: 'full' } },
   };
@@ -4814,6 +4834,8 @@
     html.pq-dark body{background:hsl(var(--th),14%,4%);color:hsl(var(--th),10%,92%)}
     html.pq-dark .layout{background:hsl(var(--th),14%,4%)}
     html.pq-dark ::selection{background:var(--acc);color:#fff}
+    @view-transition{navigation:auto}
+    ::view-transition-old(root),::view-transition-new(root){animation-duration:.14s}
     html.pq-dark .layout-header{--header-background-color:#0a0a0e;background:var(--hbg) !important;color:#f4f4f6;position:relative;overflow:hidden;box-shadow:0 1px 0 ${ACC(45)},0 10px 30px -18px ${ACC(60)}}
     html.pq-dark .layout-header > *{position:relative;z-index:1}
     html.pq-dark .layout-header-logo img,html.pq-dark .layout-header-logo svg{filter:drop-shadow(0 0 6px ${ACC(55)})}
@@ -4844,6 +4866,50 @@
     @keyframes pqvSw{from{transform:translateX(-110%)}to{transform:translateX(440%)}}
     @keyframes pqvOrb{0%{transform:translateX(0);opacity:.55}50%{opacity:.9}100%{transform:translateX(520%);opacity:.5}}
     @media (prefers-reduced-motion:reduce){#pq-void-fx *{animation:none !important}}`;
+  // Voidescent: a starry sky behind Picqer. Stars = still pictures (no work for the PC), only a slow fade in/out
+  // of 2 layers (the graphics card does that, nothing gets redrawn). Cards stay solid so text stays readable.
+  const STAR = (x, y, s, c = '#fff') => `radial-gradient(${s}px ${s}px at ${x}% ${y}%,${c},transparent)`;
+  const starTile = (seed, n, big) => { let a = seed; const r = () => ((a = (a * 9301 + 49297) % 233280) / 233280); return Array.from({ length: n }, () => STAR((r() * 100).toFixed(1), (r() * 100).toFixed(1), big && r() > .7 ? 1.6 : 1, r() > .85 ? '#ff8099' : r() > .7 ? '#ffd6de' : '#fff')).join(','); };
+  const STARS_CSS = `
+    html.pq-starry body,html.pq-starry .layout{background:transparent !important}
+    html.pq-starry{background:radial-gradient(ellipse at 15% -10%,rgba(255,0,52,.16),transparent 55%),radial-gradient(ellipse at 100% 110%,rgba(120,0,40,.18),transparent 50%),hsl(345,20%,3%) !important}
+    html.pq-starry .layout-navigation{background:rgba(8,6,9,.55) !important}
+    #pq-stars{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;contain:strict}
+    #pq-stars i{position:absolute;inset:0;will-change:opacity}
+    #pq-stars .a{background-image:${starTile(7, 14, true)};background-size:420px 380px;opacity:.55;animation:pqStA 9s ease-in-out infinite alternate}
+    #pq-stars .b{background-image:${starTile(31, 10, false)};background-size:290px 330px;opacity:.35;animation:pqStB 13s ease-in-out infinite alternate}
+    #pq-stars .c{background-image:${starTile(97, 6, true)};background-size:610px 560px;opacity:.7}
+    @keyframes pqStA{from{opacity:.25}to{opacity:.7}}
+    @keyframes pqStB{from{opacity:.55}to{opacity:.15}}
+    #pq-stars.still i{animation:none !important}
+    @media (prefers-reduced-motion:reduce){#pq-stars i{animation:none !important}}`;
+  function starsOn() {
+    if (!document.documentElement.classList.contains('pq-starry') || document.getElementById('pq-stars') || !document.body) return !!document.getElementById('pq-stars');
+    const d = document.createElement('div');
+    d.id = 'pq-stars';
+    d.innerHTML = '<i class="c"></i><i class="a"></i><i class="b"></i>';
+    if (lsGet('pqsuite_stars_still_v1', false)) d.classList.add('still');
+    document.body.prepend(d);
+    starsLagCheck(d);
+    return true;
+  }
+  // does this PC keep up? Measure ~1.5 s of frames a bit after the page is there.
+  // Under ~40 fps with the stars twinkling: they stand still from now on (still stars cost nothing).
+  function starsLagCheck(d) {
+    if (d.classList.contains('still') || document.hidden) return;
+    setTimeout(() => {
+      if (document.hidden || !d.isConnected) return;
+      let n = 0, worst = 0, last = performance.now();
+      const t0 = last;
+      const f = (t) => {
+        n++; worst = Math.max(worst, t - last); last = t;
+        if (t - t0 < 1500) return requestAnimationFrame(f);
+        const fps = (n * 1000) / (t - t0);
+        if (fps < 40) { d.classList.add('still'); lsSet('pqsuite_stars_still_v1', true); console.info(`[suite] stars stand still on this PC (${Math.round(fps)} fps)`); }
+      };
+      requestAnimationFrame(f);
+    }, 4000);
+  }
   function darkCss() {
     const c = lsGet(DARK_LS, null);
     if (!c || Date.now() - c.at > 86400000) {
@@ -4860,6 +4926,7 @@
     return c ? c.css : '';
   }
   function skinFx(kind) {
+    starsOn();
     const h = document.querySelector('.layout-header');
     if (!h || h.querySelector('#pq-void-fx')) return !!h;
     const fx = document.createElement('div');
@@ -4870,36 +4937,39 @@
   }
   const SKIN_VARS = ['--th', '--ah', '--as', '--acc', '--on-acc', '--hbg'];
   const LS_SKIN_LAST = 'pqsuite_skin_last_v1'; // the skin this PC showed last: put on right away on the next page (no white flash)
-  let skinNow;
+  let skinNow = EARLY_SKIN;
   function applySkin(id) {
     id = SKIN_LOOK[id] ? id : null;
     if (skinNow === id) { if (id && SKIN_LOOK[id].dark) skinFx(SKIN_LOOK[id].dark.fx); return; }
     skinNow = id;
-    lsSet(LS_SKIN_LAST, { id });
-    ['pq-skin', 'pq-skin-dark', 'pq-void-fx'].forEach((x) => document.getElementById(x)?.remove());
+    if (!id) lsSet(LS_SKIN_LAST, null);
+    ['pq-skin', 'pq-skin-dark', 'pq-void-fx', 'pq-stars'].forEach((x) => document.getElementById(x)?.remove());
     const root = document.documentElement;
-    root.classList.remove('pq-dark');
+    root.classList.remove('pq-dark', 'pq-starry');
     SKIN_VARS.forEach((v) => root.style.removeProperty(v));
     const k = SKIN_LOOK[id];
     if (!k) return;
     if (k.dark) {
       root.classList.add('pq-dark');
-      const vars = { '--th': k.dark.th, '--ah': k.dark.ah, '--as': k.dark.as, '--acc': k.accent, '--on-acc': id === 'carbon' || id === 'gold' || id === 'crown' ? '#111' : '#fff', '--hbg': k.bg };
-      Object.entries(vars).forEach(([v, x]) => root.style.setProperty(v, String(x)));
+      if (k.dark.stars) root.classList.add('pq-starry');
+      const vars = { '--th': String(k.dark.th), '--ah': String(k.dark.ah), '--as': k.dark.as, '--acc': k.accent, '--on-acc': id === 'carbon' || id === 'gold' || id === 'crown' ? '#111' : '#fff', '--hbg': k.bg };
+      Object.entries(vars).forEach(([v, x]) => root.style.setProperty(v, x));
+      const base = DARK_BASE + (k.dark.stars ? STARS_CSS : '') + (k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : '');
       addStyle('pq-skin-dark', darkCss());
-      addStyle('pq-skin', DARK_BASE + (k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : ''));
+      addStyle('pq-skin', base);
+      lsSet(LS_SKIN_LAST, { id, vars, base, cls: k.dark.stars ? 'pq-starry' : '' });
       if (!skinFx(k.dark.fx)) { let n = 0; const iv = setInterval(() => { if (skinFx(k.dark.fx) || ++n > 30) clearInterval(iv); }, 500); }
       return;
     }
-    addStyle('pq-skin', `
+    const light = `
       .layout-header{background:${k.bg} !important;box-shadow:inset 0 -3px 0 ${k.line || k.accent} !important}
       .btn-primary,.btn-primary:hover,.btn-primary:focus{background:${k.accent} !important;border-color:${k.accent} !important}
       .card{border-top:2px solid ${k.accent} !important}
-      ${k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : ''}`);
+      ${k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : ''}`;
+    addStyle('pq-skin', light);
+    lsSet(LS_SKIN_LAST, { id, base: light });
   }
 
-  // document-start: the page is still empty, so the dark colors are there before anything is drawn
-  try { const last = lsGet(LS_SKIN_LAST, null); if (last && last.id) applySkin(last.id); } catch (e) { console.warn('[suite] early skin', e); }
 
   function leaderboard() {
     const C = CFG.leaderboard || {};
