@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.36
+// @version      3.37
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -19,7 +19,10 @@
 
   // SKIN FIRST (before anything else, document-start): the last skin this PC showed, exactly as it was,
   // so the new page is drawn in the skin right away instead of white first. The real check comes later.
-  const EARLY_SKIN = (() => {
+  // on the login page nobody is logged in: forget whose skin was last, so the next person starts clean
+  const ON_LOGIN = /^\/login(\/|$)/.test(location.pathname);
+  if (ON_LOGIN) { try { localStorage.removeItem('pqsuite_skin_last_v1'); } catch (_) {} }
+  const EARLY_SKIN = ON_LOGIN ? null : (() => {
     try {
       const l = JSON.parse(localStorage.getItem('pqsuite_skin_last_v1') || 'null');
       if (!l || !l.id || !l.base) return null;
@@ -6541,7 +6544,7 @@
     if (use('autoNext')) safe('autoNext', autoNext);
     if (use('cardColor')) safe('cardColor', cardColor);
     if (use('pickStats')) safe('pickStats', pickStats);
-    safe('skin', () => applySkin((skinOf(ME.id) || {}).id));
+    safe('skin', () => applySkin(ON_LOGIN ? null : (skinOf(ME.id) || {}).id));
     if (use('leaderboard')) safe('leaderboard', leaderboard);
     safe('teams', refreshTeams);
     if (use('cardColor') || can('colors') || can('settings')) safe('colors', () => refreshRemote(REMOTE.colors, onColors));
