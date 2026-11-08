@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.34
+// @version      3.35
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -4869,7 +4869,13 @@
     return true;
   }
   const SKIN_VARS = ['--th', '--ah', '--as', '--acc', '--on-acc', '--hbg'];
+  const LS_SKIN_LAST = 'pqsuite_skin_last_v1'; // the skin this PC showed last: put on right away on the next page (no white flash)
+  let skinNow;
   function applySkin(id) {
+    id = SKIN_LOOK[id] ? id : null;
+    if (skinNow === id) { if (id && SKIN_LOOK[id].dark) skinFx(SKIN_LOOK[id].dark.fx); return; }
+    skinNow = id;
+    lsSet(LS_SKIN_LAST, { id });
     ['pq-skin', 'pq-skin-dark', 'pq-void-fx'].forEach((x) => document.getElementById(x)?.remove());
     const root = document.documentElement;
     root.classList.remove('pq-dark');
@@ -4891,6 +4897,9 @@
       .card{border-top:2px solid ${k.accent} !important}
       ${k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : ''}`);
   }
+
+  // document-start: the page is still empty, so the dark colors are there before anything is drawn
+  try { const last = lsGet(LS_SKIN_LAST, null); if (last && last.id) applySkin(last.id); } catch (e) { console.warn('[suite] early skin', e); }
 
   function leaderboard() {
     const C = CFG.leaderboard || {};
