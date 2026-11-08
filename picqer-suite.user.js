@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.19
+// @version      3.20
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -4445,19 +4445,39 @@
       setInfo('everything picked · no "Zending maken" popup came', true);
       return false;
     }
+    // Picqer's own pick calls (the ✓ sends POST /api/v1/picklists/<id>/pick): we watch their answers, so we go
+    // 1 line at a time, only after Picqer said OK. Too fast = Picqer's rate limit (429) and the line is NOT picked
+    const pickNet = { n: 0, status: 0 };
+    try {
+      const XO = XMLHttpRequest.prototype.open, XS = XMLHttpRequest.prototype.send;
+      XMLHttpRequest.prototype.open = function (m, u) { this.__pqPick = /post/i.test(m) && /\/picklists\/\d+\/pick\/?(\?|$)/.test(String(u)); return XO.apply(this, arguments); };
+      XMLHttpRequest.prototype.send = function () {
+        if (this.__pqPick) this.addEventListener('loadend', () => { pickNet.n++; pickNet.status = this.status; });
+        return XS.apply(this, arguments);
+      };
+    } catch (_) {}
     async function pickByLines() {
-      let clicks = 0;
       for (let guard = 0; guard < 300; guard++) {
         const it = openLines()[0];
-        if (!it) break;
-        const before = lineLeft(it);
+        if (!it) return 'done';
+        const code = it.dataset.productcode || 'a line';
+        const before = lineLeft(it), n0 = pickNet.n;
         lineBtn(it).click();
-        clicks++;
         const t0 = Date.now();
-        while (Date.now() - t0 < 4000 && it.isConnected && lineLeft(it) === before && lineBtn(it)) await wait(60);
-        if (it.isConnected && lineLeft(it) === before && lineBtn(it)) { setInfo(`pick all: ${it.dataset.productcode || 'a line'} did not get picked`, true); return clicks; }
+        while (Date.now() - t0 < 2500 && pickNet.n === n0) await wait(50); // Picqer's answer to this pick
+        if (pickNet.n !== n0 && pickNet.status && (pickNet.status < 200 || pickNet.status >= 300)) {
+          setInfo(pickNet.status === 429 ? `Picqer: too many requests · ${code} not picked · page reloads, press A again in a few sec`
+            : `Picqer said no (HTTP ${pickNet.status}) to ${code} · page reloads`, true);
+          setTimeout(() => location.reload(), 3000); // show what really got picked
+          return 'error';
+        }
+        if (pickNet.n === n0) { // never saw the call: go by the line itself
+          if (it.isConnected && lineLeft(it) === before && lineBtn(it)) { setInfo(`pick all: ${code} did not get picked`, true); return 'error'; }
+          await wait(800);
+        }
+        await wait(450); // about as fast as picking by hand
       }
-      return clicks;
+      return 'done';
     }
 
     async function truePickAll() {
@@ -4466,9 +4486,9 @@
       if (openLines().length) { // the normal way: Picqer's own buttons
         isProcessing = true;
         setInfo('picking everything…', false, true);
-        await pickByLines();
+        const res = await pickByLines();
         isProcessing = false;
-        if (!openLines().length && ![...document.querySelectorAll('.picklist-product-list__item')].some((it) => lineLeft(it) > 0)) await clickShipSoon();
+        if (res === 'done' && !openLines().length && ![...document.querySelectorAll('.picklist-product-list__item')].some((it) => lineLeft(it) > 0)) await clickShipSoon();
         return;
       }
       if ([...document.querySelectorAll('.picklist-product-list__item')].length && ![...document.querySelectorAll('.picklist-product-list__item')].some((it) => lineLeft(it) > 0)) {
