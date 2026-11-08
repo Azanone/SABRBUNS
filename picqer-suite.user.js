@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.30
+// @version      3.31
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -5733,12 +5733,17 @@
     // ---------- teams tab (builds the TEAMS block for GitHub) ----------
     const DRAFT_KEY = 'pqsuite_teams_draft_v1';
     const cleanAllow = (a) => (a === '*' ? '*' : (Array.isArray(a) ? a : []).filter((f) => FEATURES.includes(f)));
-    const fromScript = () => ({
-      teams: TEAMS.map((t) => ({ name: String(t.name || 'Team'), allow: cleanAllow(t.allow), users: (t.users || []).map(String) })),
-      leftovers: { allow: cleanAllow(LEFTOVERS.allow) },
+    const normTeams = (d) => ({
+      teams: (d.teams || []).map((t) => ({ name: String(t.name || 'Team'), allow: cleanAllow(t.allow), users: (t.users || []).map(String) })),
+      leftovers: { allow: cleanAllow((d.leftovers || {}).allow) },
     });
-    let draft = lsGet(DRAFT_KEY, null) || fromScript();
-    const saveDraft = () => lsSet(DRAFT_KEY, draft);
+    const fromScript = () => normTeams({ teams: TEAMS, leftovers: LEFTOVERS });
+    // a half-done edit only counts when it started from the teams.js this page has now
+    // (else an old edit from this PC would throw away what was saved on GitHub since)
+    const BASE_KEY = 'pqsuite_teams_draft_base_v1';
+    let draft = lsGet(DRAFT_KEY, null);
+    if (!draft || lsGet(BASE_KEY, null) !== JSON.stringify(fromScript())) draft = fromScript();
+    const saveDraft = () => { lsSet(DRAFT_KEY, draft); lsSet(BASE_KEY, JSON.stringify(fromScript())); };
     let savedJson = null; // what we just saved to GitHub (this page still runs on the old teams until reload)
     const dirty = () => JSON.stringify(draft) !== (savedJson || JSON.stringify(fromScript()));
     let people = null, peopleErr = '', q = '', rows = [];
@@ -5826,7 +5831,7 @@
     const GH_REPO = 'Azanone/SABRBUNS', GH_KEY = 'pqsuite_gh_token_v1';
     const ghToken = () => String(lsGet(GH_KEY, '') || '').trim();
     const b64 = (str) => { let bin = ''; for (const x of new TextEncoder().encode(str)) bin += String.fromCharCode(x); return btoa(bin); };
-    async function ghPut(file, text, msg) {
+    async function ghPut(file, text, msg, okToOverwrite) {
       const tok = ghToken();
       if (!tok) throw new Error('no GitHub token on this PC yet');
       const url = `https://api.github.com/repos/${GH_REPO}/contents/${file}`;
@@ -5836,7 +5841,13 @@
         try { g = await fetch(`${url}?ref=main&t=${Date.now()}`, { headers: h, credentials: 'omit', cache: 'no-store' }); }
         catch (_) { throw new Error('could not reach GitHub from this page (blocked?) · use Copy instead'); }
         if (g.status === 401) throw new Error('GitHub says the token is wrong or expired · make a new one');
-        const sha = g.ok ? (await g.json()).sha : undefined;
+        const cur = g.ok ? await g.json() : null;
+        const sha = cur ? cur.sha : undefined;
+        if (cur && okToOverwrite && a === 0) {
+          let old = '';
+          try { old = new TextDecoder().decode(Uint8Array.from(atob(String(cur.content || '').replace(/\s+/g, '')), (c) => c.charCodeAt(0))); } catch (_) {}
+          if (old && !okToOverwrite(old)) throw new Error('stopped, nothing changed');
+        }
         const p = await fetch(url, { method: 'PUT', headers: { ...h, 'Content-Type': 'application/json' }, credentials: 'omit',
           body: JSON.stringify({ message: msg, content: b64(text), branch: 'main', ...(sha ? { sha } : {}) }) });
         if (p.ok) return true;
@@ -6120,7 +6131,7 @@
         }
         if (x === 'tstart' && confirm('Throw away your changes and start from the teams.js this PC has now?')) {
           draft = fromScript();
-          try { localStorage.removeItem(DRAFT_KEY); } catch (_) {}
+          try { localStorage.removeItem(DRAFT_KEY); localStorage.removeItem(BASE_KEY); } catch (_) {}
           reRender();
         }
         if (x === 'ghsave') {
@@ -6148,7 +6159,14 @@
             if (!confirm('You are not in any team in this version (you become a leftover and lose Shift+8 settings). Save anyway?')) return;
           }
           btn.disabled = true; btn.textContent = 'Saving…';
-          ghPut(isT ? 'teams.js' : 'colors.js', text, `${isT ? 'Teams' : 'Colors'} changed by ${ME.name || 'someone'} (Picqer Suite)`)
+          // teams: if GitHub has a newer teams.js than this page started from, ask before overwriting it
+          const guard = isT ? (old) => {
+            let gh = null;
+            try { gh = JSON.stringify(normTeams(parseCfgFile(old, 'PQ_TEAMS', 'teams.js'))); } catch (_) { return true; }
+            if (gh === JSON.stringify(fromScript()) || gh === savedJson) return true;
+            return confirm('teams.js on GitHub changed since this page loaded (saved from somewhere else).\n\nOK = overwrite it with what you see here\nCancel = stop (reload the page to start from the new one)');
+          } : null;
+          ghPut(isT ? 'teams.js' : 'colors.js', text, `${isT ? 'Teams' : 'Colors'} changed by ${ME.name || 'someone'} (Picqer Suite)`, guard)
             .then(() => {
               ghKeep(isT ? REMOTE.teams : REMOTE.colors, data);
               if (isT) { savedJson = JSON.stringify(draft); updateDirty(); }
