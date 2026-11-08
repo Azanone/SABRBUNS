@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.20
+// @version      3.21
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -4416,7 +4416,7 @@
 
     // ---------- true pick all ----------
     // clicks Picqer's own ✓ (pick this line) on every line, like picking by hand, so Picqer opens its
-    // "Zending maken" popup itself; that popup's button then gets clicked right away (no 3 s countdown)
+    // "Zending maken" popup itself (we don't touch that popup)
     // what is left on a line: the "1 / 1" text Picqer shows (its data-amount attributes don't always update)
     const lineLeft = (it) => {
       const m = nm(it.querySelector('.product-pick-status')?.textContent).match(/(\d+)\s*\/\s*(\d+)/);
@@ -4426,25 +4426,6 @@
     };
     const lineBtn = (it) => { const b = it.querySelector('button.product-pick-all'); return b && !b.disabled ? b : null; };
     const openLines = () => [...document.querySelectorAll('.picklist-product-list__item')].filter((it) => lineLeft(it) > 0 && lineBtn(it));
-    let shipUntil = 0;
-    function shipButton() {
-      for (const b of document.querySelectorAll('.modal button, [role="dialog"] button, .modal-dialog button, button')) {
-        if (nm(b.textContent) !== 'Zending maken' || b.disabled || !b.getClientRects().length) continue;
-        if (!b.closest('.modal, [role="dialog"], .modal-dialog, .modal-content, [class*="modal"]')) continue;
-        return b;
-      }
-      return null;
-    }
-    async function clickShipSoon() {
-      shipUntil = Date.now() + 15000;
-      while (Date.now() < shipUntil) {
-        const b = shipButton();
-        if (b) { shipUntil = 0; setInfo('Zending maken ✓', false, true); b.click(); return true; }
-        await wait(100);
-      }
-      setInfo('everything picked · no "Zending maken" popup came', true);
-      return false;
-    }
     // Picqer's own pick calls (the ✓ sends POST /api/v1/picklists/<id>/pick): we watch their answers, so we go
     // 1 line at a time, only after Picqer said OK. Too fast = Picqer's rate limit (429) and the line is NOT picked
     const pickNet = { n: 0, status: 0 };
@@ -4488,12 +4469,11 @@
         setInfo('picking everything…', false, true);
         const res = await pickByLines();
         isProcessing = false;
-        if (res === 'done' && !openLines().length && ![...document.querySelectorAll('.picklist-product-list__item')].some((it) => lineLeft(it) > 0)) await clickShipSoon();
+        if (res === 'done') setInfo('everything picked ✓', false, true); // Picqer opens its own "Zending maken" popup
         return;
       }
       if ([...document.querySelectorAll('.picklist-product-list__item')].length && ![...document.querySelectorAll('.picklist-product-list__item')].some((it) => lineLeft(it) > 0)) {
-        setInfo('everything is picked already', false, true);
-        return clickShipSoon();
+        return setInfo('everything is picked already', false, true);
       }
       // no pick buttons on this page: Picqer's pick call per location, then reload
       setInfo('picking everything…', false, true);
@@ -4534,7 +4514,7 @@
       if (cb && cb.style.display === 'flex') return;
       const k = (e.key || '').toLowerCase();
       if (k === pickKey && can('truePickAll') && PID) {
-        if (isProcessing || shipUntil) return;
+        if (isProcessing) return;
         e.preventDefault();
         truePickAll();
       } else if (k === pickKey) {
