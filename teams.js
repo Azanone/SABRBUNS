@@ -25,12 +25,16 @@ window.PQ_TEAMS = {
       "name": "troubleshoot",
       "allow": ["comboAlert", "replenish", "shipErr", "addrFix", "banner", "batchOpt", "zap", "dayson", "unpick", "autoNext", "cardColor", "pickAll", "bulkSingles"],
       "users": [
+         39213, // Ahmad Saber
+        "Ali Al- Turaim"
       ]
     },
     {
       "name": "megamulters",
       "allow": ["comboBatcher", "comboAlert", "replenish", "banner", "batchOpt", "autoNext", "cardColor", "pickAll", "bulkSingles"],
       "users": [
+         39213, // Ahmad Saber
+        "Ali Al- Turaim"
       ]
     }
   ],
