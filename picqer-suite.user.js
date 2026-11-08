@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.32
+// @version      3.33
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -4819,11 +4819,11 @@
     html.pq-void .menu a.active,html.pq-void .menu button.active{text-shadow:0 0 12px rgba(255,0,52,.55)}
     html.pq-void .btn.btn-primary,html.pq-void .btn-primary{background:#ff0034 !important;border-color:#ff0034 !important;color:#fff !important;transition:box-shadow .2s ease,transform .15s ease}
     html.pq-void .btn.btn-primary:hover,html.pq-void .btn-primary:hover{box-shadow:0 0 0 1px rgba(255,0,52,.6),0 6px 22px rgba(255,0,52,.45);transform:translateY(-1px)}
-    html.pq-void .btn{transition:background-color .15s ease,box-shadow .2s ease}
     html.pq-void .card{transition:box-shadow .25s ease}
     html.pq-void .card:hover{box-shadow:0 0 0 1px rgba(255,0,52,.28),0 12px 30px -14px rgba(255,0,52,.35) !important}
     html.pq-void .page-heading h1,html.pq-void .page-title{background:linear-gradient(90deg,#fff,#ffb3c1);-webkit-background-clip:text;background-clip:text;color:transparent}
     html.pq-void input,html.pq-void select,html.pq-void textarea{caret-color:#ff0034}
+    html.pq-void canvas{filter:invert(1) hue-rotate(180deg) saturate(1.4)}
     html.pq-void :focus-visible{outline-color:#ff0034}
     html.pq-void ::-webkit-scrollbar{width:11px;height:11px}
     html.pq-void ::-webkit-scrollbar-track{background:#0b0b0f}
