@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.27
+// @version      3.28
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -243,12 +243,13 @@
       { k: 'idleMin', label: 'No progress for this long = idle (min)', type: 'num', def: 5 },
       { k: 'excludeIds', label: 'Leave these user ids out, comma separated', type: 'list', def: [] },
     ]},
-    { id: 'leaderboard', title: 'Leaderboard', hint: 'closed picklists in the last minutes · your rank bottom right · Ctrl+Alt+L = everyone', fields: [
+    { id: 'leaderboard', title: 'Leaderboard', hint: 'points in the last 15 min · your rank bottom right · Ctrl+Alt+L = everyone · Shift+9 = your profile + skins', fields: [
       { k: 'url', label: 'Middle stop (Cloudflare worker link, empty = every PC asks Picqer itself)', type: 'text', def: 'https://sabrbuns.nitroxylazanone.workers.dev' },
       { k: 'windowMin', label: 'Count closed picklists of the last (min)', type: 'num', def: 15 },
       { k: 'pollSec', label: 'Check every (sec)', type: 'num', def: 60 },
       { k: 'warehouse', label: 'Only this warehouse (name or id, empty = all)', type: 'text', def: 'Bunsenstraat' },
       { k: 'widget', label: 'Show my rank bottom right', type: 'bool', def: true },
+      { k: 'theme', label: 'Look: auto, light or dark', type: 'text', def: 'auto' },
     ]},
     { id: 'cardColor', title: 'Product colors', hint: 'colored bar per exact product code · colors in Shift+8 → Colors', fields: [
       { k: 'qtyBadge', label: 'Show "2x" badge when more than 1', type: 'bool', def: true },
@@ -4696,24 +4697,52 @@
    * ========================================================================= */
 
   // =====================================================================
-  //  LEADERBOARD · points for closed picklists in the last 15 min, as points per hour
-  //  multi (2+ different products) = 2 points, single = 1.334. Lines with has_parts (a set) don't count, their parts do.
-  //  With a middle stop (Cloudflare worker) Picqer gets asked once for everyone, else each PC asks itself
-  //  (GET /picklists?status=closed&closed_after=…). 1 tab per PC asks, the other tabs read along.
-  //  colors (per 15 min): 30+ blue · 25+ turquoise · 20+ dark green · 15+ green · 10+ orange · less red · #1 gold if 15+
-  //  (= 120 / 100 / 80 / 60 / 40 an hour; with another window it scales)
+  //  LEADERBOARD + KING OF THE HILL + PROFILE (Shift+9) + SKINS
+  //  points: multi 2 · single 1,334 · lines with has_parts don't count (their parts do)
+  //  colors = points in the last 15 min (nothing extrapolated):
+  //    30+ blue · 25+ turquoise · 20+ dark green · 15+ green · 10+ orange · less red
+  //  king of the hill = #1 with 15+ points: +20 coins every minute on top. Packing points are coins too.
+  //  The middle stop (Cloudflare worker) asks Picqer once a minute for everyone and keeps today, coins,
+  //  the king and the skins. Without it every PC asks Picqer itself (then no king, coins or skins).
   // =====================================================================
+  const SKIN_LOOK = {
+    midnight: { bg: '#0b1220', accent: '#6366f1' },
+    forest: { bg: 'linear-gradient(90deg,#064e3b,#065f46)', accent: '#10b981' },
+    ocean: { bg: 'linear-gradient(90deg,#0c4a6e,#0e7490)', accent: '#06b6d4' },
+    sunset: { bg: 'linear-gradient(90deg,#7c2d12,#be185d)', accent: '#f97316' },
+    carbon: { bg: 'repeating-linear-gradient(135deg,#18181b 0 6px,#202024 6px 12px)', accent: '#71717a' },
+    aurora: { bg: 'linear-gradient(90deg,#312e81,#0e7490 55%,#065f46)', accent: '#8b5cf6' },
+    gold: { bg: '#1c1917', accent: '#d4a017', line: '#fbbf24' },
+    crown: { bg: 'linear-gradient(90deg,#1c1917,#3f2d0c)', accent: '#d4a017', line: '#fbbf24', crown: true },
+  };
+  function applySkin(id) {
+    const old = document.getElementById('pq-skin');
+    if (old) old.remove();
+    const k = SKIN_LOOK[id];
+    if (!k) return;
+    addStyle('pq-skin', `
+      .layout-header{background:${k.bg} !important;box-shadow:inset 0 -3px 0 ${k.line || k.accent} !important}
+      .btn-primary,.btn-primary:hover,.btn-primary:focus{background:${k.accent} !important;border-color:${k.accent} !important}
+      .card{border-top:2px solid ${k.accent} !important}
+      ${k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : ''}`);
+  }
+  // the skin is known on this PC right away (no waiting for the internet)
+
   function leaderboard() {
     const C = CFG.leaderboard || {};
     const WIN = Math.max(1, +C.windowMin || 15) * 60000;
     const POLL = Math.max(20, +C.pollSec || 60) * 1000;
-    const LS_DATA = 'pqsuite_lb_v2', LS_LOCK = 'pqsuite_lb_lock_v1', LS_USERS = 'pqsuite_lb_users_v1';
+    const URL_ = norm(String(C.url || '')).replace(/\/+$/, '');
+    const LS_DATA = 'pqsuite_lb_v3', LS_LOCK = 'pqsuite_lb_lock_v1', LS_USERS = 'pqsuite_lb_users_v1', LS_SKIN = 'pqsuite_skin_v1';
     const TAB = Math.random().toString(36).slice(2);
+    const ME_ID = String(ME.id || '');
     const proxies = new Set(((CFG.zaplog && CFG.zaplog.proxyIds) || []).map(String));
     const low = (x) => norm(String(x == null ? '' : x)).toLowerCase();
     const pad = (n) => String(n).padStart(2, '0');
     const stamp = (t) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
-    let wh = null, data = lsGet(LS_DATA, null), shown = null, prevRank = null, open = false;
+    const fmt = (x) => (Math.round((+x || 0) * 10) / 10).toLocaleString('nl-NL');
+    const int = (x) => Math.floor(+x || 0).toLocaleString('nl-NL');
+    let wh = null, data = lsGet(LS_DATA, null), shown = null, prevRank = null, listOpen = false, prof = null;
 
     async function api(path) {
       for (let i = 0; i < 4; i++) {
@@ -4731,7 +4760,7 @@
       const list = c && Date.now() - c.at < 86400000 ? c.list : (await api('/warehouses')) || [];
       if (!c || c.list !== list) lsSet('pqsuite_warehouses_v1', { at: Date.now(), list: list.map((w) => ({ idwarehouse: w.idwarehouse, name: w.name })) });
       const hit = list.find((w) => String(w.idwarehouse) === W) || list.find((w) => low(w.name) === low(W)) || list.find((w) => low(w.name).includes(low(W)));
-      wh = hit ? { id: +hit.idwarehouse, name: hit.name } : { id: null, name: '' };
+      wh = hit ? { id: +hit.idwarehouse, name: norm(hit.name) } : { id: null, name: '' };
       return wh;
     }
     async function names() {
@@ -4746,21 +4775,34 @@
       lsSet(LS_USERS, { at: Date.now(), map });
       return map;
     }
+    function scoreRows(rows) {
+      const by = new Map();
+      for (const p of rows) {
+        if (p.closed_by_iduser == null) continue;
+        const codes = new Set((p.products || []).filter((x) => !x.has_parts).map((x) => x.productcode));
+        if (!codes.size) continue;
+        const r = by.get(String(p.closed_by_iduser)) || { id: String(p.closed_by_iduser), picklists: 0, multis: 0, singles: 0, points: 0 };
+        r.picklists++;
+        if (codes.size >= 2) r.multis++; else r.singles++;
+        r.points = Math.round((r.multis * 2 + r.singles * 1.334) * 1000) / 1000;
+        by.set(r.id, r);
+      }
+      return [...by.values()];
+    }
+
     async function poll() {
       const lock = lsGet(LS_LOCK, null);
       if (lock && lock.tab !== TAB && Date.now() - lock.ts < POLL * 1.6) return; // another tab on this PC does it
       lsSet(LS_LOCK, { tab: TAB, ts: Date.now() });
       try {
-        let people, whName = '';
-        const URL_ = norm(String(C.url || '')).replace(/\/+$/, '');
-        let via = '';
-        if (URL_) { // the middle stop asked Picqer for everyone
+        let people = null, whName = '', via = '', king = null;
+        if (URL_) {
           try {
-            const r = await fetch(`${URL_}/leaderboard?min=${Math.round(WIN / 60000)}`, { credentials: 'omit', cache: 'no-store' });
+            const r = await fetch(`${URL_}/leaderboard`, { credentials: 'omit', cache: 'no-store' });
             const j = await r.json();
             if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
-            people = j.people; whName = j.wh || ''; via = 'middle stop';
-          } catch (e) { console.warn('[leaderboard] middle stop:', e.message, '· asking Picqer myself'); }
+            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop';
+          } catch (e) { console.info('[leaderboard] middle stop:', e.message, '· asking Picqer myself'); }
         }
         if (!people) {
           const w = await warehouse();
@@ -4776,8 +4818,8 @@
         const map = await names().catch(() => ({}));
         const list = people.filter((r) => !proxies.has(String(r.id)))
           .map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}`, n: r.picklists }))
-          .sort((a2, b2) => b2.points - a2.points || b2.n - a2.n);
-        data = { at: Date.now(), win: WIN, wh: norm(whName || ''), list, err: '', via: via || 'Picqer' };
+          .sort((a, b) => b.points - a.points || b.n - a.n);
+        data = { at: Date.now(), wh: norm(whName || ''), list, king, via: via || 'Picqer', err: '' };
       } catch (e) {
         data = { ...(data || { list: [] }), at: Date.now(), err: e.message };
       }
@@ -4786,192 +4828,220 @@
       render();
     }
 
-    // multi 2 · single 1.334 · lines that have parts don't count (their parts do)
-    function scoreRows(rows) {
-      const by = new Map();
-      for (const p of rows) {
-        if (p.closed_by_iduser == null) continue;
-        const codes = new Set((p.products || []).filter((x) => !x.has_parts).map((x) => x.productcode));
-        if (!codes.size) continue;
-        const r = by.get(String(p.closed_by_iduser)) || { id: String(p.closed_by_iduser), picklists: 0, multis: 0, singles: 0, points: 0 };
-        r.picklists++;
-        if (codes.size >= 2) r.multis++; else r.singles++;
-        r.points = Math.round((r.multis * 2 + r.singles * 1.334) * 1000) / 1000;
-        by.set(r.id, r);
-      }
-      return [...by.values()];
-    }
-    const perHour = (pts) => pts * 3600000 / WIN;
-    const tierOf = (ph) => (ph >= 120 ? 'blue' : ph >= 100 ? 'turq' : ph >= 80 ? 'dgreen' : ph >= 60 ? 'green' : ph >= 40 ? 'orange' : 'red');
-    // place + color
-    function ranked(list) {
-      const top = list.length ? list[0].points : 0;
+    // colors: only what they really did in the last 15 min
+    const per15 = (pts) => pts * 900000 / WIN;
+    const tierOf = (p) => (p >= 30 ? 'blue' : p >= 25 ? 'turq' : p >= 20 ? 'dgreen' : p >= 15 ? 'green' : p >= 10 ? 'orange' : 'red');
+    function ranked() {
+      const list = (data && data.list) || [];
+      const kingId = data && data.king ? String(data.king.id) : (data && data.via !== 'middle stop' && list[0] && per15(list[0].points) >= 15 ? list[0].id : null);
       let rank = 0, prev = null;
       return list.map((r, i) => {
         if (!prev || r.points !== prev.points) rank = i + 1;
         prev = r;
-        const ph = Math.round(perHour(r.points));
-        const base = tierOf(ph);
-        const tier = rank === 1 && ph >= 60 ? 'gold' : base; // gold only for #1 at green or better
-        return { ...r, rank, tier, ph, f: top ? r.points / top : 0 };
+        const king = r.id === kingId;
+        return { ...r, rank, king, kingMin: king && data.king ? data.king.min : null, tier: king ? 'gold' : tierOf(per15(r.points)) };
       });
     }
-    const TIER = { gold: 'GOLD', blue: 'GOD MODE', turq: 'INSANE', dgreen: 'ON FIRE', green: 'ON TRACK', orange: 'PICK IT UP', red: 'WAKE UP', none: 'NOT ON THE BOARD' };
-    const fmtPts = (x) => (Math.round(x * 10) / 10).toLocaleString('nl-NL');
 
+    const theme = () => {
+      const t = low(C.theme || 'auto');
+      if (t === 'light' || t === 'dark') return t;
+      try { return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (_) { return 'light'; }
+    };
     addStyle('pq-lb-style', `
-      #pq-lb{position:fixed;right:16px;bottom:16px;z-index:2147483000;isolation:isolate;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer;user-select:none}
-      #pq-lb .lb-card{position:relative;display:flex;align-items:center;gap:12px;padding:10px 16px 10px 12px;border-radius:16px;color:#fff;overflow:hidden;
-        background:#0b1020;box-shadow:0 10px 30px rgba(0,0,0,.35),0 0 0 2px var(--c),0 0 18px var(--c)}
-      #pq-lb .lb-card::before{content:'';position:absolute;inset:-60%;background:conic-gradient(from 0deg,transparent 0 70%,var(--c) 80%,transparent 90%);animation:lbSpin 3.2s linear infinite;opacity:.55;will-change:transform}
-      #pq-lb .lb-glow{position:absolute;inset:-8px;border-radius:22px;box-shadow:0 0 26px 6px var(--c);opacity:.35;animation:lbGlow 2.4s ease-in-out infinite;pointer-events:none;will-change:opacity}
-      #pq-lb .lb-card::after{content:'';position:absolute;inset:2px;border-radius:14px;background:radial-gradient(120% 140% at 0% 0%,var(--c2),#0b1020 60%)}
-      #pq-lb .lb-card>*{position:relative;z-index:1}
-      #pq-lb .lb-shine{position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.45) 45%,transparent 60%);
-        transform:translateX(-120%);animation:lbShine 3.5s ease-in-out infinite;will-change:transform}
-      #pq-lb .lb-rank{font:900 34px/1 system-ui,sans-serif;letter-spacing:-1px;background:linear-gradient(180deg,#fff,var(--c));-webkit-background-clip:text;background-clip:text;color:transparent;
-        filter:drop-shadow(0 0 8px var(--c));animation:lbPop .6s cubic-bezier(.2,1.6,.4,1) both}
-      #pq-lb .lb-txt{display:flex;flex-direction:column;gap:2px;min-width:110px}
-      #pq-lb .lb-tier{font:900 10px/1 system-ui;letter-spacing:.16em;color:var(--c)}
-      #pq-lb .lb-n{font:800 15px/1.15 system-ui}
-      #pq-lb .lb-sub{font:600 11px/1.2 system-ui;color:#94a3b8}
-      #pq-lb .lb-bar{height:4px;border-radius:9px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:3px}
-      #pq-lb .lb-bar i{position:relative;display:block;height:100%;border-radius:9px;background:var(--c);overflow:hidden;transition:width .8s cubic-bezier(.2,1.4,.4,1)}
-      #pq-lb .lb-bar i::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent);transform:translateX(-100%);animation:lbFlow 1.6s linear infinite;will-change:transform}
-      #pq-lb .lb-move{position:absolute;right:10px;top:-6px;font:900 13px system-ui;color:#4ade80;animation:lbUp 1.8s ease-out forwards;z-index:3}
-      #pq-lb .lb-move.down{color:#f87171}
-      #pq-lb .lb-crown{position:absolute;left:8px;top:-14px;font-size:20px;animation:lbFloat 1.6s ease-in-out infinite;z-index:3;text-shadow:0 0 8px gold;will-change:transform}
-      #pq-lb .lb-spark{position:absolute;width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 8px 2px var(--c);z-index:2;animation:lbSpark 2.2s ease-out infinite;pointer-events:none;will-change:transform,opacity}
-      #pq-lb.t-gold{--c:#fbbf24;--c2:rgba(251,191,36,.45)} #pq-lb.t-dgreen{--c:#10b981;--c2:rgba(5,150,105,.45)} #pq-lb.t-green{--c:#4ade80;--c2:rgba(74,222,128,.32)}
-      #pq-lb.t-blue{--c:#3b82f6;--c2:rgba(59,130,246,.45)} #pq-lb.t-turq{--c:#2dd4bf;--c2:rgba(45,212,191,.4)} #pq-lb.t-orange{--c:#fb923c;--c2:rgba(251,146,60,.32)}
-      #pq-lb.t-red{--c:#f43f5e;--c2:rgba(244,63,94,.32)} #pq-lb.t-none{--c:#64748b;--c2:rgba(100,116,139,.3)}
-      #pq-lb.t-gold .lb-glow{animation-duration:1.4s}
-      #pq-lb.t-red .lb-card{animation:lbNudge 6s ease-in-out infinite}
-      #pq-lb:hover .lb-card{transform:translateY(-3px) scale(1.03)}
-      @keyframes lbSpin{to{transform:rotate(360deg)}}
-      @keyframes lbShine{0%,55%{transform:translateX(-120%)}85%,100%{transform:translateX(120%)}}
-      @keyframes lbGlow{50%{opacity:.9}}
-      @keyframes lbPop{0%{transform:scale(.3) rotate(-12deg);opacity:0}100%{transform:none;opacity:1}}
-      @keyframes lbFlow{to{transform:translateX(100%)}}
-      @keyframes lbUp{0%{transform:translateY(10px);opacity:0}20%{opacity:1}100%{transform:translateY(-30px);opacity:0}}
-      @keyframes lbFloat{50%{transform:translateY(-4px) rotate(-8deg)}}
-      @keyframes lbSpark{0%{transform:translate(0,0) scale(0);opacity:0}20%{opacity:1;transform:translate(var(--dx),var(--dy)) scale(1)}100%{transform:translate(calc(var(--dx)*3),calc(var(--dy)*3)) scale(0);opacity:0}}
-      @keyframes lbNudge{0%,92%,100%{transform:none}94%{transform:translateX(-3px)}96%{transform:translateX(3px)}98%{transform:translateX(-2px)}}
-      .pq-lb-confetti{position:fixed;z-index:2147483001;width:8px;height:12px;pointer-events:none;border-radius:2px;animation:lbConf 1.6s cubic-bezier(.2,.6,.4,1) forwards}
-      @keyframes lbConf{to{transform:translate(var(--x),var(--y)) rotate(var(--r));opacity:0}}
-      #pq-lb-ov{position:fixed;inset:0;z-index:2147483002;background:rgba(2,6,23,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-      #pq-lb-ov .lb-panel{width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;background:#0b1020;color:#fff;border-radius:20px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08)}
-      #pq-lb-ov h2{margin:0 0 2px;font:900 22px system-ui;background:linear-gradient(90deg,#fbbf24,#f472b6,#60a5fa,#fbbf24);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:lbText 4s linear infinite}
-      @keyframes lbText{to{background-position:-300% 0}}
-      #pq-lb-ov .lb-meta{color:#94a3b8;font-size:12px;margin-bottom:14px}
-      #pq-lb-ov .lb-row{position:relative;display:grid;grid-template-columns:44px 1fr 76px;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;margin-bottom:6px;
-        background:rgba(255,255,255,.04);animation:lbIn .5s cubic-bezier(.2,1.3,.4,1) both;overflow:hidden}
-      #pq-lb-ov .lb-row.me{box-shadow:0 0 0 2px var(--c),0 0 22px var(--c);background:rgba(255,255,255,.08)}
-      #pq-lb-ov .lb-row .r{font:900 20px system-ui;color:var(--c);text-align:center}
-      #pq-lb-ov .lb-row .nm{font:700 14px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      #pq-lb-ov .lb-row .nm small{display:block;color:#94a3b8;font-weight:600;font-size:11px}
-      #pq-lb-ov .lb-row .v{font:900 20px system-ui;text-align:right}
-      #pq-lb-ov .lb-row .v small{display:block;font:600 10px system-ui;color:#94a3b8}
-      #pq-lb-ov .lb-row .fill{position:absolute;left:0;top:0;bottom:0;z-index:-1;background:linear-gradient(90deg,var(--c2),transparent);transform-origin:left;animation:lbGrow 1s cubic-bezier(.2,1.2,.4,1) both}
-      #pq-lb-ov .lb-row{isolation:isolate}
-      #pq-lb-ov .lb-row.t-gold{--c:#fbbf24;--c2:rgba(251,191,36,.35)} #pq-lb-ov .lb-row.t-dgreen{--c:#10b981;--c2:rgba(5,150,105,.35)} #pq-lb-ov .lb-row.t-green{--c:#4ade80;--c2:rgba(74,222,128,.25)}
-      #pq-lb-ov .lb-row.t-blue{--c:#3b82f6;--c2:rgba(59,130,246,.35)} #pq-lb-ov .lb-row.t-turq{--c:#2dd4bf;--c2:rgba(45,212,191,.3)}
-      #pq-lb-ov .lb-row.t-orange{--c:#fb923c;--c2:rgba(251,146,60,.25)} #pq-lb-ov .lb-row.t-red{--c:#f43f5e;--c2:rgba(244,63,94,.25)}
-      #pq-lb-ov .lb-row.t-gold .r::after{content:' 👑'}
-      @keyframes lbIn{from{transform:translateX(-30px);opacity:0}}
-      @keyframes lbGrow{from{transform:scaleX(0)}}
-      #pq-lb-ov .lb-empty{color:#94a3b8;padding:20px 0;text-align:center}
+      .pq-lbx{--bg:#fff;--fg:#0f172a;--mut:#64748b;--line:#e2e8f0;--soft:#f8fafc;--hi:#eef2ff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--fg)}
+      .pq-lbx.dark{--bg:#111827;--fg:#f1f5f9;--mut:#94a3b8;--line:#1f2937;--soft:#0b1220;--hi:#1e293b}
+      .pq-lbx .t-gold{--c:#d4a017} .pq-lbx .t-blue{--c:#3b82f6} .pq-lbx .t-turq{--c:#14b8a6} .pq-lbx .t-dgreen{--c:#059669}
+      .pq-lbx .t-green{--c:#22c55e} .pq-lbx .t-orange{--c:#f97316} .pq-lbx .t-red{--c:#ef4444} .pq-lbx .t-none{--c:#94a3b8}
+      #pq-lb{position:fixed;right:16px;bottom:16px;z-index:2147483000;cursor:pointer;user-select:none}
+      #pq-lb .lb-card{display:flex;align-items:center;gap:12px;min-width:190px;padding:10px 14px 10px 12px;border-radius:12px;background:var(--bg);
+        border:1px solid var(--line);border-left:4px solid var(--c);box-shadow:0 6px 20px rgba(15,23,42,.12);transition:transform .15s ease,box-shadow .15s ease}
+      #pq-lb:hover .lb-card{transform:translateY(-2px);box-shadow:0 10px 26px rgba(15,23,42,.18)}
+      #pq-lb .lb-rank{font:800 22px/1 system-ui,sans-serif;color:var(--c);min-width:34px;text-align:center}
+      #pq-lb .lb-main{display:flex;flex-direction:column;gap:2px}
+      #pq-lb .lb-pts{font:700 15px/1.2 system-ui,sans-serif}
+      #pq-lb .lb-pts small{font-weight:500;color:var(--mut);font-size:12px}
+      #pq-lb .lb-sub{font:500 11.5px/1.2 system-ui,sans-serif;color:var(--mut)}
+      #pq-lb .lb-king{color:#b8860b;font-weight:700}
+      #pq-lb.flash .lb-card{animation:lbFlash 1.2s ease}
+      @keyframes lbFlash{0%{transform:translateY(6px);opacity:.4}40%{transform:none;opacity:1}}
+      .pq-lb-ov{position:fixed;inset:0;z-index:2147483002;background:rgba(15,23,42,.38);display:flex;align-items:center;justify-content:center;padding:16px}
+      .pq-lb-ov .lb-panel{width:min(560px,100%);max-height:calc(100vh - 48px);overflow:auto;background:var(--bg);border-radius:14px;border:1px solid var(--line);box-shadow:0 24px 60px rgba(0,0,0,.25);padding:18px 20px}
+      .pq-lb-ov h2{margin:0;font:700 18px system-ui,sans-serif}
+      .pq-lb-ov .lb-meta{color:var(--mut);font-size:12px;margin:2px 0 14px}
+      .pq-lb-ov .lb-row{display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;border-left:3px solid var(--c)}
+      .pq-lb-ov .lb-row+.lb-row{margin-top:4px}
+      .pq-lb-ov .lb-row.me{background:var(--hi)}
+      .pq-lb-ov .lb-row .r{font:700 15px system-ui;color:var(--c);text-align:center}
+      .pq-lb-ov .lb-row .nm{font:600 14px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .pq-lb-ov .lb-row .nm small{display:block;color:var(--mut);font-weight:500;font-size:11.5px}
+      .pq-lb-ov .lb-row .v{font:700 15px system-ui;text-align:right}
+      .pq-lb-ov .lb-row .v small{display:block;font:500 11px system-ui;color:var(--mut)}
+      .pq-lb-ov .lb-empty{color:var(--mut);padding:18px 0;text-align:center}
+      .pq-lb-ov .lb-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;color:var(--mut);font-size:11px}
+      .pq-lb-ov .lb-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c);margin-right:4px}
+      .pq-lb-ov .pf-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+      .pq-lb-ov .pf-bal{text-align:right}
+      .pq-lb-ov .pf-bal b{display:block;font:800 22px system-ui}
+      .pq-lb-ov .pf-bal span{color:var(--mut);font-size:11px}
+      .pq-lb-ov .pf-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}
+      .pq-lb-ov .pf-tile{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+      .pq-lb-ov .pf-tile b{display:block;font:700 18px system-ui}
+      .pq-lb-ov .pf-tile span{color:var(--mut);font-size:11px}
+      .pq-lb-ov h3{font:700 13px system-ui;margin:16px 0 8px}
+      .pq-lb-ov .pf-week{display:flex;align-items:flex-end;gap:6px;height:64px}
+      .pq-lb-ov .pf-week div{flex:1;max-width:44px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--mut)}
+      .pq-lb-ov .pf-week i{display:block;width:100%;background:#6366f1;border-radius:4px 4px 0 0;min-height:2px}
+      .pq-lb-ov .pf-shop{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+      .pq-lb-ov .pf-skin{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--bg)}
+      .pq-lb-ov .pf-skin.on{outline:2px solid #6366f1}
+      .pq-lb-ov .pf-sw{height:34px}
+      .pq-lb-ov .pf-skin div.pf-in{padding:7px 8px}
+      .pq-lb-ov .pf-skin b{font:600 12.5px system-ui;display:block}
+      .pq-lb-ov .pf-skin span{color:var(--mut);font-size:11px}
+      .pq-lb-ov .pf-skin button{margin-top:6px;width:100%;padding:5px 0;border-radius:7px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:600 12px system-ui;cursor:pointer}
+      .pq-lb-ov .pf-skin button.buy{background:#6366f1;border-color:#6366f1;color:#fff}
+      .pq-lb-ov .pf-skin button:disabled{opacity:.45;cursor:default}
+      .pq-lb-ov .pf-note{color:var(--mut);font-size:11.5px;margin-top:10px}
+      @media (max-width:560px){.pq-lb-ov .pf-tiles,.pq-lb-ov .pf-shop{grid-template-columns:repeat(2,1fr)}}
     `);
 
     const box = document.createElement('div');
     box.id = 'pq-lb';
-    box.title = 'Leaderboard · click for everyone (Ctrl+Alt+L)';
-    box.addEventListener('click', () => showAll());
+    box.className = 'pq-lbx';
+    box.title = 'Leaderboard · click for everyone (Ctrl+Alt+L) · Shift+9 = your profile';
+    box.addEventListener('click', () => showList());
     if (C.widget !== false) document.body.appendChild(box);
 
-    function confetti(n) {
-      const r = box.getBoundingClientRect();
-      const cols = ['#fbbf24', '#f472b6', '#60a5fa', '#4ade80', '#f43f5e', '#a78bfa'];
-      for (let i = 0; i < n; i++) {
-        const c = document.createElement('div');
-        c.className = 'pq-lb-confetti';
-        c.style.left = r.left + r.width / 2 + 'px'; c.style.top = r.top + 10 + 'px';
-        c.style.background = cols[i % cols.length];
-        c.style.setProperty('--x', `${(Math.random() - 0.7) * 420}px`);
-        c.style.setProperty('--y', `${-80 - Math.random() * 320}px`);
-        c.style.setProperty('--r', `${(Math.random() - 0.5) * 1080}deg`);
-        c.style.animationDelay = `${Math.random() * 0.15}s`;
-        document.body.appendChild(c);
-        setTimeout(() => c.remove(), 2000);
-      }
-    }
-    function countUp(el, to) {
-      const from = +el.dataset.v || 0;
-      el.dataset.v = to;
-      if (from === to) { el.textContent = to; return; }
-      const t0 = performance.now();
-      const step = (t) => { const k = Math.min(1, (t - t0) / 700); el.textContent = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); };
-      requestAnimationFrame(step);
-    }
-
     function render() {
-      if (C.widget === false) return;
-      const list = ranked((data && data.list) || []);
-      const me = list.find((r) => r.id === String(ME.id));
-      const tier = me ? me.tier : 'none';
-      const mins = Math.round(WIN / 60000);
-      const key = JSON.stringify([tier, me && me.rank, me && me.points, list.length]);
-      if (key === shown) return;
-      shown = key;
-      box.className = 't-' + tier;
-      const gap = me && me.rank > 1 ? list[0].points - me.points : 0;
-      const sparks = ['gold', 'blue', 'turq', 'dgreen'].includes(tier)
-        ? Array.from({ length: tier === 'gold' || tier === 'blue' ? 7 : 4 }, (_, i) => `<span class="lb-spark" style="left:${15 + i * 13}%;top:${30 + (i % 3) * 18}%;--dx:${(i % 2 ? 1 : -1) * (4 + i)}px;--dy:${-6 - i * 2}px;animation-delay:${i * 0.31}s"></span>`).join('') : '';
-      box.innerHTML = `<span class="lb-glow"></span><div class="lb-card">${tier === 'gold' ? '<span class="lb-crown">👑</span>' : ''}${sparks}<span class="lb-shine"></span>
-        <div class="lb-rank">${me ? '#' + me.rank : '–'}</div>
-        <div class="lb-txt">
-          <span class="lb-n"><b>${me ? fmtPts(me.points) : 0}</b> pts · ${mins} min</span>
-          <span class="lb-sub">${me ? `${me.n} closed · ${me.rank === 1 ? `#1 of ${list.length}` : `${fmtPts(gap)} behind #1`}` : list.length ? `${list.length} on the board` : 'nobody closed one yet'}</span>
-          <span class="lb-bar"><i style="width:${me ? Math.max(6, Math.round(me.f * 100)) : 4}%"></i></span></div></div>`;
-      if (me && prevRank != null && me.rank !== prevRank) {
-        const up = me.rank < prevRank;
-        box.querySelector('.lb-card').insertAdjacentHTML('beforeend', `<span class="lb-move ${up ? '' : 'down'}">${up ? '▲' : '▼'}${Math.abs(prevRank - me.rank)}</span>`);
-        if (up) confetti(me.rank === 1 ? 70 : 28);
+      const th = theme();
+      box.classList.toggle('dark', th === 'dark');
+      if (C.widget !== false) {
+        const list = ranked();
+        const me = list.find((r) => r.id === ME_ID);
+        const key = JSON.stringify([th, me && me.tier, me && me.rank, me && me.points, me && me.kingMin, list.length]);
+        if (key !== shown) {
+          shown = key;
+          const mins = Math.round(WIN / 60000);
+          const gap = me && me.rank > 1 ? list[0].points - me.points : 0;
+          box.innerHTML = `<div class="lb-card t-${me ? me.tier : 'none'}"><div class="lb-rank">${me ? '#' + me.rank : '–'}</div><div class="lb-main">
+            <div class="lb-pts">${me ? fmt(me.points) : 0} <small>pts · ${mins} min</small></div>
+            <div class="lb-sub">${me ? (me.king ? `<span class="lb-king">👑 king${me.kingMin != null ? ` · ${me.kingMin} min` : ''}</span>` : `${me.n} closed · ${me.rank === 1 ? `#1 of ${list.length}` : `${fmt(gap)} behind #1`}`) : list.length ? `${list.length} on the board` : 'nobody closed one yet'}</div></div></div>`;
+          if (me && prevRank != null && me.rank !== prevRank) { box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash'); }
+          prevRank = me ? me.rank : null;
+        }
       }
-      prevRank = me ? me.rank : null;
-      if (open) showAll(true);
+      if (listOpen) showList(true);
     }
 
-    function showAll(refresh) {
-      const list = ranked((data && data.list) || []);
-      let ov = document.getElementById('pq-lb-ov');
+    function overlay(id) {
+      let ov = document.getElementById(id);
       if (!ov) {
-        if (refresh) return;
         ov = document.createElement('div');
-        ov.id = 'pq-lb-ov';
-        ov.addEventListener('click', (e) => { if (e.target === ov) { ov.remove(); open = false; } });
+        ov.id = id;
+        ov.className = 'pq-lb-ov pq-lbx';
+        ov.addEventListener('click', (e) => { if (e.target === ov) close(id); });
         document.body.appendChild(ov);
       }
-      open = true;
+      ov.classList.toggle('dark', theme() === 'dark');
+      return ov;
+    }
+    function close(id) { document.getElementById(id)?.remove(); if (id === 'pq-lb-ov') listOpen = false; }
+
+    function showList(refresh) {
+      if (refresh && !document.getElementById('pq-lb-ov')) return;
+      close('pq-pf-ov');
+      const ov = overlay('pq-lb-ov');
+      listOpen = true;
+      const list = ranked();
       const mins = Math.round(WIN / 60000);
       const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
       ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard</h2>
-        <div class="lb-meta">points · last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · checked ${at}${data && data.via ? ' via ' + data.via : ''}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
-        ${list.length ? list.map((r, i) => `<div class="lb-row t-${r.tier}${r.id === String(ME.id) ? ' me' : ''}" style="animation-delay:${i * 0.05}s">
-          <span class="fill" style="width:${Math.round(r.f * 100)}%;animation-delay:${0.2 + i * 0.05}s"></span>
-          <span class="r">#${r.rank}</span><span class="nm">${escHtml(r.name)}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single</small></span>
-          <span class="v">${fmtPts(r.points)}<small>pts</small></span></div>`).join('') : '<div class="lb-empty">Nobody closed a picklist in the last ' + mins + ' min</div>'}</div>`;
+        <div class="lb-meta">last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
+        ${list.length ? list.map((r) => `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.king ? '👑' : '#' + r.rank}</span>
+          <span class="nm">${escHtml(r.name)}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single${r.king && r.kingMin != null ? ` · king ${r.kingMin} min` : ''}</small></span>
+          <span class="v">${fmt(r.points)}<small>pts</small></span></div>`).join('') : `<div class="lb-empty">Nobody closed a picklist in the last ${mins} min</div>`}
+        <div class="lb-legend"><span class="t-blue"><i></i>30+</span><span class="t-turq"><i></i>25+</span><span class="t-dgreen"><i></i>20+</span><span class="t-green"><i></i>15+</span><span class="t-orange"><i></i>10+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 15+ · +20 coins a minute</span></div></div>`;
     }
 
+    // ---------- profile (Shift+9) ----------
+    async function loadProfile() {
+      if (!URL_ || !ME_ID) return null;
+      const r = await fetch(`${URL_}/profile?id=${encodeURIComponent(ME_ID)}`, { credentials: 'omit', cache: 'no-store' });
+      const j = await r.json();
+      if (!r.ok || j.err) throw new Error(j.err || `HTTP ${r.status}`);
+      prof = j;
+      lsSet(LS_SKIN, { id: j.skin || null, at: Date.now() });
+      applySkin(j.skin);
+      return j;
+    }
+    async function change(kind, skin) {
+      const r = await fetch(`${URL_}/${kind}`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ME_ID, skin }) });
+      const j = await r.json();
+      if (j.profile) { prof = j.profile; lsSet(LS_SKIN, { id: prof.skin || null, at: Date.now() }); applySkin(prof.skin); }
+      return j;
+    }
+    function showProfile(note) {
+      close('pq-lb-ov');
+      const ov = overlay('pq-pf-ov');
+      const nm = escHtml(ME.name || 'You');
+      if (!URL_) { ov.innerHTML = `<div class="lb-panel"><h2>${nm}</h2><div class="lb-meta">Profile, coins and skins need the middle stop (Shift+8 → Leaderboard)</div></div>`; return; }
+      if (!prof) { ov.innerHTML = `<div class="lb-panel"><h2>${nm}</h2><div class="lb-meta">${note ? escHtml(note) : 'Loading…'}</div></div>`; return; }
+      const p = prof, t = p.today || {};
+      const maxW = Math.max(1, ...(p.week || []).map((w) => w.points || 0));
+      ov.innerHTML = `<div class="lb-panel">
+        <div class="pf-head"><div><h2>${nm}</h2><div class="lb-meta" style="margin:2px 0 0">${p.king ? `👑 king right now · ${p.king.min} min` : p.rankToday ? `#${p.rankToday} today of ${p.ofToday}` : 'nothing closed yet today'}</div></div>
+          <div class="pf-bal"><b>${int(p.balance)}</b><span>coins</span></div></div>
+        <div class="pf-tiles">
+          <div class="pf-tile"><b>${t.n || 0}</b><span>closed today</span></div>
+          <div class="pf-tile"><b>${fmt(t.points)}</b><span>points today</span></div>
+          <div class="pf-tile"><b>${t.multis || 0} / ${t.singles || 0}</b><span>multi / single</span></div>
+          <div class="pf-tile"><b>${t.kingMin || 0} min</b><span>king today</span></div>
+          <div class="pf-tile"><b>${int(p.picklists)}</b><span>closed in total</span></div>
+          <div class="pf-tile"><b>${p.kingTotal || 0} min</b><span>king in total</span></div>
+          <div class="pf-tile"><b>${p.kingBest || 0} min</b><span>longest streak</span></div>
+          <div class="pf-tile"><b>${int(p.spent)}</b><span>coins spent</span></div>
+        </div>
+        <h3>Last days</h3>
+        <div class="pf-week">${(p.week || []).map((w) => `<div title="${escHtml(w.day)} · ${fmt(w.points)} pts · ${w.n} closed"><i style="height:${Math.round(((w.points || 0) / maxW) * 48)}px"></i>${escHtml(w.day.slice(8, 10))}</div>`).join('')}</div>
+        <h3>Skins</h3>
+        <div class="pf-shop">${(p.skins || []).map((s) => {
+          const own = (p.owned || []).includes(s.id), on = p.skin === s.id, look = SKIN_LOOK[s.id] || { bg: '#334155', accent: '#64748b' };
+          const btn = on ? '<button data-pf="off">Take off</button>' : own ? `<button data-pf="wear" data-s="${s.id}">Wear</button>`
+            : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>Buy · ${int(s.price)}</button>`;
+          return `<div class="pf-skin${on ? ' on' : ''}"><div class="pf-sw" style="background:${look.bg};box-shadow:inset 0 -3px 0 ${look.line || look.accent}"></div>
+            <div class="pf-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b><span>${own ? (on ? 'wearing' : 'yours') : int(s.price) + ' coins'}</span>${btn}</div></div>`;
+        }).join('')}</div>
+        <div class="pf-note">${note ? escHtml(note) + ' · ' : ''}coins: 1 per packing point, +20 every minute as king · skins change Picqer's top bar and buttons on your PC</div></div>`;
+      ov.querySelectorAll('[data-pf]').forEach((b) => b.addEventListener('click', async () => {
+        const kind = b.dataset.pf === 'buy' ? 'buy' : 'equip';
+        const skin = b.dataset.pf === 'off' ? null : b.dataset.s;
+        if (b.dataset.pf === 'buy' && !confirm(`Buy ${skin} for ${int((p.skins.find((s) => s.id === skin) || {}).price)} coins?`)) return;
+        b.disabled = true;
+        try { const j = await change(kind, skin); showProfile(j.err || (kind === 'buy' ? 'bought ✓' : '')); } catch (e) { showProfile('could not reach the middle stop'); }
+      }));
+    }
+    async function openProfile() {
+      if (document.getElementById('pq-pf-ov')) return close('pq-pf-ov');
+      showProfile();
+      try { await loadProfile(); showProfile(); } catch (e) { showProfile('could not load: ' + e.message); }
+    }
+
+    const typing = (t) => t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName));
     document.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key || '').toLowerCase() === 'l') { e.preventDefault(); const ov = document.getElementById('pq-lb-ov'); if (ov) { ov.remove(); open = false; } else showAll(); }
-      if (e.key === 'Escape' && open) { const ov = document.getElementById('pq-lb-ov'); if (ov) ov.remove(); open = false; }
+      if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key || '').toLowerCase() === 'l') { e.preventDefault(); if (document.getElementById('pq-lb-ov')) close('pq-lb-ov'); else showList(); return; }
+      if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Digit9' && !typing(e.target)) { e.preventDefault(); openProfile(); return; }
+      if (e.key === 'Escape') { close('pq-lb-ov'); close('pq-pf-ov'); }
     });
+    try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { shown = null; render(); }); } catch (_) {}
     window.addEventListener('storage', (e) => { if (e.key === LS_DATA) { data = lsGet(LS_DATA, data); render(); } });
     render();
     const due = !data || Date.now() - data.at > POLL;
     setTimeout(poll, due ? 1500 + Math.random() * 2000 : POLL - (Date.now() - data.at));
     setInterval(() => { if (!document.hidden || !data || Date.now() - data.at > POLL * 3) poll(); }, POLL);
+    // the skin follows the account (bought or changed on another PC): check every 10 min
+    const sk = lsGet(LS_SKIN, null);
+    if (URL_ && ME_ID && (!sk || Date.now() - sk.at > 10 * 60000)) setTimeout(() => loadProfile().catch(() => {}), 4000 + Math.random() * 4000);
   }
 
   function pickStats() {
@@ -6161,6 +6231,7 @@
     if (use('autoNext')) safe('autoNext', autoNext);
     if (use('cardColor')) safe('cardColor', cardColor);
     if (use('pickStats')) safe('pickStats', pickStats);
+    safe('skin', () => applySkin((lsGet('pqsuite_skin_v1', null) || {}).id));
     if (use('leaderboard')) safe('leaderboard', leaderboard);
     safe('teams', refreshTeams);
     if (use('cardColor') || can('colors') || can('settings')) safe('colors', () => refreshRemote(REMOTE.colors, onColors));

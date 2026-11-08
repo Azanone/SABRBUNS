@@ -1,82 +1,103 @@
-// Picqer Suite · leaderboard middle stop (Cloudflare Worker)
-// Asks Picqer ONCE a minute for the closed picklists, every PC reads the answer from here.
-// Gives user ids + numbers only (no names): every PC turns ids into names with its own Picqer login.
+// Picqer Suite · leaderboard middle stop (Cloudflare Worker + 1 Durable Object)
+// Every minute (cron) it asks Picqer for the picklists closed in the last 15 min, once for everyone,
+// keeps today's stats, the coins and king of the hill in a Durable Object, and every PC reads from here.
+// Hands out user ids and numbers only (no names): every PC turns ids into names with its own Picqer login.
 //
 // Settings (Worker -> Settings -> Variables and Secrets):
-//   PICQER_KEY   secret  your Picqer API key (never in GitHub)
-//   PICQER_HOST  text    trl-fulfilment.picqer.com
-//   WAREHOUSE    text    Bunsenstraat   (name or id, empty = all)
-//
-// Points: multi (2+ different products) = 2, single = 1.334.
-// Products that have parts (has_parts, the "set" line) don't count, their parts do.
-
-const MULTI = 2, SINGLE = 1.334;
-let last = null, inflight = null, wh = null;
+//   PICQER_KEY   secret  the Picqer API key (never in GitHub)
+//   PICQER_HOST  text    trl-fulfilment.picqer.com      (from wrangler.jsonc)
+//   WAREHOUSE    text    Bunsenstraat                   (from wrangler.jsonc)
+//   PROXIES      text    user ids that never count, comma separated (optional)
+import { DurableObject } from 'cloudflare:workers';
+import { newState, tick, profile, buy, equip } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-const cors = (h = {}) => ({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', ...h });
+const amsNow = (t = Date.now()) => ams.format(new Date(t));
+const cors = (h = {}) => ({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', ...h });
+const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: cors({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }) });
+const PROXIES_DEFAULT = '36135,29011,33549';
 
 async function picqer(env, path) {
-  const r = await fetch(`https://${env.PICQER_HOST}/api/v1${path}`, {
+  const host = String(env.PICQER_HOST || '').replace(/\/+$/, '');
+  const base = /^https?:\/\//.test(host) ? host : `https://${host}`;
+  const r = await fetch(`${base}/api/v1${path}`, {
     headers: { Authorization: 'Basic ' + btoa(`${String(env.PICQER_KEY || '').trim()}:`), Accept: 'application/json', 'User-Agent': 'SABR Picqer Suite leaderboard' },
   });
   if (!r.ok) throw new Error(`Picqer HTTP ${r.status}`);
   return r.json();
 }
-
+let wh = null;
 async function warehouse(env) {
   const want = String(env.WAREHOUSE || '').trim().toLowerCase();
   if (!want) return null;
   if (wh) return wh;
   const list = await picqer(env, '/warehouses');
-  const hit = list.find((w) => String(w.idwarehouse) === want) || list.find((w) => String(w.name).toLowerCase() === want) || list.find((w) => String(w.name).toLowerCase().includes(want));
-  wh = hit ? { id: hit.idwarehouse, name: hit.name } : null;
+  const nm = (w) => String(w.name).trim().toLowerCase();
+  const hit = list.find((w) => String(w.idwarehouse) === want) || list.find((w) => nm(w) === want) || list.find((w) => nm(w).includes(want));
+  wh = hit ? { id: hit.idwarehouse, name: String(hit.name).trim() } : null;
   return wh;
 }
-
-async function compute(env, min) {
+async function closedRows(env, min) {
   const w = await warehouse(env);
-  const since = ams.format(new Date(Date.now() - min * 60000));
+  const since = amsNow(Date.now() - min * 60000);
   const rows = [];
   for (let off = 0; off < 5000; off += 100) {
     const page = await picqer(env, `/picklists?status=closed&closed_after=${encodeURIComponent(since)}${w ? `&idwarehouse=${w.id}` : ''}&offset=${off}`);
     rows.push(...page);
     if (page.length < 100) break;
   }
-  const by = new Map();
-  for (const p of rows) {
-    if (p.closed_by_iduser == null) continue;
-    const codes = new Set((p.products || []).filter((x) => !x.has_parts).map((x) => x.productcode));
-    if (!codes.size) continue;
-    const multi = codes.size >= 2;
-    const r = by.get(p.closed_by_iduser) || { id: String(p.closed_by_iduser), picklists: 0, multis: 0, singles: 0, points: 0 };
-    r.picklists++;
-    if (multi) r.multis++; else r.singles++;
-    r.points = Math.round((r.multis * MULTI + r.singles * SINGLE) * 1000) / 1000;
-    by.set(p.closed_by_iduser, r);
+  // only what the game needs
+  return { wh: w ? w.name : '', rows: rows.map((p) => ({ idpicklist: p.idpicklist, closed_by_iduser: p.closed_by_iduser, closed_at: p.closed_at, products: (p.products || []).map((x) => ({ productcode: x.productcode, has_parts: !!x.has_parts })) })) };
+}
+
+export class Game extends DurableObject {
+  async load() { return (await this.ctx.storage.get('state')) || newState(); }
+  async tick(rows, wh, proxies) {
+    const st = await this.load();
+    const board = tick(st, rows, { now: Date.now(), min: 15, today: amsNow().slice(0, 10), proxies, wh });
+    await this.ctx.storage.put('state', st);
+    return board;
   }
-  return { at: Date.now(), min, wh: w ? w.name : '', people: [...by.values()].sort((a, b) => b.points - a.points) };
+  async board() { return (await this.load()).board; }
+  async profile(id) { return profile(await this.load(), id, amsNow().slice(0, 10)); }
+  async change(kind, id, skin) {
+    const st = await this.load();
+    const res = kind === 'buy' ? buy(st, id, skin) : equip(st, id, skin);
+    if (res.ok) await this.ctx.storage.put('state', st);
+    return { ...res, profile: profile(st, id, amsNow().slice(0, 10)) };
+  }
+}
+
+const game = (env) => env.GAME.get(env.GAME.idFromName('main'));
+async function run(env) {
+  const { wh: w, rows } = await closedRows(env, 15);
+  return game(env).tick(rows, w, String(env.PROXIES || PROXIES_DEFAULT).split(',').map((x) => x.trim()).filter(Boolean));
 }
 
 export default {
-  async fetch(req, env, ctx) {
+  async scheduled(_ev, env, ctx) { ctx.waitUntil(run(env)); },
+  async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors() });
     const url = new URL(req.url);
-    if (url.pathname !== '/leaderboard') return new Response('Picqer Suite leaderboard · /leaderboard', { headers: cors() });
-    const min = Math.min(120, Math.max(5, +url.searchParams.get('min') || 15));
-    const key = new Request(`https://cache.local/leaderboard/${min}`);
-    const hit = await caches.default.match(key);
-    if (hit) return new Response(hit.body, { headers: cors({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }) });
     try {
-      inflight = inflight || compute(env, min).finally(() => { inflight = null; }); // 20 PCs at once = 1 Picqer round
-      const data = await inflight;
-      last = data;
-      const body = JSON.stringify(data);
-      ctx.waitUntil(caches.default.put(key, new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=55' } })));
-      return new Response(body, { headers: cors({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }) });
+      if (url.pathname === '/leaderboard') {
+        let b = await game(env).board();
+        if (!b || Date.now() - b.at > 3 * 60000) b = await run(env); // cron behind (or first time): do it now
+        return json(b);
+      }
+      if (url.pathname === '/profile') {
+        const id = url.searchParams.get('id');
+        if (!/^\d+$/.test(id || '')) return json({ err: 'id needed' }, 400);
+        return json(await game(env).profile(id));
+      }
+      if ((url.pathname === '/buy' || url.pathname === '/equip') && req.method === 'POST') {
+        const b = await req.json().catch(() => ({}));
+        if (!/^\d+$/.test(String(b.id || ''))) return json({ err: 'id needed' }, 400);
+        return json(await game(env).change(url.pathname.slice(1), String(b.id), b.skin ? String(b.skin) : null));
+      }
+      return new Response('Picqer Suite leaderboard · /leaderboard · /profile?id=', { headers: cors() });
     } catch (e) {
-      if (last) return new Response(JSON.stringify({ ...last, err: e.message, stale: true }), { headers: cors({ 'Content-Type': 'application/json' }) });
-      return new Response(JSON.stringify({ err: e.message }), { status: 502, headers: cors({ 'Content-Type': 'application/json' }) });
+      return json({ err: e.message }, 502);
     }
   },
 };
