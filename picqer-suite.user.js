@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.42
+// @version      3.43
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -5164,34 +5164,65 @@
       .pq-lb-ov .pf-skin button.buy{background:#6366f1;border-color:#6366f1;color:#fff}
       .pq-lb-ov .pf-skin button:disabled{opacity:.45;cursor:default}
       .pq-lb-ov .pf-lim{color:#e11d48;font-weight:700}
-      .pq-lb-ov .pf-ltd{display:block;font-style:normal;font:800 9.5px system-ui;letter-spacing:.06em;text-transform:uppercase;color:#e4ae39;margin-bottom:2px}
-      .pq-lb-ov .pf-crate{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
-      .pq-lb-ov .pf-crate-box{font-size:30px;width:48px;height:48px;display:grid;place-items:center;border-radius:10px;background:linear-gradient(135deg,#312e81,#831843)}
-      .pq-lb-ov .pf-crate-in{flex:1;min-width:0}
-      .pq-lb-ov .pf-crate-in b{display:block;font:700 13.5px system-ui}
-      .pq-lb-ov .pf-crate-in > span{color:var(--mut);font-size:11.5px}
-      .pq-lb-ov .pf-odds{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-      .pq-lb-ov .pf-odds i{font-style:normal;font-size:10.5px;padding:2px 6px;border-radius:6px;border-left:3px solid var(--r);background:var(--bg);color:var(--fg)}
-      .pq-lb-ov .pf-crate button{padding:8px 14px;border-radius:9px;border:0;background:#6366f1;color:#fff;font:700 13px system-ui;cursor:pointer;white-space:nowrap}
-      .pq-lb-ov .pf-crate button:disabled{opacity:.45;cursor:default}
-      #pq-crate-ov{z-index:2147483003;background:rgba(5,5,10,.72)}
-      #pq-crate-ov .cr-panel{width:min(720px,100%);text-align:center}
-      #pq-crate-ov h2{justify-content:center}
-      #pq-crate-ov .cr-win{position:relative;margin:16px 0 12px;height:150px;overflow:hidden;border-radius:12px;background:#07070c;border:1px solid #1f1f2b;box-shadow:inset 0 0 40px rgba(0,0,0,.8)}
-      #pq-crate-ov .cr-strip{position:absolute;left:0;top:14px;display:flex;will-change:transform;transition:transform 6.2s cubic-bezier(.06,.62,.1,1)}
-      #pq-crate-ov .cr-it{width:124px;height:120px;margin-right:8px;flex:none;border-radius:9px;background:#13131c;border-bottom:4px solid var(--r);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;box-shadow:inset 0 -30px 40px -30px var(--r)}
-      #pq-crate-ov .cr-sw{width:92px;height:46px;border-radius:7px;border:1px solid rgba(255,255,255,.12)}
-      #pq-crate-ov .cr-it b{color:#f1f5f9;font:700 12.5px system-ui}
-      #pq-crate-ov .cr-it.won{outline:2px solid var(--r);box-shadow:0 0 28px var(--r),inset 0 -30px 40px -30px var(--r)}
-      #pq-crate-ov .cr-mark{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:#fbbf24;box-shadow:0 0 10px #fbbf24}
-      #pq-crate-ov .cr-mark::before,#pq-crate-ov .cr-mark::after{content:"";position:absolute;left:-6px;border:7px solid transparent}
-      #pq-crate-ov .cr-mark::before{top:0;border-top-color:#fbbf24}
-      #pq-crate-ov .cr-mark::after{bottom:0;border-bottom-color:#fbbf24}
-      #pq-crate-ov .cr-res{min-height:22px;font:500 14px system-ui;color:#e2e8f0}
-      #pq-crate-ov .cr-btns{display:flex;gap:8px;justify-content:center;margin-top:12px;min-height:34px}
-      #pq-crate-ov .cr-btns button{padding:8px 14px;border-radius:9px;border:1px solid #2a2a38;background:#1a1a24;color:#f1f5f9;font:700 13px system-ui;cursor:pointer}
-      #pq-crate-ov .cr-btns button.buy{background:#6366f1;border-color:#6366f1}
-      #pq-crate-ov .cr-btns button:disabled{opacity:.45}
+      #pq-pf-ov.sh .sh-panel{width:min(1080px,100%);padding:18px 22px}
+      .sh .sh-top{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+      .sh .sh-top > div:first-child{flex:1;min-width:0}
+      .sh .sh-top .lb-tabs{margin:0}
+      .sh .sh-coins{text-align:right;padding:6px 12px;border-radius:10px;background:var(--soft);border:1px solid var(--line)}
+      .sh .sh-coins b{display:block;font:800 20px system-ui;line-height:1.1}
+      .sh .sh-coins span{color:var(--mut);font-size:11px}
+      .sh .sh-x{border:0;background:none;color:var(--mut);font-size:18px;cursor:pointer;padding:4px 6px}
+      .sh .sh-note{margin-top:10px;padding:8px 12px;border-radius:8px;background:var(--hi);font-size:12.5px}
+      .sh .sh-body{display:grid;grid-template-columns:1fr 400px;gap:20px}
+      .sh .sh-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+      .sh .sh-skin{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg);display:flex;flex-direction:column}
+      .sh .sh-skin::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--r)}
+      .sh .sh-skin.on{outline:2px solid #6366f1}
+      .sh .sh-sw{height:62px;display:flex;align-items:flex-end;justify-content:flex-end;padding:6px}
+      .sh .sh-sw span{font:700 10.5px system-ui;color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:999px}
+      .sh .sh-in{padding:8px 10px 4px}
+      .sh .sh-in b{display:block;font:700 13.5px system-ui}
+      .sh .sh-in small{color:var(--mut);font-size:11px}
+      .sh .sh-skin button{margin:6px 10px 12px;padding:6px 0;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:700 12.5px system-ui;cursor:pointer}
+      .sh .sh-skin button.buy::before{content:"🪙 "}
+      .sh button.buy{background:#6366f1;border-color:#6366f1;color:#fff}
+      .sh button.wear{background:#10b981;border-color:#10b981;color:#fff}
+      .sh button:disabled{opacity:.45;cursor:default}
+      .sh .sh-ltd{position:absolute;top:6px;left:6px;z-index:1;font-style:normal;font:800 9.5px system-ui;letter-spacing:.05em;color:#1c1400;background:linear-gradient(90deg,#fbbf24,#e4ae39);padding:2px 7px;border-radius:999px;box-shadow:0 0 12px rgba(228,174,57,.6)}
+      .sh .sh-fine{display:block;color:var(--mut);font-size:11px;margin-top:10px}
+      .sh .sh-crate{border-radius:14px;padding:14px;background:#0b0b12;color:#e2e8f0;border:1px solid #20202c;box-shadow:inset 0 0 50px rgba(99,102,241,.08)}
+      .sh .sh-crate.jackpot{box-shadow:0 0 0 1px #e4ae39,0 0 30px rgba(228,174,57,.35),inset 0 0 50px rgba(228,174,57,.12)}
+      .sh .sh-ct{display:flex;align-items:center;gap:10px}
+      .sh .sh-ct b{display:block;font:700 14px system-ui;color:#fff}
+      .sh .sh-ct small{color:#94a3b8;font-size:11.5px}
+      .sh .sh-box{font-size:26px;width:44px;height:44px;display:grid;place-items:center;border-radius:10px;background:linear-gradient(135deg,#312e81,#831843)}
+      .sh .sh-crate.spin .sh-box{animation:shShake .5s ease-in-out infinite}
+      @keyframes shShake{0%,100%{transform:rotate(0)}25%{transform:rotate(-8deg)}75%{transform:rotate(8deg)}}
+      .sh .cr-win{position:relative;margin:12px 0 10px;height:128px;overflow:hidden;border-radius:10px;background:#05050a;border:1px solid #1d1d28;box-shadow:inset 0 0 30px rgba(0,0,0,.9)}
+      .sh .cr-win::before,.sh .cr-win::after{content:"";position:absolute;top:0;bottom:0;width:50px;z-index:2;pointer-events:none}
+      .sh .cr-win::before{left:0;background:linear-gradient(90deg,#05050a,transparent)}
+      .sh .cr-win::after{right:0;background:linear-gradient(-90deg,#05050a,transparent)}
+      .sh .cr-strip{position:absolute;left:0;top:12px;display:flex;will-change:transform}
+      .sh .cr-strip.go{transition:transform 6.2s cubic-bezier(.06,.62,.1,1)}
+      .sh .cr-it{width:104px;height:102px;margin-right:8px;flex:none;border-radius:9px;background:#13131c;border-bottom:4px solid var(--r);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;box-shadow:inset 0 -26px 34px -26px var(--r)}
+      .sh .cr-sw{width:78px;height:40px;border-radius:7px;border:1px solid rgba(255,255,255,.12)}
+      .sh .cr-it b{color:#f1f5f9;font:700 11.5px system-ui}
+      .sh .cr-it.won{outline:2px solid var(--r);box-shadow:0 0 24px var(--r),inset 0 -26px 34px -26px var(--r)}
+      .sh .cr-mark{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;z-index:3;background:#fbbf24;box-shadow:0 0 10px #fbbf24}
+      .sh .cr-mark::before,.sh .cr-mark::after{content:"";position:absolute;left:-6px;border:7px solid transparent}
+      .sh .cr-mark::before{top:0;border-top-color:#fbbf24}
+      .sh .cr-mark::after{bottom:0;border-bottom-color:#fbbf24}
+      .sh .cr-res{text-align:center;min-height:20px;font:500 13.5px system-ui;color:#e2e8f0}
+      .sh .cr-jp{color:#fbbf24;font-size:15px;letter-spacing:.04em}
+      .sh .cr-btns{display:flex;gap:8px;justify-content:center;margin:10px 0 4px;min-height:36px}
+      .sh .cr-btns button{padding:9px 16px;border-radius:9px;border:1px solid #2a2a38;font:800 13px system-ui;cursor:pointer}
+      .sh .cr-btns button.buy{background:linear-gradient(90deg,#6366f1,#a855f7);border:0;box-shadow:0 6px 20px rgba(139,92,246,.35)}
+      .sh .sh-odds{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;font-size:11.5px;color:#cbd5e1}
+      .sh .sh-odds div{display:flex;align-items:center;gap:6px}
+      .sh .sh-odds i{width:8px;height:8px;border-radius:2px;background:var(--r);flex:none}
+      .sh .sh-odds span{margin-left:auto;color:#94a3b8}
+      .sh .sh-crate .sh-fine{color:#64748b}
+      @media (max-width:860px){.sh .sh-body{grid-template-columns:1fr}.sh .sh-top{flex-wrap:wrap}}
       .pq-lb-ov .pf-note{color:var(--mut);font-size:11.5px;margin-top:10px}
       @media (max-width:560px){.pq-lb-ov .pf-tiles,.pq-lb-ov .pf-shop{grid-template-columns:repeat(2,1fr)}}
     `);
@@ -5342,54 +5373,84 @@
       if (j.profile) { prof = j.profile; skinSave(ME_ID, prof.skin); applySkin(prof.skin); }
       return j;
     }
-    function showProfile(note) {
-      close('pq-lb-ov');
-      const ov = overlay('pq-pf-ov');
-      const nm = escHtml(ME.name || 'You');
-      if (!URL_) { ov.innerHTML = `<div class="lb-panel"><h2>${nm}</h2><div class="lb-meta">Profile, coins and skins need the middle stop (Shift+8 → Leaderboard)</div></div>`; return; }
-      if (!prof) { ov.innerHTML = `<div class="lb-panel"><h2>${nm}</h2><div class="lb-meta">${note ? escHtml(note) : 'Loading…'}</div></div>`; return; }
-      const p = prof, t = p.today || {};
-      const maxW = Math.max(1, ...(p.week || []).map((w) => w.points || 0));
-      ov.innerHTML = `<div class="lb-panel">
-        <div class="pf-head"><div><h2>${nm}</h2><div class="lb-meta" style="margin:2px 0 0">${p.king ? `👑 king right now · ${p.king.min} min` : p.rankToday ? `#${p.rankToday} today of ${p.ofToday}` : 'nothing closed yet today'}</div></div>
-          <div class="pf-bal"><b>${int(p.balance)}</b><span>coins</span></div></div>
-        <div class="pf-tiles">
-          <div class="pf-tile"><b>${t.n || 0}</b><span>closed today</span></div>
-          <div class="pf-tile"><b>${fmt(t.points)}</b><span>points today</span></div>
-          <div class="pf-tile"><b>${t.multis || 0} / ${t.singles || 0}</b><span>multi / single</span></div>
-          <div class="pf-tile"><b>${t.kingMin || 0} min</b><span>king today</span></div>
-          <div class="pf-tile"><b>${int(p.picklists)}</b><span>closed in total</span></div>
-          <div class="pf-tile"><b>${p.kingTotal || 0} min</b><span>king in total</span></div>
-          <div class="pf-tile"><b>${p.kingBest || 0} min</b><span>longest streak</span></div>
-          <div class="pf-tile"><b>${int(p.spent)}</b><span>coins spent</span></div>
+    // ---------- Shift+9: the shop. Left = skins, right = crate (CS-style reel), top tab = my stats ----------
+    let pfTab = 'shop', spinning = false;
+    const nameOfSkin = (id) => ((prof && prof.skins) || []).find((x) => x.id === id)?.name || id;
+    function skinCard(p, s) {
+      const own = (p.owned || []).includes(s.id), on = p.skin === s.id, look = SKIN_LOOK[s.id] || { bg: '#334155', accent: '#64748b' };
+      const btn = on ? '<button data-pf="off">Take off</button>' : own ? `<button class="wear" data-pf="wear" data-s="${s.id}">Wear</button>`
+        : s.limit && !s.left ? '<button disabled>Sold out</button>'
+        : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>${int(s.price)}</button>`;
+      const tags = [look.dark ? 'dark' : 'light', look.dark && look.dark.fx !== 'none' ? 'moves' : ''].filter(Boolean).join(' · ');
+      return `<div class="sh-skin${on ? ' on' : ''}${own ? ' own' : ''}" style="--r:${RARITY[s.id] || '#94a3b8'}">
+        ${s.limit ? `<em class="sh-ltd">★ LIMITED · ${s.left || 0}/${s.limit} left</em>` : ''}
+        <div class="sh-sw" style="background:${look.bg}">${on ? '<span>✓ wearing</span>' : own ? '<span>yours</span>' : ''}</div>
+        <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b><small>${tags}</small></div>${btn}</div>`;
+    }
+    function crateHtml(p) {
+      if (!p.crate) return '';
+      return `<div class="sh-crate">
+        <div class="sh-ct"><div class="sh-box">🎁</div><div><b>Skin crate</b><small>${int(p.crate.price)} coins · ${int(p.crates || 0)} opened</small></div></div>
+        <div class="cr-win"><div class="cr-strip">${p.crate.odds.slice().reverse().concat(p.crate.odds).map((o) => reelCard(o.id)).join('')}</div><div class="cr-mark"></div></div>
+        <div class="cr-res">Spin for a random skin</div>
+        <div class="cr-btns"><button class="buy" data-crate ${p.balance < p.crate.price ? 'disabled' : ''}>Open crate · ${int(p.crate.price)}</button></div>
+        <div class="sh-odds">${p.crate.odds.map((o) => `<div style="--r:${RARITY[o.id] || '#94a3b8'}"><i></i>${escHtml(nameOfSkin(o.id))}<span>${String(o.pct).replace('.', ',')}%</span></div>`).join('')}</div>
+        <small class="sh-fine">already have it? you get ¼ of its shop price back</small>
+      </div>`;
+    }
+    const reelCard = (id) => { const look = SKIN_LOOK[id] || { bg: '#334155' }; return `<div class="cr-it" style="--r:${RARITY[id] || '#94a3b8'}"><div class="cr-sw" style="background:${look.bg}"></div><b>${escHtml(nameOfSkin(id))}</b></div>`; };
+    function statsHtml(p) {
+      const t = p.today || {}, maxW = Math.max(1, ...(p.week || []).map((w) => w.points || 0));
+      const tile = (v, l) => `<div class="pf-tile"><b>${v}</b><span>${l}</span></div>`;
+      return `<div class="pf-tiles">
+          ${tile(t.n || 0, 'closed today')}${tile(fmt(t.points), 'points today')}${tile(`${t.multis || 0} / ${t.singles || 0}`, 'multi / single')}${tile((t.kingMin || 0) + ' min', 'king today')}
+          ${tile(int(p.picklists), 'closed in total')}${tile((p.kingTotal || 0) + ' min', 'king in total')}${tile((p.kingBest || 0) + ' min', 'longest streak')}${tile(int(p.spent), 'coins spent')}
         </div>
         <h3>Last days</h3>
         <div class="pf-week">${(p.week || []).map((w) => `<div title="${escHtml(w.day)} · ${fmt(w.points)} pts · ${w.n} closed"><i style="height:${Math.round(((w.points || 0) / maxW) * 48)}px"></i>${escHtml(w.day.slice(8, 10))}</div>`).join('')}</div>
-        <h3>Skins</h3>
-        <div class="pf-shop">${(p.skins || []).map((s) => {
-          const own = (p.owned || []).includes(s.id), on = p.skin === s.id, look = SKIN_LOOK[s.id] || { bg: '#334155', accent: '#64748b' };
-          const btn = on ? '<button data-pf="off">Take off</button>' : own ? `<button data-pf="wear" data-s="${s.id}">Wear</button>`
-            : s.limit && !s.left ? '<button disabled>Sold out</button>'
-            : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>Buy · ${int(s.price)}</button>`;
-          return `<div class="pf-skin${on ? ' on' : ''}"><div class="pf-sw" style="background:${look.bg};box-shadow:inset 0 -3px 0 ${look.line || look.accent}"></div>
-            <div class="pf-in">${s.limit ? `<em class="pf-ltd">★ Limited edition · ${s.left || 0} of ${s.limit} left</em>` : ''}<b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b><span>${own ? (on ? 'wearing' : 'yours') : int(s.price) + ' coins'}${look.dark ? ' · dark' : ''}${look.dark && look.dark.fx !== 'none' ? ' · moves' : ''}</span>${btn}</div></div>`;
-        }).join('')}</div>
-        ${p.crate ? `<h3>Crate</h3>
-        <div class="pf-crate"><div class="pf-crate-box">🎁</div><div class="pf-crate-in"><b>Skin crate</b><span>${int(p.crate.price)} coins · ${int(p.crates || 0)} opened · already have it? you get ¼ of its price back</span>
-          <div class="pf-odds">${p.crate.odds.map((o) => `<i style="--r:${RARITY[o.id] || '#94a3b8'}" title="${escHtml(o.id)}">${escHtml((p.skins.find((x) => x.id === o.id) || { name: o.id }).name)} ${String(o.pct).replace('.', ',')}%</i>`).join('')}</div></div>
-          <button class="buy" data-crate ${p.balance < p.crate.price ? 'disabled' : ''}>Open · ${int(p.crate.price)}</button></div>` : ''}
-        <div class="pf-note">${note ? escHtml(note) + ' · ' : ''}coins: 1 per packing point, +20 every minute as king · skins change Picqer's top bar and buttons on your PC</div></div>`;
+        <div class="pf-note">coins: 1 per packing point, +20 every minute as king</div>`;
+    }
+    function showProfile(note) {
+      if (spinning) return;
+      close('pq-lb-ov');
+      const ov = overlay('pq-pf-ov');
+      ov.classList.add('sh');
+      const nm = escHtml(ME.name || 'You');
+      if (!URL_) { ov.innerHTML = `<div class="lb-panel"><h2>${nm}</h2><div class="lb-meta">The shop needs the middle stop (Shift+8 → Leaderboard)</div></div>`; return; }
+      if (!prof) { ov.innerHTML = `<div class="lb-panel"><h2>Shop</h2><div class="lb-meta">${note ? escHtml(note) : 'Loading…'}</div></div>`; return; }
+      const p = prof;
+      const status = p.king ? `👑 king right now · ${p.king.min} min` : p.rankToday ? `#${p.rankToday} today of ${p.ofToday}` : 'nothing closed yet today';
+      ov.innerHTML = `<div class="lb-panel sh-panel">
+        <div class="sh-top">
+          <div><h2>${pfTab === 'shop' ? 'Shop' : nm}</h2><div class="lb-meta" style="margin:2px 0 0">${nm} · ${status}</div></div>
+          <div class="lb-tabs"><button data-pt="shop" class="${pfTab === 'shop' ? 'on' : ''}">🛒 Shop</button><button data-pt="stats" class="${pfTab === 'stats' ? 'on' : ''}">📊 My stats</button></div>
+          <div class="sh-coins"><b>${int(p.balance)}</b><span>coins</span></div>
+          <button class="sh-x" data-pf-close title="Esc">✕</button>
+        </div>
+        ${note ? `<div class="sh-note">${escHtml(note)}</div>` : ''}
+        ${pfTab === 'stats' ? statsHtml(p) : `<div class="sh-body">
+          <div class="sh-left"><h3>Skins</h3><div class="sh-grid">${(p.skins || []).map((s) => skinCard(p, s)).join('')}</div>
+            <small class="sh-fine">skins change Picqer for your account · dark skins make all of Picqer dark</small></div>
+          <div class="sh-right"><h3>Crate</h3>${crateHtml(p)}</div>
+        </div>`}
+      </div>`;
+      ov.querySelector('[data-pf-close]').onclick = () => close('pq-pf-ov');
+      ov.querySelectorAll('[data-pt]').forEach((b) => (b.onclick = () => { pfTab = b.dataset.pt; showProfile(); }));
       ov.querySelector('[data-crate]')?.addEventListener('click', (e) => openCrate(e.currentTarget));
+      // park the idle reel somewhere in the middle
+      const idle = ov.querySelector('.cr-strip');
+      if (idle) idle.style.transform = `translate3d(${-Math.max(0, idle.scrollWidth / 2 - ov.querySelector('.cr-win').clientWidth / 2)}px,0,0)`;
       ov.querySelectorAll('[data-pf]').forEach((b) => b.addEventListener('click', async () => {
         const kind = b.dataset.pf === 'buy' ? 'buy' : 'equip';
         const skin = b.dataset.pf === 'off' ? null : b.dataset.s;
-        if (b.dataset.pf === 'buy' && !confirm(`Buy ${skin} for ${int((p.skins.find((s) => s.id === skin) || {}).price)} coins?`)) return;
+        if (b.dataset.pf === 'buy' && !confirm(`Buy ${nameOfSkin(skin)} for ${int((p.skins.find((s) => s.id === skin) || {}).price)} coins?`)) return;
         b.disabled = true;
-        try { const j = await change(kind, skin); showProfile(j.err || (kind === 'buy' ? 'bought ✓' : '')); } catch (e) { showProfile('could not reach the middle stop'); }
+        try { const j = await change(kind, skin); showProfile(j.err || (kind === 'buy' ? `${nameOfSkin(skin)} bought ✓` : '')); } catch (e) { showProfile('could not reach the middle stop'); }
       }));
     }
-    // ---------- crate: the middle stop picks the skin, then the reel spins to it ----------
+    // ---------- crate: the middle stop picks the skin, then the reel spins to it (right side of the shop) ----------
     async function openCrate(btn) {
+      if (spinning) return;
       if (btn) btn.disabled = true;
       let j;
       try {
@@ -5397,51 +5458,69 @@
         j = await r.json();
       } catch (e) { j = { err: 'could not reach the middle stop' }; }
       if (!j.ok) { showProfile(j.err || 'crate failed'); return; }
+      const before = prof;
       if (j.profile) prof = j.profile;
-      spin(j);
+      spin(j, before);
     }
-    function spin(j) {
-      document.getElementById('pq-crate-ov')?.remove();
+    function spin(j, before) {
+      const box = document.querySelector('#pq-pf-ov .sh-crate');
+      if (!box) { showProfile(); return; }
+      spinning = true;
+      const coins = document.querySelector('#pq-pf-ov .sh-coins b');
+      if (coins && prof) coins.textContent = int(prof.balance - (j.dup ? j.back : 0));
       const odds = (prof && prof.crate && prof.crate.odds) || [];
       const tot = odds.reduce((n, o) => n + o.pct, 0) || 1;
       const pick = () => { let x = Math.random() * tot; for (const o of odds) { if (x < o.pct) return o.id; x -= o.pct; } return odds[0] ? odds[0].id : j.won; };
-      const N = 56, WIN = 48, W = 132;
-      // fill the reel; a few rare ones go near the end so it feels close
+      const N = 60, WIN = 52, W = 112;
       const items = Array.from({ length: N }, (_, i) => (i === WIN ? j.won : i === WIN - 1 || i === WIN + 2 ? ['voidescent', 'carbon', 'crown'][Math.floor(Math.random() * 3)] : pick()));
-      const nameOf = (id) => ((prof && prof.skins || []).find((x) => x.id === id) || { name: id }).name;
-      const card = (id) => { const look = SKIN_LOOK[id] || { bg: '#334155' }; return `<div class="cr-it" style="--r:${RARITY[id] || '#94a3b8'}"><div class="cr-sw" style="background:${look.bg}"></div><b>${escHtml(nameOf(id))}</b></div>`; };
-      const ov = document.createElement('div');
-      ov.id = 'pq-crate-ov';
-      ov.className = 'pq-lb-ov pq-lbx dark';
-      ov.innerHTML = `<div class="lb-panel cr-panel"><h2>Opening crate…</h2>
-        <div class="cr-win"><div class="cr-strip">${items.map(card).join('')}</div><div class="cr-mark"></div></div>
-        <div class="cr-res"></div><div class="cr-btns"></div></div>`;
-      document.body.appendChild(ov);
-      const strip = ov.querySelector('.cr-strip'), win = ov.querySelector('.cr-win');
-      const stop = WIN * W + W / 2 - win.clientWidth / 2 + (Math.random() * 0.7 - 0.35) * (W - 12);
+      const winEl = box.querySelector('.cr-win');
+      const old = box.querySelector('.cr-strip');
+      const strip = document.createElement('div');
+      strip.className = 'cr-strip go';
+      strip.innerHTML = items.map(reelCard).join('');
+      old.replaceWith(strip);
+      box.querySelector('.cr-res').textContent = 'Spinning…';
+      box.querySelector('.cr-btns').innerHTML = '';
+      box.classList.add('spin');
+      const stop = WIN * W + W / 2 - winEl.clientWidth / 2 + (Math.random() * 0.7 - 0.35) * (W - 14);
       let done = false;
       const finish = () => {
         if (done) return; done = true;
+        spinning = false;
+        box.classList.remove('spin');
         strip.style.transition = 'none';
         strip.style.transform = `translate3d(${-stop}px,0,0)`;
         strip.children[WIN].classList.add('won');
-        const nm = escHtml(nameOf(j.won)), rare = ['voidescent', 'carbon', 'crown'].includes(j.won);
-        ov.querySelector('h2').textContent = rare ? '🔥 JACKPOT 🔥' : 'Crate opened';
-        ov.querySelector('.cr-res').innerHTML = j.dup ? `<b style="color:${RARITY[j.won]}">${nm}</b> · you already had it · <b>+${int(j.back)} coins</b> back`
-          : `You got <b style="color:${RARITY[j.won]}">${nm}</b>!`;
+        if (coins && prof) coins.textContent = int(prof.balance);
+        const ct = box.querySelector('.sh-ct small');
+        if (ct && prof && prof.crate) ct.textContent = `${int(prof.crate.price)} coins · ${int(prof.crates || 0)} opened`;
+        const nm = escHtml(nameOfSkin(j.won)), rare = ['voidescent', 'carbon', 'crown'].includes(j.won);
+        if (rare) box.classList.add('jackpot');
+        box.querySelector('.cr-res').innerHTML = (rare ? '<b class="cr-jp">🔥 JACKPOT 🔥</b><br>' : '') + (j.dup
+          ? `<b style="color:${RARITY[j.won]}">${nm}</b> · you already had it · <b>+${int(j.back)} coins</b>`
+          : `You got <b style="color:${RARITY[j.won]}">${nm}</b>!`);
         const can = prof && prof.crate && prof.balance >= prof.crate.price;
-        ov.querySelector('.cr-btns').innerHTML = `${!j.dup ? '<button class="buy" data-cr="wear">Wear it</button>' : ''}<button class="buy" data-cr="again" ${can ? '' : 'disabled'}>Open another · ${int((prof && prof.crate && prof.crate.price) || 0)}</button><button data-cr="close">Close</button>`;
-        ov.querySelectorAll('[data-cr]').forEach((b) => (b.onclick = async () => {
-          if (b.dataset.cr === 'close') { ov.remove(); showProfile(); }
-          else if (b.dataset.cr === 'wear') { ov.remove(); const r = await change('equip', j.won).catch(() => ({})); showProfile(r.err || ''); }
-          else { b.disabled = true; openCrate(null); }
+        box.querySelector('.cr-btns').innerHTML = `${!j.dup ? '<button class="wear" data-cr="wear">Wear it</button>' : ''}<button class="buy" data-cr="again" ${can ? '' : 'disabled'}>Open another · ${int((prof && prof.crate && prof.crate.price) || 0)}</button>`;
+        box.querySelectorAll('[data-cr]').forEach((b) => (b.onclick = async () => {
+          if (b.dataset.cr === 'wear') { const r = await change('equip', j.won).catch(() => ({})); showProfile(r.err || `wearing ${nameOfSkin(j.won)} ✓`); }
+          else { box.classList.remove('jackpot'); b.disabled = true; openCrate(null); }
+        }));
+        // the skins on the left (owned / balance) follow, without touching the reel
+        const left = document.querySelector('#pq-pf-ov .sh-grid');
+        if (left && prof) left.innerHTML = (prof.skins || []).map((s) => skinCard(prof, s)).join('');
+        document.querySelectorAll('#pq-pf-ov .sh-grid [data-pf]').forEach((b) => b.addEventListener('click', async () => {
+          const kind = b.dataset.pf === 'buy' ? 'buy' : 'equip';
+          const skin = b.dataset.pf === 'off' ? null : b.dataset.s;
+          if (b.dataset.pf === 'buy' && !confirm(`Buy ${nameOfSkin(skin)}?`)) return;
+          b.disabled = true;
+          const r = await change(kind, skin).catch(() => ({ err: 'could not reach the middle stop' }));
+          showProfile(r.err || '');
         }));
       };
-      ov.addEventListener('click', (e) => { if (e.target === ov) { if (!done) finish(); else { ov.remove(); showProfile(); } } });
       requestAnimationFrame(() => requestAnimationFrame(() => {
         strip.style.transform = `translate3d(${-stop}px,0,0)`;
         strip.addEventListener('transitionend', finish, { once: true });
-        setTimeout(finish, 7500); // in case the tab was in the background
+        setTimeout(finish, 7500); // tab in the background: still finish
       }));
     }
     async function openProfile() {
@@ -5454,7 +5533,7 @@
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key || '').toLowerCase() === 'l') { e.preventDefault(); if (document.getElementById('pq-lb-ov')) close('pq-lb-ov'); else showList(); return; }
       if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Digit9' && !typing(e.target)) { e.preventDefault(); openProfile(); return; }
-      if (e.key === 'Escape') { if (document.getElementById('pq-crate-ov')) { document.getElementById('pq-crate-ov').remove(); showProfile(); return; } close('pq-lb-ov'); close('pq-pf-ov'); }
+      if (e.key === 'Escape') { if (spinning) return; close('pq-lb-ov'); close('pq-pf-ov'); }
     });
     try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { shown = null; render(); }); } catch (_) {}
     window.addEventListener('storage', (e) => { if (e.key === LS_DATA) { data = lsGet(LS_DATA, data); render(); } });
