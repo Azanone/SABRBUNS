@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.43
+// @version      3.44
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -200,7 +200,6 @@
       { k: 'batchMax', label: 'Optimized batches: max picklists per batch', type: 'num', def: 15 },
       { k: 'highlightTags', label: 'BE pick-up tags (badge + always last in the batch), comma separated', type: 'list', def: ['BE pick-up'] },
       { k: 'skipTags', label: 'Never batch picklists with these tags (Optimized + auto batch), comma separated', type: 'list', def: ['EIGENAAR'] },
-      { k: 'apiKey', label: 'API key (optional, leave empty = use login)', type: 'text', def: '' },
     ]},
     { id: 'comboAlert', title: 'Combo changed popup', hint: 'popup on [COMBO CHANGED] comment', fields: [
       { k: 'beep', label: 'Beep', type: 'bool', def: true },
@@ -291,7 +290,7 @@
   // ---------- API gate: all tabs on this PC together stay under Picqer's rate limit ----------
   //  every /api/v1 call from the suite waits for a slot (max API_PER_MIN a minute for the whole PC, a little gap between calls).
   //  Picqer says 429 (too many): every tab stops for a bit (Retry-After) and the call is tried again by itself.
-  const API_PER_MIN = Math.max(20, +lsGet('pqsuite_api_per_min', 0) || 150);
+  const API_PER_MIN = Math.max(20, +lsGet('pqsuite_api_per_min', 0) || 300);
   const GATE = 'pqsuite_api_gate_v1';
   const gateSleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
   let gateLast = 0;
@@ -300,7 +299,7 @@
       const now = Date.now();
       const g = lsGet(GATE, null) || { t: [], pause: 0 };
       if (g.pause > now) { await gateSleep(Math.min(g.pause - now + 30 + Math.random() * 200, 30000)); continue; }
-      if (now - gateLast < 60) { await gateSleep(60 - (now - gateLast)); continue; }
+      if (now - gateLast < 25) { await gateSleep(25 - (now - gateLast)); continue; }
       const t = (g.t || []).filter((x) => now - x < 60000);
       if (t.length >= API_PER_MIN) { await gateSleep(Math.min(60000 - (now - t[0]) + 50 + Math.random() * 300, 30000)); continue; }
       t.push(now);
@@ -318,15 +317,23 @@
     lsSet(GATE, g);
     console.info(`[suite] Picqer says too many requests · all tabs wait ${Math.round(ms / 1000)} s`);
   }
+  // fast = the combo batcher (you clicked, you are waiting): no per-minute cap or gap, only waits when Picqer
+  // really says too many (429) or almost nothing is left. Background stuff keeps the cap.
+  let fastFetch = (input, init) => fetch(input, init);
+  async function gateFastWait() {
+    for (let n = 0; n < 60; n++) {
+      const g = lsGet(GATE, null);
+      const now = Date.now();
+      if (!g || !(g.pause > now)) return;
+      await gateSleep(Math.min(g.pause - now + 30, 30000));
+    }
+  }
   try {
     const realFetch = window.fetch.bind(window);
-    window.fetch = async function (input, init) {
-      let url = '';
-      try { url = new URL(typeof input === 'string' ? input : input.url, location.href); } catch (_) {}
-      if (!url || url.origin !== location.origin || !url.pathname.startsWith('/api/v1/')) return realFetch(input, init);
+    const gated = async (input, init, fast) => {
       let res;
       for (let i = 0; i < 4; i++) {
-        await gateWait();
+        if (fast) await gateFastWait(); else await gateWait();
         res = await realFetch(input, init);
         // Picqer's limit (500 a minute) is shared by everyone on the same key: almost used up -> everyone here slows down first
         let left = NaN;
@@ -336,6 +343,13 @@
         gatePause(res);
       }
       return res;
+    };
+    fastFetch = (input, init) => gated(input, init, true);
+    window.fetch = async function (input, init) {
+      let url = '';
+      try { url = new URL(typeof input === 'string' ? input : input.url, location.href); } catch (_) {}
+      if (!url || url.origin !== location.origin || !url.pathname.startsWith('/api/v1/')) return realFetch(input, init);
+      return gated(input, init, false);
     };
   } catch (_) {}
 
@@ -1154,9 +1168,58 @@
         .classList.add('pq-picked-ov');
     };
 
+    // FAST WAY: 1 round of API calls for the whole page instead of opening every batch page:
+    //  open picklists (they say which batch they are in) + all picking containers (they say which picklist they hold).
+    //  open in a batch = status new/paused · unbound = open in a batch without a container. Kept 30 s, shared by tabs.
+    let bulk = null;
+    const BULK_LS = 'pqsuite_batchscan_v1';
+    async function apiAll(path) {
+      const out = new Map();
+      const sep = path.includes('?') ? '&' : '?';
+      for (let off = 0; off < 30000; off += 400) {
+        const pages = await Promise.all([0, 1, 2, 3].map((i) => fastFetch(`/api/v1${path}${sep}offset=${off + i * 100}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })));
+        let end = false;
+        for (const p of pages) { for (const x of p || []) out.set(String(x.idpicklist || x.idpicking_container), x); if (!p || p.length < 100) end = true; }
+        if (end) break;
+      }
+      return [...out.values()];
+    }
+    function loadBulk() {
+      if (bulk) return bulk;
+      bulk = (async () => {
+        const c = lsGet(BULK_LS, null);
+        if (c && Date.now() - c.at < 30000) return c;
+        const [nw, pz, boxes] = await Promise.all([apiAll('/picklists?status=new'), apiAll('/picklists?status=paused'), apiAll('/picking-containers')]);
+        if (boxes.length && !boxes.every((b) => 'idpicklist' in b)) throw new Error('containers without idpicklist');
+        const withBox = new Set(boxes.filter((b) => b.idpicklist).map((b) => String(b.idpicklist)));
+        const open = {}, unb = {};
+        for (const pl of [...nw, ...pz]) {
+          if (!pl.idpicklist_batch || (pl.status !== 'new' && pl.status !== 'paused')) continue;
+          const k = String(pl.idpicklist_batch);
+          open[k] = (open[k] || 0) + 1;
+          if (!withBox.has(String(pl.idpicklist))) unb[k] = (unb[k] || 0) + 1;
+        }
+        const d = { at: Date.now(), open, unb };
+        lsSet(BULK_LS, d);
+        return d;
+      })();
+      bulk.catch(() => {}).then(() => setTimeout(() => { bulk = null; }, 30000));
+      return bulk;
+    }
     const analyze = (row, url, batchId) => {
       const target = row.querySelector('a[href*="/picklists/batches/"]');
       const loader = createLoader(target);
+      loadBulk().then((d) => {
+        loader.remove();
+        const open = d.open[String(batchId)] || 0;
+        const v = applyVisuals(row, { openPicklists: open, totalPicklists: open, unbound: d.unb[String(batchId)] || 0 });
+        if (!v || !v.isDayson || C.pickedTag === false) return;
+        schedule((done) => batchPickState(batchId).then((st) => pickedTag(v.anchor, pickedNotClosed(st))).catch(() => {}).then(done));
+      }).catch((e) => { console.info('[suite] batch scan: fast way failed, opening batch pages', e && e.message); analyzeHtml(row, url, batchId, loader); });
+    };
+    // old way (only if the API does not work): open each batch page and read its table
+    const analyzeHtml = (row, url, batchId, loader) => {
       schedule((done) => {
         const t0 = performance.now();
         fetch(url, { credentials: 'same-origin' }).then((r) => r.text()).then((html) => {
@@ -1785,17 +1848,17 @@
    * ========================================================================= */
   // ⚙ in the batcher: per tab only what matters there
   const CB_TAB_SETTINGS = {
-    single: { title: 'Per combo', mods: [{ id: 'comboBatcher', keys: ['ignoreCodes', 'minGroup', 'skipParked', 'apiKey'] }] },
+    single: { title: 'Per combo', mods: [{ id: 'comboBatcher', keys: ['ignoreCodes', 'minGroup', 'skipParked'] }] },
     grouped: { title: 'Grouped batch', mods: [{ id: 'comboBatcher', keys: ['ignoreCodes', 'minGroup', 'flyerOrder', 'skipParked'] }] },
     opt: { title: 'Optimized batches + auto batch', mods: [{ id: 'comboBatcher', keys: ['batchMax', 'highlightTags', 'skipTags', 'skipParked', 'ignoreCodes'] }] },
-    iso: { title: 'Isolated', mods: [{ id: 'comboBatcher', keys: ['skipParked', 'apiKey'] }] },
+    iso: { title: 'Isolated', mods: [{ id: 'comboBatcher', keys: ['skipParked'] }] },
   };
   function comboBatcher() {
     const C = CFG.comboBatcher;
+    // always your own Picqer login (like before): no shared API key, so no shared rate limit with other PCs
     async function api(method, path, body) {
       const headers = jsonHeaders();
-      if (C.apiKey) headers.Authorization = 'Basic ' + btoa(C.apiKey + ':');
-      const r = await fetch(location.origin + '/api/v1' + path, { method, credentials: 'same-origin', headers, body: body ? JSON.stringify(body) : undefined });
+      const r = await fastFetch(location.origin + '/api/v1' + path, { method, credentials: 'same-origin', headers, body: body ? JSON.stringify(body) : undefined });
       const text = await r.text();
       if (!r.ok) {
         const e = new Error(`HTTP ${r.status}: ${text.slice(0, 200)}`);
@@ -2792,12 +2855,21 @@
         allowedStatus = new Set(sts);
         const prog = () => { let n = 0; counts.forEach((v) => (n += v)); $status.textContent = `Loading ${ids.length} shop${ids.length === 1 ? '' : 's'} · ${n} picklists…`; };
         prog();
-        await pool(ids, 3, async (id) => {
+        if (ids.length > 4) {
+          // many shops: all open picklists in pages of 100 (4 at a time) and keep the chosen shops = way fewer calls
+          const want = new Set(ids.map(String));
           for (const st of sts) {
-            const list = await paginate(`/picklists?idfulfilment_customer=${id}&status=${st}`, (n) => { counts.set(`${id}|${st}`, n); prog(); });
-            all.push(...list);
+            const list = await pagesFast(`/picklists?status=${st}`, (n) => { counts.set(`all|${st}`, n); prog(); });
+            all.push(...list.filter((pl) => pl.status === st && want.has(String(pl.idfulfilment_customer))));
           }
-        });
+        } else {
+          await pool(ids, 3, async (id) => {
+            for (const st of sts) {
+              const list = await paginate(`/picklists?idfulfilment_customer=${id}&status=${st}`, (n) => { counts.set(`${id}|${st}`, n); prog(); });
+              all.push(...list);
+            }
+          });
+        }
 
         lastGroups = group(all);
         colorOf.clear();
@@ -2893,8 +2965,34 @@
         const inBatch = open.length - free.length;
         const list = [];
         let k = 0, bad = 0, badMsg = '';
-        setProg(`${open.length} open · ${inBatch} in a batch · containers 0/${free.length}…`);
-        await pool(free, 3, async (pl) => {
+        setProg(`${open.length} open · ${inBatch} in a batch · containers…`);
+        // all picking containers in pages of 100 (each says which picklist it holds): usually a handful of calls
+        // instead of 1 per picklist. Only while that is cheaper: more pages than picklists to check -> 1 by 1.
+        let byPl = null;
+        try {
+          const boxesAll = [];
+          const seenBox = new Set();
+          let end = false;
+          const maxPages = Math.max(2, Math.floor(free.length * 0.8));
+          for (let off = 0, pages = 0; !end && pages < maxPages && !isoStop; off += 4 * PAGE, pages += 4) {
+            const got = await Promise.all([0, 1, 2, 3].map((i) => apiRetry('GET', `/picking-containers?offset=${off + i * PAGE}`, null, { retry5xx: true }).then((x) => x || [])));
+            for (const page of got) {
+              for (const c of page) { const kk = String(c.idpicking_container); if (!seenBox.has(kk)) { seenBox.add(kk); boxesAll.push(c); } }
+              if (page.length < PAGE) end = true;
+            }
+            setProg(`${open.length} open · ${inBatch} in a batch · containers ${boxesAll.length}…`);
+          }
+          if (!end) throw new Error('too many containers');
+          if (!boxesAll.length) byPl = new Map();
+          else if (boxesAll.every((c) => 'idpicklist' in c)) {
+            byPl = new Map();
+            for (const c of boxesAll) if (c.idpicklist) { const kk = String(c.idpicklist); if (!byPl.has(kk)) byPl.set(kk, []); byPl.get(kk).push(c); }
+          }
+        } catch (e) { byPl = null; }
+        if (byPl || free.length === 0) {
+          for (const pl of free) { const boxes = byPl ? byPl.get(String(pl.idpicklist)) : null; if (boxes && boxes.length) list.push({ pl, boxes }); }
+          k = free.length;
+        } else await pool(free, 6, async (pl) => {
           if (isoStop) return;
           try {
             const r = await apiRetry('GET', `/picking-containers?idpicklist=${pl.idpicklist}`, null, { retry5xx: true });
@@ -3397,7 +3495,7 @@
         for (let todo = optGroups.filter((g) => g.stale); todo.length; todo = optGroups.filter((g) => g.stale)) {
           for (let k = 0; k < todo.length; k++) {
             $opt.innerHTML = `<div class="cb-empty">Optimizing ${esc(shopName(todo[k].shop))}${todo.length > 1 ? ` (${k + 1}/${todo.length})` : ''}…</div>`;
-            await sleep(30); // let the page paint
+            if (k % 3 === 0) await sleep(0); // let the page breathe, without waiting for nothing
             computeGroup(todo[k]);
           }
         }
