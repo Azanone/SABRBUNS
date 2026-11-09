@@ -21,7 +21,8 @@ window.PQ_TEAMS = {
         "Ahmad Saber",
         36510, // Sedat Ozbasi
         39213, // Ali Al- Turaim
-        32651 // Egehan Akali
+        32651, // Egehan Akali
+        34369 // Efe Yildrim
       ]
     },
     {
