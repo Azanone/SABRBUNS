@@ -11,10 +11,16 @@ export const SKINS = [
   { id: 'midnight', name: 'Midnight', price: 500 },
   { id: 'forest', name: 'Forest', price: 800 },
   { id: 'ocean', name: 'Ocean', price: 800 },
+  { id: 'sakura', name: 'Sakura', price: 1200 },
+  { id: 'arctic', name: 'Arctic', price: 1200 },
   { id: 'sunset', name: 'Sunset', price: 1500 },
+  { id: 'emerald', name: 'Emerald', price: 3000 },
   { id: 'aurora', name: 'Aurora', price: 4000 },
+  { id: 'lava', name: 'Lava', price: 6000 },
   { id: 'gold', name: 'Gold', price: 8000 },
+  { id: 'nebula', name: 'Nebula', price: 12000 },
   { id: 'crown', name: 'Crown', price: 15000 },
+  { id: 'neon', name: 'Neon', price: 20000 },
   { id: 'carbon', name: 'Carbon', price: 25000 },
   { id: 'voidescent', name: 'Voidescent', price: 50000, limit: 10 }, // limited edition: only 10 people can own it
 ];
@@ -22,7 +28,8 @@ export const SKINS = [
 // Already have it? You get a quarter of its shop price back in coins.
 export const CRATE = {
   price: 2000, back: 0.25,
-  odds: [['midnight', 3000], ['forest', 2200], ['ocean', 2200], ['sunset', 1500], ['gold', 700], ['aurora', 360], ['crown', 20], ['carbon', 15], ['voidescent', 5]],
+  odds: [['midnight', 2400], ['forest', 1700], ['ocean', 1700], ['sakura', 1500], ['arctic', 1500], ['sunset', 1200], ['emerald', 800], ['gold', 600],
+    ['lava', 300], ['aurora', 300], ['nebula', 40], ['neon', 25], ['crown', 20], ['carbon', 15], ['voidescent', 5]],
 };
 const r3 = (x) => Math.round(x * 1000) / 1000;
 

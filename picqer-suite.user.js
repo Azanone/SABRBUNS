@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.49
+// @version      3.50
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -280,7 +280,6 @@
     { id: 'leaderboard', title: 'Leaderboard', hint: 'points in the last 15 min · your rank bottom right · Ctrl+Alt+L = everyone · Shift+9 = your profile + skins', fields: [
       { k: 'url', label: 'Middle stop (Cloudflare worker link, empty = every PC asks Picqer itself)', type: 'text', def: 'https://sabrbuns.nitroxylazanone.workers.dev' },
       { k: 'windowMin', label: 'Count closed picklists of the last (min)', type: 'num', def: 15 },
-      { k: 'pollSec', label: 'Check every (sec)', type: 'num', def: 60 },
       { k: 'warehouse', label: 'Only this warehouse (name or id, empty = all)', type: 'text', def: 'Bunsenstraat' },
       { k: 'widget', label: 'Show my rank bottom right', type: 'bool', def: true },
       { k: 'theme', label: 'Look: auto, light or dark', type: 'text', def: 'auto' },
@@ -4930,6 +4929,12 @@
     carbon: { bg: 'repeating-linear-gradient(135deg,#141416 0 6px,#1c1c20 6px 12px)', accent: '#a1a1aa', dark: { th: 240, ah: 240, as: '6%', fx: 'full' } },
     aurora: { bg: 'radial-gradient(circle at 25% 20%,rgba(139,92,246,.45),transparent 50%),linear-gradient(90deg,#120f2e,#0b2a33 55%,#062a22)', accent: '#8b5cf6', dark: { th: 252, ah: 258, as: '90%', fx: 'full' } },
     voidescent: { bg: 'radial-gradient(circle at 20% 30%,rgba(255,0,52,.35),transparent 45%),linear-gradient(90deg,#08080b,#1d040b)', accent: '#ff0034', dark: { th: 345, ah: 348, as: '100%', fx: 'full', stars: true } },
+    sakura: { bg: 'linear-gradient(90deg,#831843,#db2777)', accent: '#ec4899' },
+    arctic: { bg: 'linear-gradient(90deg,#1e3a5f,#3b82f6)', accent: '#38bdf8' },
+    emerald: { bg: 'linear-gradient(90deg,#03140e,#06281c)', accent: '#10b981', dark: { th: 160, ah: 160, as: '84%', fx: 'none' } },
+    lava: { bg: 'radial-gradient(circle at 15% 40%,rgba(249,115,22,.35),transparent 50%),linear-gradient(90deg,#1a0703,#3a0d06)', accent: '#f97316', dark: { th: 15, ah: 22, as: '95%', fx: 'none', onAcc: '#140700' } },
+    nebula: { bg: 'radial-gradient(circle at 20% 30%,rgba(217,70,239,.4),transparent 45%),radial-gradient(circle at 70% 60%,rgba(59,130,246,.3),transparent 50%),linear-gradient(90deg,#0b0618,#1a0b2e)', accent: '#d946ef', dark: { th: 280, ah: 292, as: '84%', fx: 'full', stars: true } },
+    neon: { bg: 'linear-gradient(90deg,#05010f,#1a0530 50%,#03141f)', accent: '#22d3ee', line: '#f0abfc', dark: { th: 250, ah: 188, as: '86%', fx: 'full', onAcc: '#03141a' } },
     gold: { bg: 'linear-gradient(90deg,#120e08,#2a1f0a)', accent: '#d4a017', line: '#fbbf24', dark: { th: 38, ah: 43, as: '81%', fx: 'none' } },
     crown: { bg: 'radial-gradient(circle at 18% 30%,rgba(251,191,36,.3),transparent 45%),linear-gradient(90deg,#120e08,#3f2d0c)', accent: '#d4a017', line: '#fbbf24', crown: true, dark: { th: 38, ah: 43, as: '81%', fx: 'none' } },
   };
@@ -4992,7 +4997,7 @@
   const starTile = (seed, n, big) => { let a = seed; const r = () => ((a = (a * 9301 + 49297) % 233280) / 233280); return Array.from({ length: n }, () => STAR((r() * 100).toFixed(1), (r() * 100).toFixed(1), big && r() > .7 ? 1.6 : 1, r() > .85 ? '#ff8099' : r() > .7 ? '#ffd6de' : '#fff')).join(','); };
   const STARS_CSS = `
     html.pq-starry body,html.pq-starry .layout{background:transparent !important}
-    html.pq-starry{background:radial-gradient(ellipse at 15% -10%,rgba(255,0,52,.16),transparent 55%),radial-gradient(ellipse at 100% 110%,rgba(120,0,40,.18),transparent 50%),hsl(345,20%,3%) !important}
+    html.pq-starry{background:radial-gradient(ellipse at 15% -10%,color-mix(in srgb,var(--acc) 16%,transparent),transparent 55%),radial-gradient(ellipse at 100% 110%,color-mix(in srgb,var(--acc) 12%,transparent),transparent 50%),hsl(var(--th),20%,3%) !important}
     html.pq-starry .layout-navigation{background:rgba(8,6,9,.55) !important}
     #pq-stars{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;contain:strict}
     #pq-stars i{position:absolute;inset:0}
@@ -5081,7 +5086,7 @@
     if (k.dark) {
       root.classList.add('pq-dark');
       if (k.dark.stars) root.classList.add('pq-starry');
-      const vars = { '--th': String(k.dark.th), '--ah': String(k.dark.ah), '--as': k.dark.as, '--acc': k.accent, '--on-acc': id === 'carbon' || id === 'gold' || id === 'crown' ? '#111' : '#fff', '--hbg': k.bg };
+      const vars = { '--th': String(k.dark.th), '--ah': String(k.dark.ah), '--as': k.dark.as, '--acc': k.accent, '--on-acc': k.dark.onAcc || (id === 'carbon' || id === 'gold' || id === 'crown' ? '#111' : '#fff'), '--hbg': k.bg };
       Object.entries(vars).forEach(([v, x]) => root.style.setProperty(v, x));
       const base = DARK_BASE + (k.dark.fx === 'none' ? STILL_CSS : '') + (k.dark.stars ? STARS_CSS : '') + (k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : '');
       addStyle('pq-skin-dark', darkCss());
@@ -5101,11 +5106,12 @@
 
 
   // crate colors, like CS:GO: blue common → purple → pink → red covert → gold ★
-  const RARITY = { midnight: '#4b69ff', forest: '#4b69ff', ocean: '#4b69ff', sunset: '#8847ff', gold: '#8847ff', aurora: '#d32ce6', crown: '#eb4b4b', carbon: '#eb4b4b', voidescent: '#e4ae39' };
+  const RARITY = { midnight: '#4b69ff', forest: '#4b69ff', ocean: '#4b69ff', sakura: '#4b69ff', arctic: '#4b69ff', sunset: '#8847ff', gold: '#8847ff', emerald: '#8847ff',
+    aurora: '#d32ce6', lava: '#d32ce6', nebula: '#eb4b4b', neon: '#eb4b4b', crown: '#eb4b4b', carbon: '#eb4b4b', voidescent: '#e4ae39' };
   function leaderboard() {
     const C = CFG.leaderboard || {};
     const WIN = Math.max(1, +C.windowMin || 15) * 60000;
-    const POLL = Math.max(20, +C.pollSec || 60) * 1000;
+    const POLL = 60000; // your rank bottom right: fresh every minute
     const URL_ = norm(String(C.url || '')).replace(/\/+$/, '');
     const LS_DATA = 'pqsuite_lb_v3', LS_LOCK = 'pqsuite_lb_lock_v1', LS_USERS = 'pqsuite_lb_users_v1';
     const TAB = Math.random().toString(36).slice(2);
@@ -5664,6 +5670,7 @@
     const due = !data || Date.now() - data.at > POLL;
     setTimeout(poll, due ? 1500 + Math.random() * 2000 : POLL - (Date.now() - data.at));
     setInterval(() => { if (!document.hidden || !data || Date.now() - data.at > POLL * 3) poll(); }, POLL);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && (!data || Date.now() - data.at > POLL)) poll(); });
     // the skin follows the account (bought or changed on another PC): check every 10 min
     const sk = skinOf(ME_ID);
     if (URL_ && ME_ID && (!sk || Date.now() - sk.at > 10 * 60000)) setTimeout(() => loadProfile().catch(() => {}), 4000 + Math.random() * 4000);
