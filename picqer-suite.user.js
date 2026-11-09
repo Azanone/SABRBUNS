@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.48
+// @version      3.49
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -1929,6 +1929,7 @@
     const SKIP_USERS = (conf.skipAssignedTo || []).map(String).filter((s) => s && s !== '0');
     const MARKER = '[COMBO CHANGED]';
     const PAGE = 100;
+    let isoStop = false; // stop button of the Isolated tab (also checked by pagesFast, which the scan uses)
     const EXACT_MAX = 15; // exact best order up to this many combos per flyer block
     const BATCH_MAX = Math.min(200, Math.max(2, +conf.batchMax || 15)); // optimized tab: max picklists per batch
     const PALETTE = ['#2563eb', '#7c3aed', '#0d9488', '#ea580c', '#db2777', '#16a34a', '#ca8a04', '#0891b2', '#e11d48', '#4f46e5'];
@@ -2839,7 +2840,10 @@
     panel.querySelectorAll('.cb-tab').forEach((t) => { t.onclick = () => showTab(t.dataset.tab); });
     const gear = panel.querySelector('.cb-gear');
     if (gear) gear.onclick = () => conf.openSettings(tab);
-    showTab(store.get('cb_tab', 'single'));
+    // first tab only once everything below exists (the Optimized / Isolated tab use things defined further down)
+    const firstTab = store.get('cb_tab', 'single');
+    $grouped.style.display = $opt.style.display = $auto.style.display = $iso.style.display = 'none';
+    setTimeout(() => showTab(firstTab), 0);
 
     function visibleShops() {
       const q = $search.value.trim().toLowerCase();
@@ -2964,7 +2968,7 @@
       return m < 60 ? `${m} min` : m < 48 * 60 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} days`;
     };
     const boxName = (c) => { const n = String(c.name == null ? c.idpicking_container : c.name).trim(); return /^container/i.test(n) ? n : `Container ${n}`; };
-    let isoStop = false;
+    // isoStop: declared at the top (scan uses pagesFast too)
     // pages of 100, 4 at a time
     async function pagesFast(path, onPage) {
       const out = [];
