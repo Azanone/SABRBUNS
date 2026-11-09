@@ -12,12 +12,18 @@ export const SKINS = [
   { id: 'forest', name: 'Forest', price: 800 },
   { id: 'ocean', name: 'Ocean', price: 800 },
   { id: 'sunset', name: 'Sunset', price: 1500 },
-  { id: 'carbon', name: 'Carbon', price: 2500 },
   { id: 'aurora', name: 'Aurora', price: 4000 },
-  { id: 'voidescent', name: 'Voidescent', price: 50000, limit: 10 }, // only 10 people can own it
   { id: 'gold', name: 'Gold', price: 8000 },
   { id: 'crown', name: 'Crown', price: 15000 },
+  { id: 'carbon', name: 'Carbon', price: 25000 },
+  { id: 'voidescent', name: 'Voidescent', price: 50000, limit: 10 }, // limited edition: only 10 people can own it
 ];
+// crate: pay, spin, get a skin. Weights out of 10.000. Crown, Carbon and Voidescent are very rare.
+// Already have it? You get a quarter of its shop price back in coins.
+export const CRATE = {
+  price: 2000, back: 0.25,
+  odds: [['midnight', 3000], ['forest', 2200], ['ocean', 2200], ['sunset', 1500], ['gold', 700], ['aurora', 360], ['crown', 20], ['carbon', 15], ['voidescent', 5]],
+};
 const r3 = (x) => Math.round(x * 1000) / 1000;
 
 export function pointsOf(p) {
@@ -108,8 +114,32 @@ export function profile(st, id, today) {
     id, today: day[id] || { n: 0, multis: 0, singles: 0, points: 0, kingMin: 0 }, rankToday: pos < 0 ? null : pos + 1, ofToday: ranked.length,
     balance: r3(a.coins - a.spent), coins: a.coins, spent: a.spent, points: st.acct[id] ? totalPoints(st, id) : 0, owned: a.owned, skin: a.skin, kingTotal: a.kingTotal, kingBest: a.kingBest, picklists: a.picklists,
     king: st.king && st.king.id === id ? { min: Math.floor((Date.now() - st.king.since) / 60000) } : null,
-    week, skins: shop(st),
+    week, skins: shop(st), crate: crateInfo(st, a), crates: a.crates || 0,
   };
+}
+
+// which skins can still come out of a crate for this person (a sold-out limited one only if they already have it)
+function cratePool(st, a) {
+  return CRATE.odds.filter(([s]) => { const sk = SKINS.find((x) => x.id === s); return !(sk.limit && !a.owned.includes(s) && owners(st, s) >= sk.limit); });
+}
+function crateInfo(st, a) {
+  const pool = cratePool(st, a), tot = pool.reduce((n, [, w]) => n + w, 0);
+  return { price: CRATE.price, odds: pool.map(([id, w]) => ({ id, pct: Math.round((w / tot) * 10000) / 100 })) };
+}
+export function crate(st, id, rnd = Math.random) {
+  id = String(id);
+  const a = acct(st, id);
+  if (a.coins - a.spent < CRATE.price) return { err: `not enough coins (${Math.floor(a.coins - a.spent)} of ${CRATE.price})` };
+  const pool = cratePool(st, a), tot = pool.reduce((n, [, w]) => n + w, 0);
+  let x = rnd() * tot, won = pool[pool.length - 1][0];
+  for (const [s, w] of pool) { if (x < w) { won = s; break; } x -= w; }
+  a.spent += CRATE.price;
+  a.crates = (a.crates || 0) + 1;
+  const sk = SKINS.find((s) => s.id === won);
+  const dup = a.owned.includes(won);
+  let back = 0;
+  if (dup) { back = Math.round(sk.price * CRATE.back); a.coins = r3(a.coins + back); } else a.owned.push(won);
+  return { ok: true, won, dup, back };
 }
 
 export function buy(st, id, skin) {

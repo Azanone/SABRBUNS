@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.41
+// @version      3.42
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -4812,15 +4812,15 @@
   // =====================================================================
   // dark: the whole of Picqer goes dark in the skin's colors (th = tint hue, ah/as = accent hue/saturation)
   const SKIN_LOOK = {
-    midnight: { bg: 'linear-gradient(90deg,#070b16,#111a33)', accent: '#6366f1', dark: { th: 228, ah: 239, as: '84%', fx: 'line' } },
+    midnight: { bg: 'linear-gradient(90deg,#070b16,#111a33)', accent: '#6366f1', dark: { th: 228, ah: 239, as: '84%', fx: 'none' } },
     forest: { bg: 'linear-gradient(90deg,#064e3b,#065f46)', accent: '#10b981' },
     ocean: { bg: 'linear-gradient(90deg,#0c4a6e,#0e7490)', accent: '#06b6d4' },
     sunset: { bg: 'linear-gradient(90deg,#7c2d12,#be185d)', accent: '#f97316' },
-    carbon: { bg: 'repeating-linear-gradient(135deg,#141416 0 6px,#1c1c20 6px 12px)', accent: '#a1a1aa', dark: { th: 240, ah: 240, as: '6%', fx: 'line' } },
+    carbon: { bg: 'repeating-linear-gradient(135deg,#141416 0 6px,#1c1c20 6px 12px)', accent: '#a1a1aa', dark: { th: 240, ah: 240, as: '6%', fx: 'full' } },
     aurora: { bg: 'radial-gradient(circle at 25% 20%,rgba(139,92,246,.45),transparent 50%),linear-gradient(90deg,#120f2e,#0b2a33 55%,#062a22)', accent: '#8b5cf6', dark: { th: 252, ah: 258, as: '90%', fx: 'full' } },
     voidescent: { bg: 'radial-gradient(circle at 20% 30%,rgba(255,0,52,.35),transparent 45%),linear-gradient(90deg,#08080b,#1d040b)', accent: '#ff0034', dark: { th: 345, ah: 348, as: '100%', fx: 'full', stars: true } },
-    gold: { bg: 'linear-gradient(90deg,#120e08,#2a1f0a)', accent: '#d4a017', line: '#fbbf24', dark: { th: 38, ah: 43, as: '81%', fx: 'line' } },
-    crown: { bg: 'radial-gradient(circle at 18% 30%,rgba(251,191,36,.3),transparent 45%),linear-gradient(90deg,#120e08,#3f2d0c)', accent: '#d4a017', line: '#fbbf24', crown: true, dark: { th: 38, ah: 43, as: '81%', fx: 'full' } },
+    gold: { bg: 'linear-gradient(90deg,#120e08,#2a1f0a)', accent: '#d4a017', line: '#fbbf24', dark: { th: 38, ah: 43, as: '81%', fx: 'none' } },
+    crown: { bg: 'radial-gradient(circle at 18% 30%,rgba(251,191,36,.3),transparent 45%),linear-gradient(90deg,#120e08,#3f2d0c)', accent: '#d4a017', line: '#fbbf24', crown: true, dark: { th: 38, ah: 43, as: '81%', fx: 'none' } },
   };
   // skins belong to a Picqer account: saved per user id on this PC
   const LS_SKIN = 'pqsuite_skin_v2';
@@ -4871,6 +4871,8 @@
     @media (prefers-reduced-motion:reduce){#pq-void-fx *{animation:none !important}}`;
   // Voidescent: a starry sky behind Picqer. Stars = still pictures (no work for the PC), only a slow fade in/out
   // of 2 layers (the graphics card does that, nothing gets redrawn). Cards stay solid so text stays readable.
+  const STILL_CSS = `html.pq-dark .btn-primary,html.pq-dark .card{transition:none !important}
+    html.pq-dark .btn.btn-primary:hover,html.pq-dark .btn-primary:hover{transform:none}`;
   const STAR = (x, y, s, c = '#fff') => `radial-gradient(${s}px ${s}px at ${x}% ${y}%,${c},transparent)`;
   const starTile = (seed, n, big) => { let a = seed; const r = () => ((a = (a * 9301 + 49297) % 233280) / 233280); return Array.from({ length: n }, () => STAR((r() * 100).toFixed(1), (r() * 100).toFixed(1), big && r() > .7 ? 1.6 : 1, r() > .85 ? '#ff8099' : r() > .7 ? '#ffd6de' : '#fff')).join(','); };
   const STARS_CSS = `
@@ -4930,6 +4932,7 @@
   }
   function skinFx(kind) {
     starsOn();
+    if (kind === 'none') return true; // cheap skins: no movement at all
     const h = document.querySelector('.layout-header');
     if (!h || h.querySelector('#pq-void-fx')) return !!h;
     const fx = document.createElement('div');
@@ -4957,7 +4960,7 @@
       if (k.dark.stars) root.classList.add('pq-starry');
       const vars = { '--th': String(k.dark.th), '--ah': String(k.dark.ah), '--as': k.dark.as, '--acc': k.accent, '--on-acc': id === 'carbon' || id === 'gold' || id === 'crown' ? '#111' : '#fff', '--hbg': k.bg };
       Object.entries(vars).forEach(([v, x]) => root.style.setProperty(v, x));
-      const base = DARK_BASE + (k.dark.stars ? STARS_CSS : '') + (k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : '');
+      const base = DARK_BASE + (k.dark.fx === 'none' ? STILL_CSS : '') + (k.dark.stars ? STARS_CSS : '') + (k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : '');
       addStyle('pq-skin-dark', darkCss());
       addStyle('pq-skin', base);
       lsSet(LS_SKIN_LAST, { id, vars, base, cls: k.dark.stars ? 'pq-starry' : '' });
@@ -4974,6 +4977,8 @@
   }
 
 
+  // crate colors, like CS:GO: blue common → purple → pink → red covert → gold ★
+  const RARITY = { midnight: '#4b69ff', forest: '#4b69ff', ocean: '#4b69ff', sunset: '#8847ff', gold: '#8847ff', aurora: '#d32ce6', crown: '#eb4b4b', carbon: '#eb4b4b', voidescent: '#e4ae39' };
   function leaderboard() {
     const C = CFG.leaderboard || {};
     const WIN = Math.max(1, +C.windowMin || 15) * 60000;
@@ -5159,6 +5164,34 @@
       .pq-lb-ov .pf-skin button.buy{background:#6366f1;border-color:#6366f1;color:#fff}
       .pq-lb-ov .pf-skin button:disabled{opacity:.45;cursor:default}
       .pq-lb-ov .pf-lim{color:#e11d48;font-weight:700}
+      .pq-lb-ov .pf-ltd{display:block;font-style:normal;font:800 9.5px system-ui;letter-spacing:.06em;text-transform:uppercase;color:#e4ae39;margin-bottom:2px}
+      .pq-lb-ov .pf-crate{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
+      .pq-lb-ov .pf-crate-box{font-size:30px;width:48px;height:48px;display:grid;place-items:center;border-radius:10px;background:linear-gradient(135deg,#312e81,#831843)}
+      .pq-lb-ov .pf-crate-in{flex:1;min-width:0}
+      .pq-lb-ov .pf-crate-in b{display:block;font:700 13.5px system-ui}
+      .pq-lb-ov .pf-crate-in > span{color:var(--mut);font-size:11.5px}
+      .pq-lb-ov .pf-odds{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+      .pq-lb-ov .pf-odds i{font-style:normal;font-size:10.5px;padding:2px 6px;border-radius:6px;border-left:3px solid var(--r);background:var(--bg);color:var(--fg)}
+      .pq-lb-ov .pf-crate button{padding:8px 14px;border-radius:9px;border:0;background:#6366f1;color:#fff;font:700 13px system-ui;cursor:pointer;white-space:nowrap}
+      .pq-lb-ov .pf-crate button:disabled{opacity:.45;cursor:default}
+      #pq-crate-ov{z-index:2147483003;background:rgba(5,5,10,.72)}
+      #pq-crate-ov .cr-panel{width:min(720px,100%);text-align:center}
+      #pq-crate-ov h2{justify-content:center}
+      #pq-crate-ov .cr-win{position:relative;margin:16px 0 12px;height:150px;overflow:hidden;border-radius:12px;background:#07070c;border:1px solid #1f1f2b;box-shadow:inset 0 0 40px rgba(0,0,0,.8)}
+      #pq-crate-ov .cr-strip{position:absolute;left:0;top:14px;display:flex;will-change:transform;transition:transform 6.2s cubic-bezier(.06,.62,.1,1)}
+      #pq-crate-ov .cr-it{width:124px;height:120px;margin-right:8px;flex:none;border-radius:9px;background:#13131c;border-bottom:4px solid var(--r);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;box-shadow:inset 0 -30px 40px -30px var(--r)}
+      #pq-crate-ov .cr-sw{width:92px;height:46px;border-radius:7px;border:1px solid rgba(255,255,255,.12)}
+      #pq-crate-ov .cr-it b{color:#f1f5f9;font:700 12.5px system-ui}
+      #pq-crate-ov .cr-it.won{outline:2px solid var(--r);box-shadow:0 0 28px var(--r),inset 0 -30px 40px -30px var(--r)}
+      #pq-crate-ov .cr-mark{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:#fbbf24;box-shadow:0 0 10px #fbbf24}
+      #pq-crate-ov .cr-mark::before,#pq-crate-ov .cr-mark::after{content:"";position:absolute;left:-6px;border:7px solid transparent}
+      #pq-crate-ov .cr-mark::before{top:0;border-top-color:#fbbf24}
+      #pq-crate-ov .cr-mark::after{bottom:0;border-bottom-color:#fbbf24}
+      #pq-crate-ov .cr-res{min-height:22px;font:500 14px system-ui;color:#e2e8f0}
+      #pq-crate-ov .cr-btns{display:flex;gap:8px;justify-content:center;margin-top:12px;min-height:34px}
+      #pq-crate-ov .cr-btns button{padding:8px 14px;border-radius:9px;border:1px solid #2a2a38;background:#1a1a24;color:#f1f5f9;font:700 13px system-ui;cursor:pointer}
+      #pq-crate-ov .cr-btns button.buy{background:#6366f1;border-color:#6366f1}
+      #pq-crate-ov .cr-btns button:disabled{opacity:.45}
       .pq-lb-ov .pf-note{color:var(--mut);font-size:11.5px;margin-top:10px}
       @media (max-width:560px){.pq-lb-ov .pf-tiles,.pq-lb-ov .pf-shop{grid-template-columns:repeat(2,1fr)}}
     `);
@@ -5339,15 +5372,76 @@
             : s.limit && !s.left ? '<button disabled>Sold out</button>'
             : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>Buy · ${int(s.price)}</button>`;
           return `<div class="pf-skin${on ? ' on' : ''}"><div class="pf-sw" style="background:${look.bg};box-shadow:inset 0 -3px 0 ${look.line || look.accent}"></div>
-            <div class="pf-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b><span>${own ? (on ? 'wearing' : 'yours') : int(s.price) + ' coins'}${s.limit ? ` · <b class="pf-lim">${s.left || 0}/${s.limit} left</b>` : ''}${look.dark ? ' · dark' : ''}</span>${btn}</div></div>`;
+            <div class="pf-in">${s.limit ? `<em class="pf-ltd">★ Limited edition · ${s.left || 0} of ${s.limit} left</em>` : ''}<b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b><span>${own ? (on ? 'wearing' : 'yours') : int(s.price) + ' coins'}${look.dark ? ' · dark' : ''}${look.dark && look.dark.fx !== 'none' ? ' · moves' : ''}</span>${btn}</div></div>`;
         }).join('')}</div>
+        ${p.crate ? `<h3>Crate</h3>
+        <div class="pf-crate"><div class="pf-crate-box">🎁</div><div class="pf-crate-in"><b>Skin crate</b><span>${int(p.crate.price)} coins · ${int(p.crates || 0)} opened · already have it? you get ¼ of its price back</span>
+          <div class="pf-odds">${p.crate.odds.map((o) => `<i style="--r:${RARITY[o.id] || '#94a3b8'}" title="${escHtml(o.id)}">${escHtml((p.skins.find((x) => x.id === o.id) || { name: o.id }).name)} ${String(o.pct).replace('.', ',')}%</i>`).join('')}</div></div>
+          <button class="buy" data-crate ${p.balance < p.crate.price ? 'disabled' : ''}>Open · ${int(p.crate.price)}</button></div>` : ''}
         <div class="pf-note">${note ? escHtml(note) + ' · ' : ''}coins: 1 per packing point, +20 every minute as king · skins change Picqer's top bar and buttons on your PC</div></div>`;
+      ov.querySelector('[data-crate]')?.addEventListener('click', (e) => openCrate(e.currentTarget));
       ov.querySelectorAll('[data-pf]').forEach((b) => b.addEventListener('click', async () => {
         const kind = b.dataset.pf === 'buy' ? 'buy' : 'equip';
         const skin = b.dataset.pf === 'off' ? null : b.dataset.s;
         if (b.dataset.pf === 'buy' && !confirm(`Buy ${skin} for ${int((p.skins.find((s) => s.id === skin) || {}).price)} coins?`)) return;
         b.disabled = true;
         try { const j = await change(kind, skin); showProfile(j.err || (kind === 'buy' ? 'bought ✓' : '')); } catch (e) { showProfile('could not reach the middle stop'); }
+      }));
+    }
+    // ---------- crate: the middle stop picks the skin, then the reel spins to it ----------
+    async function openCrate(btn) {
+      if (btn) btn.disabled = true;
+      let j;
+      try {
+        const r = await fetch(`${URL_}/crate`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ME_ID }) });
+        j = await r.json();
+      } catch (e) { j = { err: 'could not reach the middle stop' }; }
+      if (!j.ok) { showProfile(j.err || 'crate failed'); return; }
+      if (j.profile) prof = j.profile;
+      spin(j);
+    }
+    function spin(j) {
+      document.getElementById('pq-crate-ov')?.remove();
+      const odds = (prof && prof.crate && prof.crate.odds) || [];
+      const tot = odds.reduce((n, o) => n + o.pct, 0) || 1;
+      const pick = () => { let x = Math.random() * tot; for (const o of odds) { if (x < o.pct) return o.id; x -= o.pct; } return odds[0] ? odds[0].id : j.won; };
+      const N = 56, WIN = 48, W = 132;
+      // fill the reel; a few rare ones go near the end so it feels close
+      const items = Array.from({ length: N }, (_, i) => (i === WIN ? j.won : i === WIN - 1 || i === WIN + 2 ? ['voidescent', 'carbon', 'crown'][Math.floor(Math.random() * 3)] : pick()));
+      const nameOf = (id) => ((prof && prof.skins || []).find((x) => x.id === id) || { name: id }).name;
+      const card = (id) => { const look = SKIN_LOOK[id] || { bg: '#334155' }; return `<div class="cr-it" style="--r:${RARITY[id] || '#94a3b8'}"><div class="cr-sw" style="background:${look.bg}"></div><b>${escHtml(nameOf(id))}</b></div>`; };
+      const ov = document.createElement('div');
+      ov.id = 'pq-crate-ov';
+      ov.className = 'pq-lb-ov pq-lbx dark';
+      ov.innerHTML = `<div class="lb-panel cr-panel"><h2>Opening crate…</h2>
+        <div class="cr-win"><div class="cr-strip">${items.map(card).join('')}</div><div class="cr-mark"></div></div>
+        <div class="cr-res"></div><div class="cr-btns"></div></div>`;
+      document.body.appendChild(ov);
+      const strip = ov.querySelector('.cr-strip'), win = ov.querySelector('.cr-win');
+      const stop = WIN * W + W / 2 - win.clientWidth / 2 + (Math.random() * 0.7 - 0.35) * (W - 12);
+      let done = false;
+      const finish = () => {
+        if (done) return; done = true;
+        strip.style.transition = 'none';
+        strip.style.transform = `translate3d(${-stop}px,0,0)`;
+        strip.children[WIN].classList.add('won');
+        const nm = escHtml(nameOf(j.won)), rare = ['voidescent', 'carbon', 'crown'].includes(j.won);
+        ov.querySelector('h2').textContent = rare ? '🔥 JACKPOT 🔥' : 'Crate opened';
+        ov.querySelector('.cr-res').innerHTML = j.dup ? `<b style="color:${RARITY[j.won]}">${nm}</b> · you already had it · <b>+${int(j.back)} coins</b> back`
+          : `You got <b style="color:${RARITY[j.won]}">${nm}</b>!`;
+        const can = prof && prof.crate && prof.balance >= prof.crate.price;
+        ov.querySelector('.cr-btns').innerHTML = `${!j.dup ? '<button class="buy" data-cr="wear">Wear it</button>' : ''}<button class="buy" data-cr="again" ${can ? '' : 'disabled'}>Open another · ${int((prof && prof.crate && prof.crate.price) || 0)}</button><button data-cr="close">Close</button>`;
+        ov.querySelectorAll('[data-cr]').forEach((b) => (b.onclick = async () => {
+          if (b.dataset.cr === 'close') { ov.remove(); showProfile(); }
+          else if (b.dataset.cr === 'wear') { ov.remove(); const r = await change('equip', j.won).catch(() => ({})); showProfile(r.err || ''); }
+          else { b.disabled = true; openCrate(null); }
+        }));
+      };
+      ov.addEventListener('click', (e) => { if (e.target === ov) { if (!done) finish(); else { ov.remove(); showProfile(); } } });
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        strip.style.transform = `translate3d(${-stop}px,0,0)`;
+        strip.addEventListener('transitionend', finish, { once: true });
+        setTimeout(finish, 7500); // in case the tab was in the background
       }));
     }
     async function openProfile() {
@@ -5360,7 +5454,7 @@
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key || '').toLowerCase() === 'l') { e.preventDefault(); if (document.getElementById('pq-lb-ov')) close('pq-lb-ov'); else showList(); return; }
       if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Digit9' && !typing(e.target)) { e.preventDefault(); openProfile(); return; }
-      if (e.key === 'Escape') { close('pq-lb-ov'); close('pq-pf-ov'); }
+      if (e.key === 'Escape') { if (document.getElementById('pq-crate-ov')) { document.getElementById('pq-crate-ov').remove(); showProfile(); return; } close('pq-lb-ov'); close('pq-pf-ov'); }
     });
     try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { shown = null; render(); }); } catch (_) {}
     window.addEventListener('storage', (e) => { if (e.key === LS_DATA) { data = lsGet(LS_DATA, data); render(); } });

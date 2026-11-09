@@ -10,7 +10,7 @@
 //   PROXIES      text    user ids that never count, comma separated (optional)
 //   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
-import { newState, tick, profile, buy, equip, grant, totals } from './game.js';
+import { newState, tick, profile, buy, equip, grant, totals, crate } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
@@ -64,7 +64,8 @@ export class Game extends DurableObject {
   async profile(id) { return profile(await this.load(), id, amsNow().slice(0, 10)); }
   async change(kind, id, skin) {
     const st = await this.load();
-    const res = kind === 'grant' ? grant(st, id, skin) : kind === 'buy' ? buy(st, id, skin) : equip(st, id, skin);
+    const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
+    const res = kind === 'grant' ? grant(st, id, skin) : kind === 'crate' ? crate(st, id, rnd) : kind === 'buy' ? buy(st, id, skin) : equip(st, id, skin);
     if (res.ok) await this.ctx.storage.put('state', st);
     return { ...res, profile: profile(st, id, amsNow().slice(0, 10)) };
   }
@@ -93,7 +94,7 @@ export default {
         if (!/^\d+$/.test(id || '')) return json({ err: 'id needed' }, 400);
         return json(await game(env).profile(id));
       }
-      if ((url.pathname === '/buy' || url.pathname === '/equip') && req.method === 'POST') {
+      if ((url.pathname === '/buy' || url.pathname === '/equip' || url.pathname === '/crate') && req.method === 'POST') {
         const b = await req.json().catch(() => ({}));
         if (!/^\d+$/.test(String(b.id || ''))) return json({ err: 'id needed' }, 400);
         return json(await game(env).change(url.pathname.slice(1), String(b.id), b.skin ? String(b.skin) : null));
