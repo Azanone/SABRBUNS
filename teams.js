@@ -7,8 +7,8 @@
 //          someone in 2 teams -> the first team counts
 //  allow : "*" = everything, or a list of:
 //          settings comboBatcher comboAlert replenish shipErr addrFix
-//          banner batchOpt zap dayson unpick pickStats leaderboard
-//          autoNext cardColor colors pickAll truePickAll bulkSingles
+//          banner batchOpt zap dayson unpick pickStats autoNext cardColor
+//          colors pickAll truePickAll bulkSingles
 //  leftovers: everyone who is in no team
 // =====================================================================
 window.PQ_TEAMS = {
@@ -20,10 +20,16 @@ window.PQ_TEAMS = {
         32247, // Ahmad Saber
         "Ahmad Saber",
         36510, // Sedat Ozbasi
-        39213, // Ali Al- Turaim
-        21134 // Kian de Winter
+        39213 // Ali Al- Turaim
+      ]
+    },
+    {
+      "name": "shiftlead",
+      "allow": ["settings", "comboBatcher", "replenish", "batchOpt", "zap", "dayson", "unpick", "pickStats", "colors"],
+      "users": [
+        18089 // Rodney Huijgen
       ]
     }
   ],
-  "leftovers": { "allow": ["comboAlert", "leaderboard"] }
+  "leftovers": { "allow": ["comboAlert"] }
 };
