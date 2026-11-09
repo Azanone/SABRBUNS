@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.51
+// @version      3.52
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.51';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.52';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -6902,6 +6902,54 @@
     if (changed) colorsChanged();
   }
   const refreshTeams = () => refreshRemote(REMOTE.teams, onTeams);
+
+  // ---------- Shift+R: hard update — teams + colors fresh from GitHub, caches gone, newest script ----------
+  let hardBusy = false;
+  async function hardUpdate() {
+    if (hardBusy) return;
+    hardBusy = true;
+    const box = document.createElement('div');
+    box.id = 'pq-hard';
+    box.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483646;background:#111827;color:#fff;font:600 13.5px system-ui;padding:12px 18px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:90vw';
+    const say = (t) => { box.textContent = t; };
+    document.getElementById('pq-hard')?.remove();
+    document.body.appendChild(box);
+    say('⟳ Updating teams, colors and script…');
+    const t = Date.now();
+    const notes = [];
+    for (const r of [REMOTE.teams, REMOTE.colors]) {
+      try {
+        const res = await fetch(`${RAW}${r.file}?t=${t}`, { cache: 'no-store', credentials: 'omit' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = parseCfgFile(await res.text(), r.varName, r.file);
+        if (!r.valid(data)) throw new Error('wrong shape');
+        lsSet(r.ls, { ts: Date.now(), data });
+        lsSet(r.lsTry, { ts: Date.now(), err: '' });
+        notes.push(`${r.file} ✓`);
+      } catch (e) { notes.push(`${r.file} ✗ (${e.message})`); }
+    }
+    // everything kept "for a while" on this PC: gone, so it is fetched new
+    ['pqsuite_dark_css_v1', 'pqsuite_update_v1', 'pqsuite_warehouses_v1', 'pqsuite_lb_users_v1', 'pqsuite_batchscan_v1', 'pqsuite_lb_v3']
+      .forEach((k) => { try { localStorage.removeItem(k); } catch (_) {} });
+    let latest = null;
+    try { latest = ((await (await fetch(`${RAW}picqer-suite.user.js?t=${t}`, { cache: 'no-store', credentials: 'omit', headers: { Range: 'bytes=0-600' } })).text()).match(/@version\s+([\d.]+)/) || [])[1]; } catch (_) {}
+    if (latest && newer(latest, SUITE_VERSION)) {
+      say(`${notes.join(' · ')} · script ${latest} is out (you have ${SUITE_VERSION}): install it in the new tab, then come back here and reload`);
+      const w = window.open(`${RAW}picqer-suite.user.js?t=${t}`, '_blank');
+      if (!w) { box.innerHTML = ''; const a = document.createElement('a'); a.href = `${RAW}picqer-suite.user.js?t=${t}`; a.target = '_blank'; a.style.color = '#a5b4fc'; a.textContent = `Click here to install script ${latest}`; box.append(`${notes.join(' · ')} · `, a, ', then reload'); }
+      hardBusy = false;
+      return;
+    }
+    say(`${notes.join(' · ')} · script ${SUITE_VERSION} is the newest · reloading…`);
+    setTimeout(() => location.reload(), 900);
+  }
+  document.addEventListener('keydown', (e) => {
+    if (!e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.code !== 'KeyR' || e.repeat) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName))) return; // typing a capital R
+    e.preventDefault();
+    hardUpdate();
+  }, true);
   function teamsToast(msg) {
     const t = document.createElement('div');
     t.textContent = msg;
