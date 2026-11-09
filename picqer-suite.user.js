@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.45
+// @version      3.46
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -4959,14 +4959,14 @@
       background-image:radial-gradient(1px 1px at 8% 30%,#fff,transparent),radial-gradient(1px 1px at 23% 70%,#fff,transparent),radial-gradient(1.5px 1.5px at 41% 22%,#fff,transparent),
         radial-gradient(1px 1px at 57% 64%,#fff,transparent),radial-gradient(1.5px 1.5px at 73% 35%,var(--acc),transparent),radial-gradient(1px 1px at 88% 58%,#fff,transparent),radial-gradient(1px 1px at 96% 20%,#fff,transparent)}
     #pq-void-fx .st.b{transform:translateX(37px);opacity:.25}
-    #pq-void-fx.live .st{animation:pqvTw 1.6s ease-in-out 2 alternate}
+    #pq-void-fx.live .st{animation:pqvTw 1.9s ease-in-out 2 alternate}
     #pq-void-fx.live .st.b{animation-delay:.4s}
     #pq-void-fx .sw{position:absolute;left:0;bottom:0;height:2px;width:30%;background:linear-gradient(90deg,transparent,var(--acc),color-mix(in srgb,var(--acc) 55%,#fff),var(--acc),transparent);
       transform:translateX(-110%);filter:drop-shadow(0 0 6px var(--acc))}
-    #pq-void-fx.live .sw{animation:pqvSw 3s cubic-bezier(.45,0,.2,1) 1 both}
+    #pq-void-fx.live .sw{animation:pqvSw 3.8s cubic-bezier(.45,0,.2,1) 1 both}
     #pq-void-fx .orb{position:absolute;top:-60px;left:12%;width:220px;height:160px;border-radius:50%;background:radial-gradient(closest-side,${ACC(35)},transparent);
       opacity:.75}
-    #pq-void-fx.live .orb{animation:pqvOrb 3.2s ease-in-out 1}
+    #pq-void-fx.live .orb{animation:pqvOrb 4s ease-in-out 1}
     @keyframes pqvTw{from{opacity:.15}to{opacity:.6}}
     @keyframes pqvSw{from{transform:translateX(-110%)}to{transform:translateX(440%)}}
     @keyframes pqvOrb{0%,100%{opacity:.75}50%{opacity:1}}
@@ -4985,6 +4985,8 @@
     #pq-stars i{position:absolute;inset:0}
     #pq-stars .a{background-image:${starTile(7, 14, true)};background-size:420px 380px;opacity:.55}
     #pq-stars .b{background-image:${starTile(31, 10, false)};background-size:290px 330px;opacity:.35}
+    html.pq-live #pq-stars .a{animation:pqStA 1.9s ease-in-out 2 alternate}
+    html.pq-live #pq-stars .b{animation:pqStB 1.9s ease-in-out 2 alternate}
     #pq-stars .c{background-image:${starTile(97, 6, true)};background-size:610px 560px;opacity:.7}
     @keyframes pqStA{from{opacity:.25}to{opacity:.7}}
     @keyframes pqStB{from{opacity:.55}to{opacity:.15}}
@@ -5039,8 +5041,13 @@
     fx.id = 'pq-void-fx';
     fx.innerHTML = kind === 'full' ? '<div class="orb"></div><div class="st"></div><div class="st b"></div><div class="sw"></div>' : '<div class="sw"></div>';
     h.prepend(fx);
-    // movement only in short bursts (3 s every 15 s, never in a hidden tab): looks alive, costs the PC ~nothing in between
-    const burst = () => { if (!fx.isConnected) return; if (!document.hidden) { fx.classList.add('live'); setTimeout(() => fx.classList.remove('live'), 3300); } setTimeout(burst, 15000); };
+    // movement in bursts (4 s every 11 s, never in a hidden tab): looks alive, costs the PC ~nothing in between
+    const ON = +window.__pqFxOn || 4000, EVERY = +window.__pqFxEvery || 11000;
+    const burst = () => {
+      if (!fx.isConnected) return;
+      if (!document.hidden) { fx.classList.add('live'); document.documentElement.classList.add('pq-live'); setTimeout(() => { fx.classList.remove('live'); document.documentElement.classList.remove('pq-live'); }, ON); }
+      setTimeout(burst, EVERY);
+    };
     setTimeout(burst, 600);
     return true;
   }
