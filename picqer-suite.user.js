@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.50
+// @version      3.51
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,6 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.51';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5108,6 +5109,29 @@
   // crate colors, like CS:GO: blue common → purple → pink → red covert → gold ★
   const RARITY = { midnight: '#4b69ff', forest: '#4b69ff', ocean: '#4b69ff', sakura: '#4b69ff', arctic: '#4b69ff', sunset: '#8847ff', gold: '#8847ff', emerald: '#8847ff',
     aurora: '#d32ce6', lava: '#d32ce6', nebula: '#eb4b4b', neon: '#eb4b4b', crown: '#eb4b4b', carbon: '#eb4b4b', voidescent: '#e4ae39' };
+  // ---------- newer version on GitHub? Tampermonkey only checks about once a day, so tell the person ----------
+  const verNum = (v) => String(v || '0').split('.').map((x) => +x || 0);
+  const newer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+  async function updateCheck() {
+    const c = lsGet('pqsuite_update_v1', null);
+    let latest = c && Date.now() - c.at < 30 * 60000 ? c.v : null;
+    if (!latest) {
+      try {
+        const head = await (await fetch(`${RAW}picqer-suite.user.js?t=${Math.floor(Date.now() / 600000)}`, { credentials: 'omit', headers: { Range: 'bytes=0-600' } })).text();
+        latest = (head.match(/@version\s+([\d.]+)/) || [])[1];
+        if (latest) lsSet('pqsuite_update_v1', { at: Date.now(), v: latest });
+      } catch (_) { return; }
+    }
+    if (!latest || !newer(latest, SUITE_VERSION) || document.getElementById('pq-update')) return;
+    const a = document.createElement('a');
+    a.id = 'pq-update';
+    a.href = `${RAW}picqer-suite.user.js`;
+    a.target = '_blank';
+    a.textContent = `⬆ Picqer Suite ${latest} is out (you have ${SUITE_VERSION}) · click to update, then reload`;
+    a.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:2147483001;background:#4f46e5;color:#fff;font:600 13px system-ui;padding:10px 14px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);text-decoration:none';
+    document.body.appendChild(a);
+  }
+
   function leaderboard() {
     const C = CFG.leaderboard || {};
     const WIN = Math.max(1, +C.windowMin || 15) * 60000;
@@ -5506,7 +5530,8 @@
     let pfTab = 'shop', spinning = false;
     const nameOfSkin = (id) => ((prof && prof.skins) || []).find((x) => x.id === id)?.name || id;
     function skinCard(p, s) {
-      const own = (p.owned || []).includes(s.id), on = p.skin === s.id, look = SKIN_LOOK[s.id] || { bg: '#334155', accent: '#64748b' };
+      if (!SKIN_LOOK[s.id]) return `<div class="sh-skin"><div class="sh-sw" style="background:repeating-linear-gradient(135deg,#334155 0 8px,#3f4b5f 8px 16px)"></div><div class="sh-in"><b>${escHtml(s.name)}</b><small>new · update the script (Tampermonkey → check for updates) to see it</small></div></div>`;
+      const own = (p.owned || []).includes(s.id), on = p.skin === s.id, look = SKIN_LOOK[s.id];
       const btn = on ? '<button data-pf="off">Take off</button>' : own ? `<button class="wear" data-pf="wear" data-s="${s.id}">Wear</button>`
         : s.limit && !s.left ? '<button disabled>Sold out</button>'
         : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>${int(s.price)}</button>`;
@@ -6916,6 +6941,7 @@
     safe('locks', locks);
     safe('settings', settingsPanel);
     setTimeout(() => safe('cfg-sync', syncCfg), 1500);
+    setTimeout(() => safe('update-check', updateCheck), 4000);
     if (use('banner')) safe('banner', bannerMain);
     if (use('shipErr')) safe('shipErr', shipErr);
     if (use('addrFix')) safe('addrFix', addrFix);
