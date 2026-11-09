@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.44
+// @version      3.45
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -4955,17 +4955,21 @@
     html.pq-dark ::-webkit-scrollbar-thumb{background:hsl(var(--ah),30%,14%);border-radius:8px;border:2px solid hsl(var(--th),14%,5%)}
     html.pq-dark ::-webkit-scrollbar-thumb:hover{background:var(--acc)}
     #pq-void-fx{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}
-    #pq-void-fx .st{position:absolute;inset:-20px;opacity:.35;will-change:opacity;animation:pqvTw 5s ease-in-out infinite alternate;
+    #pq-void-fx .st{position:absolute;inset:-20px;opacity:.4;
       background-image:radial-gradient(1px 1px at 8% 30%,#fff,transparent),radial-gradient(1px 1px at 23% 70%,#fff,transparent),radial-gradient(1.5px 1.5px at 41% 22%,#fff,transparent),
         radial-gradient(1px 1px at 57% 64%,#fff,transparent),radial-gradient(1.5px 1.5px at 73% 35%,var(--acc),transparent),radial-gradient(1px 1px at 88% 58%,#fff,transparent),radial-gradient(1px 1px at 96% 20%,#fff,transparent)}
-    #pq-void-fx .st.b{animation-duration:7s;animation-delay:-3s;transform:translateX(37px)}
+    #pq-void-fx .st.b{transform:translateX(37px);opacity:.25}
+    #pq-void-fx.live .st{animation:pqvTw 1.6s ease-in-out 2 alternate}
+    #pq-void-fx.live .st.b{animation-delay:.4s}
     #pq-void-fx .sw{position:absolute;left:0;bottom:0;height:2px;width:30%;background:linear-gradient(90deg,transparent,var(--acc),color-mix(in srgb,var(--acc) 55%,#fff),var(--acc),transparent);
-      will-change:transform;animation:pqvSw 6.5s cubic-bezier(.45,0,.2,1) infinite;filter:drop-shadow(0 0 6px var(--acc))}
+      transform:translateX(-110%);filter:drop-shadow(0 0 6px var(--acc))}
+    #pq-void-fx.live .sw{animation:pqvSw 3s cubic-bezier(.45,0,.2,1) 1 both}
     #pq-void-fx .orb{position:absolute;top:-60px;left:12%;width:220px;height:160px;border-radius:50%;background:radial-gradient(closest-side,${ACC(35)},transparent);
-      will-change:transform,opacity;animation:pqvOrb 14s ease-in-out infinite alternate}
+      opacity:.75}
+    #pq-void-fx.live .orb{animation:pqvOrb 3.2s ease-in-out 1}
     @keyframes pqvTw{from{opacity:.15}to{opacity:.6}}
     @keyframes pqvSw{from{transform:translateX(-110%)}to{transform:translateX(440%)}}
-    @keyframes pqvOrb{0%{transform:translateX(0);opacity:.55}50%{opacity:.9}100%{transform:translateX(520%);opacity:.5}}
+    @keyframes pqvOrb{0%,100%{opacity:.75}50%{opacity:1}}
     @media (prefers-reduced-motion:reduce){#pq-void-fx *{animation:none !important}}`;
   // Voidescent: a starry sky behind Picqer. Stars = still pictures (no work for the PC), only a slow fade in/out
   // of 2 layers (the graphics card does that, nothing gets redrawn). Cards stay solid so text stays readable.
@@ -4978,9 +4982,9 @@
     html.pq-starry{background:radial-gradient(ellipse at 15% -10%,rgba(255,0,52,.16),transparent 55%),radial-gradient(ellipse at 100% 110%,rgba(120,0,40,.18),transparent 50%),hsl(345,20%,3%) !important}
     html.pq-starry .layout-navigation{background:rgba(8,6,9,.55) !important}
     #pq-stars{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;contain:strict}
-    #pq-stars i{position:absolute;inset:0;will-change:opacity}
-    #pq-stars .a{background-image:${starTile(7, 14, true)};background-size:420px 380px;opacity:.55;animation:pqStA 9s ease-in-out infinite alternate}
-    #pq-stars .b{background-image:${starTile(31, 10, false)};background-size:290px 330px;opacity:.35;animation:pqStB 13s ease-in-out infinite alternate}
+    #pq-stars i{position:absolute;inset:0}
+    #pq-stars .a{background-image:${starTile(7, 14, true)};background-size:420px 380px;opacity:.55}
+    #pq-stars .b{background-image:${starTile(31, 10, false)};background-size:290px 330px;opacity:.35}
     #pq-stars .c{background-image:${starTile(97, 6, true)};background-size:610px 560px;opacity:.7}
     @keyframes pqStA{from{opacity:.25}to{opacity:.7}}
     @keyframes pqStB{from{opacity:.55}to{opacity:.15}}
@@ -4991,9 +4995,7 @@
     const d = document.createElement('div');
     d.id = 'pq-stars';
     d.innerHTML = '<i class="c"></i><i class="a"></i><i class="b"></i>';
-    if (lsGet('pqsuite_stars_still_v1', false)) d.classList.add('still');
     document.body.prepend(d);
-    starsLagCheck(d);
     return true;
   }
   // does this PC keep up? Measure ~1.5 s of frames a bit after the page is there.
@@ -5037,6 +5039,9 @@
     fx.id = 'pq-void-fx';
     fx.innerHTML = kind === 'full' ? '<div class="orb"></div><div class="st"></div><div class="st b"></div><div class="sw"></div>' : '<div class="sw"></div>';
     h.prepend(fx);
+    // movement only in short bursts (3 s every 15 s, never in a hidden tab): looks alive, costs the PC ~nothing in between
+    const burst = () => { if (!fx.isConnected) return; if (!document.hidden) { fx.classList.add('live'); setTimeout(() => fx.classList.remove('live'), 3300); } setTimeout(burst, 15000); };
+    setTimeout(burst, 600);
     return true;
   }
   const SKIN_VARS = ['--th', '--ah', '--as', '--acc', '--on-acc', '--hbg'];
