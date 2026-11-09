@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.46
+// @version      3.47
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -1168,55 +1168,33 @@
         .classList.add('pq-picked-ov');
     };
 
-    // FAST WAY: 1 round of API calls for the whole page instead of opening every batch page:
-    //  open picklists (they say which batch they are in) + all picking containers (they say which picklist they hold).
-    //  open in a batch = status new/paused · unbound = open in a batch without a container. Kept 30 s, shared by tabs.
-    let bulk = null;
-    const BULK_LS = 'pqsuite_batchscan_v1';
-    async function apiAll(path) {
-      const out = new Map();
-      const sep = path.includes('?') ? '&' : '?';
-      for (let off = 0; off < 30000; off += 400) {
-        const pages = await Promise.all([0, 1, 2, 3].map((i) => fastFetch(`/api/v1${path}${sep}offset=${off + i * 100}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-          .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })));
-        let end = false;
-        for (const p of pages) { for (const x of p || []) out.set(String(x.idpicklist || x.idpicking_container), x); if (!p || p.length < 100) end = true; }
-        if (end) break;
-      }
-      return [...out.values()];
-    }
-    function loadBulk() {
-      if (bulk) return bulk;
-      bulk = (async () => {
-        const c = lsGet(BULK_LS, null);
-        if (c && Date.now() - c.at < 30000) return c;
-        const [nw, pz, boxes] = await Promise.all([apiAll('/picklists?status=new'), apiAll('/picklists?status=paused'), apiAll('/picking-containers')]);
-        if (boxes.length && !boxes.every((b) => 'idpicklist' in b)) throw new Error('containers without idpicklist');
-        const withBox = new Set(boxes.filter((b) => b.idpicklist).map((b) => String(b.idpicklist)));
-        const open = {}, unb = {};
-        for (const pl of [...nw, ...pz]) {
-          if (!pl.idpicklist_batch || (pl.status !== 'new' && pl.status !== 'paused')) continue;
-          const k = String(pl.idpicklist_batch);
-          open[k] = (open[k] || 0) + 1;
-          if (!withBox.has(String(pl.idpicklist))) unb[k] = (unb[k] || 0) + 1;
-        }
-        const d = { at: Date.now(), open, unb };
-        lsSet(BULK_LS, d);
-        return d;
-      })();
-      bulk.catch(() => {}).then(() => setTimeout(() => { bulk = null; }, 30000));
-      return bulk;
-    }
+    // FAST WAY: per batch 1 small API call (JSON) instead of loading the whole batch page.
+    //  It lists every picklist with status, letter (alias), container and picked/total, so it also gives
+    //  the "picked but not closed" tag without a second call. 6 at a time.
+    let apiActive = 0;
+    const apiQueue = [];
+    const apiPump = () => { while (apiActive < 6 && apiQueue.length) { apiActive++; apiQueue.shift()(() => { apiActive--; apiPump(); }); } };
     const analyze = (row, url, batchId) => {
       const target = row.querySelector('a[href*="/picklists/batches/"]');
       const loader = createLoader(target);
-      loadBulk().then((d) => {
-        loader.remove();
-        const open = d.open[String(batchId)] || 0;
-        const v = applyVisuals(row, { openPicklists: open, totalPicklists: open, unbound: d.unb[String(batchId)] || 0 });
-        if (!v || !v.isDayson || C.pickedTag === false) return;
-        schedule((done) => batchPickState(batchId).then((st) => pickedTag(v.anchor, pickedNotClosed(st))).catch(() => {}).then(done));
-      }).catch((e) => { console.info('[suite] batch scan: fast way failed, opening batch pages', e && e.message); analyzeHtml(row, url, batchId, loader); });
+      apiQueue.push((done) => {
+        fastFetch(`/api/v1/picklists/batches/${batchId}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+          .then((b) => {
+            if (!b || !Array.isArray(b.picklists)) throw new Error('no picklists');
+            loader.remove();
+            const live = b.picklists.filter((p) => p.status !== 'closed' && p.status !== 'cancelled');
+            const unbound = live.filter((p) => !String(p.alias || '').trim() || !p.picking_container).length;
+            const v = applyVisuals(row, { openPicklists: live.length, totalPicklists: b.picklists.length, unbound });
+            if (v && v.isDayson && C.pickedTag !== false) {
+              const st = new Map(b.picklists.map((p) => [p.idpicklist, { id: p.picklistid, alias: p.alias, picked: +p.total_collected || 0, total: +p.total_products || 0, closed: p.status === 'closed' || p.status === 'cancelled' }]));
+              pickedTag(v.anchor, pickedNotClosed(st));
+            }
+          })
+          .catch((e) => { console.info('[suite] batch scan via API failed, opening the page', e && e.message); analyzeHtml(row, url, batchId, loader); })
+          .finally(done);
+      });
+      apiPump();
     };
     // old way (only if the API does not work): open each batch page and read its table
     const analyzeHtml = (row, url, batchId, loader) => {
@@ -2966,33 +2944,8 @@
         const list = [];
         let k = 0, bad = 0, badMsg = '';
         setProg(`${open.length} open · ${inBatch} in a batch · containers…`);
-        // all picking containers in pages of 100 (each says which picklist it holds): usually a handful of calls
-        // instead of 1 per picklist. Only while that is cheaper: more pages than picklists to check -> 1 by 1.
-        let byPl = null;
-        try {
-          const boxesAll = [];
-          const seenBox = new Set();
-          let end = false;
-          const maxPages = Math.max(2, Math.floor(free.length * 0.8));
-          for (let off = 0, pages = 0; !end && pages < maxPages && !isoStop; off += 4 * PAGE, pages += 4) {
-            const got = await Promise.all([0, 1, 2, 3].map((i) => apiRetry('GET', `/picking-containers?offset=${off + i * PAGE}`, null, { retry5xx: true }).then((x) => x || [])));
-            for (const page of got) {
-              for (const c of page) { const kk = String(c.idpicking_container); if (!seenBox.has(kk)) { seenBox.add(kk); boxesAll.push(c); } }
-              if (page.length < PAGE) end = true;
-            }
-            setProg(`${open.length} open · ${inBatch} in a batch · containers ${boxesAll.length}…`);
-          }
-          if (!end) throw new Error('too many containers');
-          if (!boxesAll.length) byPl = new Map();
-          else if (boxesAll.every((c) => 'idpicklist' in c)) {
-            byPl = new Map();
-            for (const c of boxesAll) if (c.idpicklist) { const kk = String(c.idpicklist); if (!byPl.has(kk)) byPl.set(kk, []); byPl.get(kk).push(c); }
-          }
-        } catch (e) { byPl = null; }
-        if (byPl || free.length === 0) {
-          for (const pl of free) { const boxes = byPl ? byPl.get(String(pl.idpicklist)) : null; if (boxes && boxes.length) list.push({ pl, boxes }); }
-          k = free.length;
-        } else await pool(free, 6, async (pl) => {
+        // 1 call per picklist without a batch (Picqer has tens of thousands of containers, so reading them all is slower)
+        await pool(free, 6, async (pl) => {
           if (isoStop) return;
           try {
             const r = await apiRetry('GET', `/picking-containers?idpicklist=${pl.idpicklist}`, null, { retry5xx: true });
