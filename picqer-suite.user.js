@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.47
+// @version      3.48
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -254,15 +254,22 @@
       { k: 'includeMissing', label: 'Missing lines in chat', type: 'bool', def: false },
     ]},
     { id: 'unpick', title: 'Unpick all', hint: 'button next to Pick alles', fields: [] },
-    { id: 'autoNext', title: 'Auto print + auto next', hint: 'after a shipment · A = pick all (true pick all if your team has it) · N = next', fields: [
+    { id: 'autoNext', always: true, switchKey: 'goNext', title: 'Auto next', hint: 'after a shipment: the next picklist of the batch opens by itself',
+      note: 'Works in a batch: as soon as the shipment is made you go to the next picklist that still needs packing. N = go to the next one yourself.', fields: [
       { k: 'goNext', label: 'Go to the next picklist after a shipment', type: 'bool', def: true },
-      { k: 'skipClosed', label: 'Closed picklist in a batch opens: go to the next one right away (not after < back)', type: 'bool', def: true },
+      { k: 'skipClosed', label: 'You land on a closed picklist: go on to the next one right away (not when you came back with <)', type: 'bool', def: true },
+      { k: 'delayMs', label: 'Wait before going on (ms)', type: 'num', def: 800 },
+      { k: 'nextKey', label: 'Key for "next picklist"', type: 'text', def: 'n' },
+    ] },
+    { id: 'autoPrint', cfgId: 'autoNext', switchKey: 'printLabel', title: 'Auto print label', hint: 'prints the shipping label as soon as the shipment is made',
+      note: 'Only fill in a printer id when the label does not come out of the right printer by itself.', fields: [
       { k: 'printLabel', label: 'Print the shipping label', type: 'bool', def: true },
       { k: 'printerId', label: 'Printer id (leave empty if it works)', type: 'text', def: '' },
-      { k: 'delayMs', label: 'Wait before going next (ms)', type: 'num', def: 800 },
-      { k: 'pickAllKey', label: 'Pick all key', type: 'text', def: 'a' },
-      { k: 'nextKey', label: 'Next key', type: 'text', def: 'n' },
-    ]},
+    ] },
+    { id: 'pickAllKey', cfgId: 'autoNext', title: 'Pick all (A)', hint: 'press A on a picklist to pick everything',
+      note: () => `Two kinds — your team decides which one you get:\n• Pick all: A presses Picqer's own "Pick alles" button. Everything is picked in 1 go.\n• True pick all: A ticks every product line ✓ one by one, the same as picking them by hand, and waits for Picqer after each line (stops by itself if Picqer says it goes too fast). A bit slower, but every line is really picked.\nYou have: ${can('truePickAll') ? 'TRUE pick all' : can('pickAll') ? 'normal pick all' : 'no pick all (not for your team)'}.`, fields: [
+      { k: 'pickAllKey', label: 'Key for pick all', type: 'text', def: 'a' },
+    ] },
     { id: 'pickStats', title: 'Picker dashboard', hint: 'Ctrl+Alt+P · TV: add #pickers to a Picqer link', fields: [
       { k: 'warehouse', label: 'Only this warehouse (name or id, empty = all)', type: 'text', def: 'Bunsenstraat' },
       { k: 'pollSec', label: 'Check the batches every (sec)', type: 'num', def: 30 },
@@ -353,17 +360,66 @@
     };
   } catch (_) {}
 
-  function loadCfg() {
-    const saved = lsGet(LS_CFG, {});
+  // ---------- settings belong to the Picqer ACCOUNT, not the PC ----------
+  //  On this PC: pqsuite_cfg_u_<user id> = {at, cfg}. In the cloud (middle stop): the same, so another PC gets them too.
+  //  Before the page says who you are, the settings of whoever used this PC last are used; then they switch.
+  const cfgKey = (uid) => `pqsuite_cfg_u_${uid}`;
+  const LS_CFG_LAST = 'pqsuite_cfg_lastuid_v1';
+  function savedCfg(uid) {
+    const mine = uid ? lsGet(cfgKey(uid), null) : null;
+    if (mine && mine.cfg) return mine.cfg;
+    return lsGet(LS_CFG, {}) || {}; // first time for this account on this PC: start from the old PC settings
+  }
+  function loadCfg(uid) {
+    const saved = savedCfg(uid);
     const out = {};
     for (const m of SCHEMA) {
-      const s = saved[m.id] || {};
-      out[m.id] = { enabled: m.always ? true : s.enabled !== false };
-      for (const f of m.fields) out[m.id][f.k] = s[f.k] !== undefined ? s[f.k] : f.def;
+      const id = m.cfgId || m.id; // some cards only show a part of another section (Auto print / Pick all = autoNext)
+      const s = saved[id] || {};
+      if (!out[id]) out[id] = { enabled: m.always ? true : s.enabled !== false };
+      for (const f of m.fields) out[id][f.k] = s[f.k] !== undefined ? s[f.k] : f.def;
     }
+    // old "Auto print + auto next" switched off as a whole: keep both off
+    if (saved.autoNext && saved.autoNext.enabled === false && saved.autoNext.goNext !== false) { out.autoNext.goNext = false; out.autoNext.printLabel = false; }
     return out;
   }
-  const CFG = loadCfg();
+  const CFG = loadCfg(lsGet(LS_CFG_LAST, null));
+  // switch to another account's settings in place (features keep their reference to CFG.<section>)
+  function useCfgOf(uid) {
+    const fresh = loadCfg(uid);
+    for (const id of Object.keys(fresh)) { if (!CFG[id]) CFG[id] = {}; Object.assign(CFG[id], fresh[id]); }
+  }
+  function saveCfg(out) {
+    const uid = String(ME.id || '');
+    const v = { at: Date.now(), cfg: out };
+    if (uid) lsSet(cfgKey(uid), v); else lsSet(LS_CFG, out);
+    const url = String((out.leaderboard && out.leaderboard.url) || '').trim().replace(/\/+$/, '');
+    if (uid && url) {
+      return fetch(`${url}/settings?id=${encodeURIComponent(uid)}`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(v), keepalive: true })
+        .catch(() => {});
+    }
+    return Promise.resolve();
+  }
+  // after the page knows who you are: newer settings in the cloud (changed on another PC)? use them
+  async function syncCfg() {
+    const uid = String(ME.id || '');
+    const url = String((CFG.leaderboard && CFG.leaderboard.url) || '').trim().replace(/\/+$/, '');
+    if (!uid || !url) return;
+    const local = lsGet(cfgKey(uid), null);
+    let remote;
+    try { remote = await (await fetch(`${url}/settings?id=${encodeURIComponent(uid)}`, { credentials: 'omit', cache: 'no-store' })).json(); } catch (_) { return; }
+    if (remote && remote.cfg && (!local || remote.at > local.at)) {
+      const changed = JSON.stringify(remote.cfg) !== JSON.stringify(local && local.cfg);
+      lsSet(cfgKey(uid), { at: remote.at, cfg: remote.cfg });
+      // first time on this PC with this account: reload once so everything runs with your settings
+      if (changed && !sessionStorage.getItem('pqsuite_cfg_synced_' + uid)) {
+        try { sessionStorage.setItem('pqsuite_cfg_synced_' + uid, '1'); } catch (_) {}
+        location.reload();
+      }
+    } else if (local && local.cfg && (!remote || !remote.cfg || local.at > remote.at)) {
+      saveCfg(local.cfg); // this PC has newer ones (or the cloud has none yet): put them in the cloud
+    }
+  }
   const on = (id) => CFG[id] && CFG[id].enabled;
 
   /* =========================================================================
@@ -6114,7 +6170,7 @@
    *  SETTINGS PANEL (Shift+8 / *) + TEAMS EDITOR
    * ========================================================================= */
   const MOD_ICON = { comboBatcher: '📦', comboAlert: '🔔', replenish: '🔄', shipErr: '🚚', addrFix: '🏠', banner: '🚩', batchOpt: '🏷️', zap: '⚡', dayson: '📋',
-    zaplog: '🧾', unpick: '↩️', autoNext: '⏭️', pickStats: '📊', leaderboard: '🏆', cardColor: '🎨' };
+    zaplog: '🧾', unpick: '↩️', autoNext: '⏭️', autoPrint: '🖨️', pickAllKey: '🅰️', pickStats: '📊', leaderboard: '🏆', cardColor: '🎨' };
   // these have a ⚙ in their own window: Shift+8 only shows their on/off switch
   const OWN_GEAR = { comboBatcher: 'Ctrl+Shift+B → ⚙', pickStats: 'Ctrl+Alt+P → ⚙', leaderboard: 'Ctrl+Alt+L → ⚙', zap: 'Ctrl+Alt+Z → ⚙', zaplog: 'Ctrl+Alt+Z → ⚙' };
   function settingsPanel() {
@@ -6140,6 +6196,7 @@
       .pqs-top .car{color:#9ca3af;width:12px}
       .pqs-top .ic{width:22px;text-align:center;font-size:15px}
       .pqs-mod.gear .t{font-weight:500}
+      .pqs-note{font-size:12px;line-height:1.5;color:#374151;background:#f3f4f6;border-radius:8px;padding:8px 10px;margin-bottom:4px}
       .pqs-sec{padding:14px 18px 4px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9ca3af}
       #pqs-card.mini{width:520px}
       #pqs-card.mini .pqs-fields{margin-left:32px}
@@ -6218,25 +6275,30 @@
     }
 
     // ---------- tools tab (this PC) ----------
+    const sec = (m) => m.cfgId || m.id;
     const fieldHtml = (m, f) => {
-      const v = CFG[m.id][f.k];
-      const a = `data-m="${m.id}" data-k="${f.k}" data-t="${f.type}"`;
+      const v = CFG[sec(m)][f.k];
+      const a = `data-m="${sec(m)}" data-k="${f.k}" data-t="${f.type}"`;
       if (f.type === 'bool') return `<div class="pqs-f"><label>${escHtml(f.label)}</label>${sw(v, a)}</div>`;
       if (f.type === 'num') return `<div class="pqs-f"><label>${escHtml(f.label)}</label><input type="number" value="${escHtml(v)}" ${a}></div>`;
       const val = f.type === 'list' ? (v || []).join(', ') : v;
       return `<div class="pqs-f"><label>${escHtml(f.label)}</label><input type="text" value="${escHtml(val)}" ${a}></div>`;
     };
     const modHtml = (m, { keys, open, gear } = {}) => {
-      const fields = gear ? [] : m.fields.filter((f) => !keys || keys.includes(f.k));
+      // the card's on/off: its own feature switch, or one of its settings (Auto next / Auto print)
+      const fields = gear ? [] : m.fields.filter((f) => (!keys || keys.includes(f.k)) && f.k !== m.switchKey);
+      const note = typeof m.note === 'function' ? m.note() : m.note;
+      const top = m.switchKey ? sw(CFG[sec(m)][m.switchKey], `data-m="${sec(m)}" data-k="${m.switchKey}" data-t="bool"`)
+        : m.always || m.cfgId ? '' : sw(CFG[m.id].enabled, `data-en="${m.id}"`);
       return `
       <div class="pqs-mod${open ? ' open' : ''}${gear ? ' gear' : ''}" data-m="${m.id}">
         <div class="pqs-top">
           <span class="ic">${MOD_ICON[m.id] || '•'}</span>
           <span class="t">${escHtml(m.title)}</span><span class="h">${escHtml(gear || m.hint || '')}</span>
-          ${fields.length && !open ? '<span class="car">▸</span>' : ''}
-          ${m.always ? '' : sw(CFG[m.id].enabled, `data-en="${m.id}"`)}
+          ${(fields.length || note) && !open && !gear ? '<span class="car">▸</span>' : ''}
+          ${top}
         </div>
-        <div class="pqs-fields">${fields.map((f) => fieldHtml(m, f)).join('')}</div>
+        <div class="pqs-fields">${note && !gear ? `<div class="pqs-note">${escHtml(note).replace(/\n/g, '<br>')}</div>` : ''}${fields.map((f) => fieldHtml(m, f)).join('')}</div>
       </div>`;
     };
     // Shift+8 · Tools: everything without its own ⚙, then the ones with a ⚙ (only on/off)
@@ -6247,16 +6309,15 @@
     };
     // read the inputs of a card into the saved settings (only the modules in it) and reload
     function saveFrom(root) {
-      const out = lsGet(LS_CFG, {}) || {};
-      for (const m of SCHEMA) out[m.id] = { ...CFG[m.id], ...(out[m.id] || {}) };
+      const out = JSON.parse(JSON.stringify(savedCfg(ME.id)));
+      for (const m of SCHEMA) out[sec(m)] = { ...CFG[sec(m)], ...(out[sec(m)] || {}) };
       root.querySelectorAll('[data-en]').forEach((el) => { out[el.dataset.en].enabled = el.checked; });
       root.querySelectorAll('[data-k]').forEach((el) => {
         const { m, k, t: ty } = el.dataset;
         if (!out[m]) return;
         out[m][k] = ty === 'bool' ? el.checked : ty === 'num' ? Number(el.value) : ty === 'list' ? el.value.split(',').map((x) => x.trim()).filter(Boolean) : el.value.trim();
       });
-      lsSet(LS_CFG, out);
-      location.reload();
+      saveCfg(out).then(() => location.reload());
     }
     // ⚙ inside a tool: a small card with just its settings
     openToolSettings = (spec) => {
@@ -6265,7 +6326,7 @@
       ov.id = 'pqs-ov';
       const mods = (spec.mods || []).map((x) => ({ m: SCHEMA.find((y) => y.id === x.id), keys: x.keys })).filter((x) => x.m);
       ov.innerHTML = `<div id="pqs-card" class="mini">
-        <div class="hd"><div><b>⚙ ${escHtml(spec.title || 'Settings')}</b><small>this PC</small></div><button class="pqs-b" data-x="close">✕</button></div>
+        <div class="hd"><div><b>⚙ ${escHtml(spec.title || 'Settings')}</b><small>your account · every PC</small></div><button class="pqs-b" data-x="close">✕</button></div>
         <div class="bd">${mods.map((x) => modHtml(x.m, { keys: x.keys, open: true })).join('')}</div>
         <div class="ft"><span>Everything else: Shift+8</span><div><button class="pqs-b" data-x="close">Cancel</button><button class="pqs-b p" data-x="msave">Save &amp; reload</button></div></div>
       </div>`;
@@ -6550,7 +6611,7 @@
         ${full ? `<div class="bd" data-pane="tools"${hide('tools')}>${toolsHtml()}</div>
         ${isOwner() ? `<div class="bd" data-pane="teams"${hide('teams')}></div>` : ''}` : ''}
         <div class="bd" data-pane="colors"${hide('colors')}></div>
-        ${full ? `<div class="ft" data-foot="tools"${hide('tools')}><span>This PC only · for everyone on this PC, within their team · after reload</span>
+        ${full ? `<div class="ft" data-foot="tools"${hide('tools')}><span>Your account · follows you to every PC · after reload</span>
           <div><button class="pqs-b" data-x="reset">Reset</button><button class="pqs-b p" data-x="save">Save &amp; reload</button></div></div>
         ${isOwner() ? `<div class="ft" data-foot="teams"${hide('teams')}><span>Teams come from teams.js on GitHub</span>
           <div><button class="pqs-b" data-x="tstart">Start over</button><button class="pqs-b" data-x="tcopy">Copy config</button><button class="pqs-b p" data-x="tgh">Save to GitHub</button></div></div>` : ''}` : ''}
@@ -6583,7 +6644,7 @@
       ov.querySelectorAll('.pqs-top').forEach((t) => t.addEventListener('click', (e) => {
         if (e.target.closest('.pqs-sw')) return;
         const mod = t.parentElement;
-        if (!mod.querySelector('.pqs-f') || !t.querySelector('.car')) return;
+        if (!(mod.querySelector('.pqs-f') || mod.querySelector('.pqs-note')) || !t.querySelector('.car')) return;
         mod.classList.toggle('open');
         t.querySelector('.car').textContent = mod.classList.contains('open') ? '▾' : '▸';
       }));
@@ -6664,7 +6725,7 @@
         }
         const x = e.target.closest('[data-x]')?.dataset.x;
         if (x === 'close') close();
-        if (x === 'reset' && confirm('Reset all tool settings on this PC to default?')) { lsSet(LS_CFG, {}); location.reload(); }
+        if (x === 'reset' && confirm('Reset all your tool settings to default? (your account, every PC)')) { saveCfg({}).then(() => location.reload()); }
         if (x === 'save') saveFrom(ov.querySelector('[data-pane="tools"]'));
         if (x === 'tstart' && confirm('Throw away your changes and start from the teams.js this PC has now?')) {
           draft = fromScript();
@@ -6822,6 +6883,7 @@
     if (earlyDone) return;
     earlyDone = true;
     ME = readUser();
+    if (ME.id && String(ME.id) !== String(lsGet(LS_CFG_LAST, ''))) { useCfgOf(ME.id); lsSet(LS_CFG_LAST, String(ME.id)); }
     TEAM = teamFor(ME);
     if (use('banner')) stopBanner = safe('banner-early', bannerEarly);
     if (on('zap') || on('dayson')) safe('zaplog-cache', ZL.installCommentsCache);
@@ -6842,6 +6904,7 @@
     if (!use('banner') && stopBanner) { stopBanner(); stopBanner = null; }
     safe('locks', locks);
     safe('settings', settingsPanel);
+    setTimeout(() => safe('cfg-sync', syncCfg), 1500);
     if (use('banner')) safe('banner', bannerMain);
     if (use('shipErr')) safe('shipErr', shipErr);
     if (use('addrFix')) safe('addrFix', addrFix);

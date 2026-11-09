@@ -60,6 +60,16 @@ export class Game extends DurableObject {
     return board;
   }
   async board() { return (await this.load()).board; }
+  // Suite settings per Picqer account (own key each, so the game state stays small)
+  async getSettings(id) { return (await this.ctx.storage.get('set:' + id)) || null; }
+  async putSettings(id, cfg, at) {
+    const cur = await this.ctx.storage.get('set:' + id);
+    if (cur && cur.at > at) return { ok: false, err: 'newer settings already saved', ...cur };
+    const v = { cfg, at };
+    await this.ctx.storage.put('set:' + id, v);
+    return { ok: true, at };
+  }
+  async health() { const st = await this.load(); return { stateBytes: JSON.stringify(st).length, accounts: Object.keys(st.acct).length }; }
   async totals() { return { at: Date.now(), people: totals(await this.load()) }; }
   async profile(id) { return profile(await this.load(), id, amsNow().slice(0, 10)); }
   async change(kind, id, skin) {
@@ -89,6 +99,18 @@ export default {
         return json(b);
       }
       if (url.pathname === '/totals') return json(await game(env).totals());
+      if (url.pathname === '/health') return json(await game(env).health());
+      if (url.pathname === '/settings') {
+        const id = String(url.searchParams.get('id') || '');
+        if (!/^\d+$/.test(id)) return json({ err: 'id needed' }, 400);
+        if (req.method === 'POST') {
+          const b = await req.json().catch(() => ({}));
+          const text = JSON.stringify(b.cfg || null);
+          if (!b.cfg || typeof b.cfg !== 'object' || text.length > 60000) return json({ err: 'bad settings' }, 400);
+          return json(await game(env).putSettings(id, b.cfg, +b.at || Date.now()));
+        }
+        return json((await game(env).getSettings(id)) || { cfg: null, at: 0 });
+      }
       if (url.pathname === '/profile') {
         const id = url.searchParams.get('id');
         if (!/^\d+$/.test(id || '')) return json({ err: 'id needed' }, 400);
