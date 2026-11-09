@@ -31,5 +31,5 @@ window.PQ_TEAMS = {
       ]
     }
   ],
-  "leftovers": { "allow": ["comboAlert", "pickStats"] }
+  "leftovers": { "allow": ["comboAlert", "leaderboard", "colors", "bulkSingles"] }
 };
