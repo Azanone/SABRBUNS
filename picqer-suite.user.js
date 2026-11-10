@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.64
+// @version      3.65
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.64';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.65';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5236,7 +5236,7 @@
   function leaderboard() {
     const C = CFG.leaderboard || {};
     const WIN = Math.max(1, +C.windowMin || 15) * 60000;
-    const POLL = 60000; // your rank bottom right: fresh every minute
+    const POLL = 15000; // your rank bottom right: fresh every 15 s (the middle stop also works every 15 s)
     const URL_ = norm(String(C.url || '')).replace(/\/+$/, '');
     const LS_DATA = 'pqsuite_lb_v3', LS_LOCK = 'pqsuite_lb_lock_v1', LS_USERS = 'pqsuite_lb_users_v1';
     const TAB = Math.random().toString(36).slice(2);
@@ -6118,7 +6118,7 @@
     async function pollProf() {
       if (!URL_ || !ME_ID || spinning || invBusy) return;
       const c = lsGet(LS_PROF, null);
-      if (c && c.id === ME_ID && c.p && Date.now() - c.at < 50000) { if (c.at !== (prof && prof._at)) { c.p._at = c.at; setProf(c.p); } return; }
+      if (c && c.id === ME_ID && c.p && Date.now() - c.at < 12000) { if (c.at !== (prof && prof._at)) { c.p._at = c.at; setProf(c.p); } return; }
       try { await loadProfile(); } catch (_) {}
     }
 
@@ -6717,7 +6717,7 @@
       pkTimer = setInterval(() => {
         if (pkTab === 'pick') loadPicks();
         else if (pkTab === 'chart' && chDate === todayStr() && !chBusy && Date.now() - chAt > 300000) loadChart(chDate);
-      }, 60000);
+      }, 15000);
     }
 
     const typing = (t) => t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName));
@@ -6842,7 +6842,7 @@
       setInterval(() => { if (!document.getElementById('pq-hb')) headerBtn(); }, 1500);
       // coins, skin (also bought / taken off on another PC), crates: every minute while you look at the page
       setTimeout(pollProf, 2500 + Math.random() * 2500);
-      setInterval(() => { if (!document.hidden) pollProf(); }, 60000);
+      setInterval(() => { if (!document.hidden) pollProf(); }, 15000);
       document.addEventListener('visibilitychange', () => { if (!document.hidden) pollProf(); });
     }
     const tvHash = () => /^#pickers/.test(location.hash);

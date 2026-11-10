@@ -83,11 +83,38 @@ export class Game extends DurableObject {
     b.activeMin = LIVE_ACTIVE_MIN;
     return b;
   }
-  // live picking runs on its own alarm every minute (own request budget, next to the cron)
-  async ensureAlarm() { if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + 5000); }
+  // every 15 s (own alarm, the cron is only a backup): packing board + coins, completed batches, live picking
+  async ensureAlarm() { if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + 3000); }
   async alarm() {
-    try { await this.live(); await this.ctx.storage.delete('liveErr'); } catch (e) { console.log('live', e.message); await this.ctx.storage.put('liveErr', { at: Date.now(), err: String(e.message || e) }); }
-    await this.ctx.storage.setAlarm(Date.now() + 60000);
+    const t0 = Date.now();
+    try { await this.cycle(); await this.ctx.storage.delete('liveErr'); } catch (e) { console.log('cycle', e.message); await this.ctx.storage.put('liveErr', { at: Date.now(), err: String(e.message || e) }); }
+    await this.ctx.storage.setAlarm(Math.max(Date.now() + 3000, t0 + 15000));
+  }
+  async cycle() {
+    const env = this.env;
+    try { const { wh: w, rows } = await closedRows(env, 15); await this.tick(rows, w, proxiesOf(env)); } catch (e) { console.log('pack', e.message); }
+    try { await this.picksDone(); } catch (e) { console.log('picks', e.message); }
+    await this.live();
+  }
+  // completed batches → pick points + coins (new ones only, max 15 details per round)
+  async picksDone() {
+    const env = this.env, w = await warehouse(env);
+    const list = (await picqer(env, `/picklists/batches?status=completed${w ? `&idwarehouse=${w.id}` : ''}`)) || [];
+    const today = amsNow().slice(0, 10);
+    const mine = list.filter((b) => !w || String(b.idwarehouse) === String(w.id));
+    const isNew = new Set((await this.newBatchIds(mine.map((b) => b.idpicklist_batch))).map(String));
+    const old = mine.filter((b) => isNew.has(String(b.idpicklist_batch)) && String(b.completed_at || '').slice(0, 10) < today);
+    if (old.length) await this.markBatches(old.map((b) => b.idpicklist_batch));
+    const todo = mine.filter((b) => isNew.has(String(b.idpicklist_batch)) && String(b.completed_at || '').slice(0, 10) >= today).slice(0, 15);
+    if (!todo.length) return;
+    const full = (await Promise.all(todo.map((b) => picqer(env, `/picklists/batches/${b.idpicklist_batch}`).catch(() => null)))).filter(Boolean);
+    await this.pickTick(full, proxiesOf(env));
+  }
+  // cron (every minute): only makes sure the 15 s loop runs; if it died, do a round now
+  async kick() {
+    await this.ensureAlarm();
+    const st = await this.load();
+    if (!st.board || Date.now() - st.board.at > 60000) await this.cycle();
   }
   async live() {
     const env = this.env, now = Date.now();
@@ -187,7 +214,7 @@ async function runPicks(env) {
 }
 
 export default {
-  async scheduled(_ev, env, ctx) { ctx.waitUntil(run(env)); },
+  async scheduled(_ev, env, ctx) { ctx.waitUntil(game(env).kick()); },
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors() });
     const url = new URL(req.url);
