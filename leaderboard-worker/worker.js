@@ -86,7 +86,7 @@ export class Game extends DurableObject {
   // live picking runs on its own alarm every minute (own request budget, next to the cron)
   async ensureAlarm() { if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + 5000); }
   async alarm() {
-    try { await this.live(); } catch (e) { console.log('live', e.message); }
+    try { await this.live(); await this.ctx.storage.delete('liveErr'); } catch (e) { console.log('live', e.message); await this.ctx.storage.put('liveErr', { at: Date.now(), err: String(e.message || e) }); }
     await this.ctx.storage.setAlarm(Date.now() + 60000);
   }
   async live() {
@@ -125,7 +125,12 @@ export class Game extends DurableObject {
     await this.ctx.storage.put('set:' + id, v);
     return { ok: true, at };
   }
-  async health() { const st = await this.load(); return { stateBytes: JSON.stringify(st).length, accounts: Object.keys(st.acct).length }; }
+  async health() {
+    const st = await this.load(), L = (await this.ctx.storage.get('live')) || { b: {}, ev: [] };
+    const bs = Object.values(L.b);
+    return { stateBytes: JSON.stringify(st).length, accounts: Object.keys(st.acct).length, alarm: await this.ctx.storage.getAlarm(), liveErr: (await this.ctx.storage.get('liveErr')) || null,
+      live: { batches: bs.length, lastCheck: bs.length ? Math.max(...bs.map((b) => b.checked)) : null, events: L.ev.length, pickers: Object.keys(L.last || {}).length } };
+  }
   async totals() { return { at: Date.now(), people: totals(await this.load()) }; }
   async profile(id) { return profile(await this.load(), id, amsNow().slice(0, 10)); }
   async change(kind, id, skin) {
