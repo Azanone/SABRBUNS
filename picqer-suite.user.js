@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.58
+// @version      3.59
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.58';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.59';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -183,7 +183,8 @@
   const isOwner = () => String(ME.id || '') === OWNER_ID;
   let TEAM = null;
   const allowOf = (t) => (t ? t.allow : LEFTOVERS.allow);
-  const can = (f) => { const a = allowOf(TEAM); return a === '*' || (Array.isArray(a) && a.includes(f)); };
+  const ALWAYS = ['pickAll']; // Picqer's own "Pick alles": everyone, whatever the team says
+  const can = (f) => { if (ALWAYS.includes(f)) return true; const a = allowOf(TEAM); return a === '*' || (Array.isArray(a) && a.includes(f)); };
   const teamName = () => (TEAM ? TEAM.name : 'Leftovers');
   [...TEAMS, LEFTOVERS].forEach((t) => Array.isArray(t.allow) && t.allow.forEach((f) => {
     if (!FEATURES.includes(f)) console.warn(`[pq-suite] unknown feature "${f}" in team ${t.name || 'Leftovers'}`);
@@ -482,6 +483,49 @@
   let DOM_TICK = 0;
   try { new MutationObserver(() => { DOM_TICK++; }).observe(document.documentElement || document, { childList: true, subtree: true }); } catch (_) {}
 
+  // ? = what is this. Click → a small card with the explanation, click anywhere else → gone
+  const helpBtn = (text) => (text ? `<button type="button" class="pq-q" data-q="${escHtml(text)}" title="what is this?">?</button>` : '');
+  function helpInit() {
+    addStyle('pq-q-style', `
+      .pq-q{display:inline-grid;place-items:center;width:16px;height:16px;padding:0;margin:0 0 0 6px;border-radius:50%;border:1px solid #cbd5e1;background:#f8fafc;color:#64748b;font:700 10.5px/1 system-ui,sans-serif;cursor:pointer;vertical-align:middle;flex:none}
+      .pq-q:hover{color:#0f172a;border-color:#64748b}
+      html.pq-dark .pq-q{background:#1e293b;border-color:#334155;color:#94a3b8}
+      #pq-q-pop{position:fixed;z-index:2147483647;max-width:300px;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:10px 12px;font:500 12.5px/1.5 system-ui,sans-serif;box-shadow:0 12px 32px rgba(0,0,0,.3);white-space:pre-line}
+    `);
+    document.addEventListener('click', (e) => {
+      const b = e.target.closest && e.target.closest('.pq-q');
+      const old = document.getElementById('pq-q-pop');
+      if (!b) { if (old && !e.target.closest('#pq-q-pop')) old.remove(); return; }
+      e.preventDefault(); e.stopPropagation();
+      if (old) { old.remove(); if (old.dataset.for === b.dataset.q) return; }
+      const pop = document.createElement('div');
+      pop.id = 'pq-q-pop';
+      pop.dataset.for = b.dataset.q;
+      pop.textContent = b.dataset.q;
+      document.body.appendChild(pop);
+      const r = b.getBoundingClientRect();
+      pop.style.left = Math.max(8, Math.min(innerWidth - pop.offsetWidth - 8, r.left - 10)) + 'px';
+      pop.style.top = (r.bottom + pop.offsetHeight + 8 > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
+    }, true);
+  }
+  const HELP = {
+    comboBatcher: 'Makes batches out of open picklists.\nPer combo: picklists with exactly the same products → 1 batch.\nGrouped: several combos in 1 batch (MEGAMULTI), in the order you choose.\nOptimized: the fewest different products per batch, named BELGIE / MIX / NON BELGIE.\nAuto batch: someone finishes a batch → they get the next one by themselves.',
+    comboAlert: 'A picklist got a [COMBO CHANGED] comment (the products change from the one before in a grouped batch) → you get a popup so you don\'t miss it.',
+    replenish: 'Picqer has new aanvuladvies (stock to refill) → a small message on screen.',
+    shipErr: 'A shipment fails (address, carrier…) → the picklist is handled for you: the error in the comments, urgent, out of the batch, an internal label, given to the right person.',
+    addrFix: 'SendCloud refuses addresses or cities that are too long → this shortens them so the label can be made.',
+    banner: 'Shows a shipment error at the top of the picklist, and hides comments you don\'t need while packing.',
+    batchOpt: 'On the batches page: tags per batch (UNBOUND, DAYSON, picked) and colored borders, so you see at a glance what is going on.',
+    zap: 'Z on a picklist: it goes to the ZAP person and gets printed. Ctrl+Alt+Z = overview of everything that got zapped.',
+    dayson: 'Button on a batch page: gives every open picklist of that batch to DAYSON.',
+    zaplog: 'The shared log behind ZAP and DAYSON. Proxy ids are accounts that never count as a picker or packer.',
+    unpick: 'A button next to Pick alles that takes back everything that was picked on the picklist.',
+    autoNext: 'In a batch: the shipment is made → the next picklist that still needs packing opens by itself. N = next yourself.',
+    pickAllKey: 'A on a picklist = pick everything in 1 go.',
+    pickStats: 'Ctrl+Alt+P: who is picking right now (last 15 min, idle time), who packs, and charts per hour for any day.',
+    leaderboard: 'Packing points (multi 2, single 1,334) of the last 15 min. Your rank bottom right, Ctrl+Alt+L for everyone. Points are coins for the shop, crates and the pass (🪙 at the top).',
+    cardColor: 'A colored bar per product code on picklists, so look-alike products are easy to tell apart.',
+  };
   function addStyle(id, css) {
     if (document.getElementById(id)) return;
     const s = document.createElement('style');
@@ -2666,6 +2710,11 @@
       .cb-auto-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;border-bottom:1px solid #f1f5f9}
       .cb-auto-hd b{font-size:13px}
       .cb-auto-how{flex:1 1 200px;font-size:11px;line-height:1.35}
+      .cb-auto-sp{flex:1}
+      .cb-auto-effall{font:800 15px system-ui,sans-serif;color:#059669;margin-left:6px}
+      .cb-auto-effall small,.cb-auto-eff small{font-weight:500;font-size:10.5px;color:#64748b}
+      .cb-auto-eff{font:700 12.5px system-ui,sans-serif;color:#059669;margin:0 8px;white-space:nowrap}
+      .cb-tabq{display:inline-flex;align-items:center;margin-left:4px}
       .cb-auto-live{background:#16a34a;color:#fff;font-size:10px;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:999px}
       .cb-btn.cb-auto-stop{background:#fee2e2;border-color:#fecaca;color:#b91c1c}
       .cb-auto-people{padding:6px 12px 8px;display:flex;flex-direction:column;gap:3px}
@@ -2710,7 +2759,7 @@
             <div class="cb-chips"></div>
             <div class="cb-shops-act"><button class="cb-btn cb-all">All</button><button class="cb-btn cb-none">None</button></div>
           </div>
-          <div class="cb-tabs"><button class="cb-tab on" data-tab="single">Per combo</button><button class="cb-tab" data-tab="grouped">Grouped batch</button><button class="cb-tab" data-tab="opt">Optimized batches</button><button class="cb-tab" data-tab="iso">Isolated</button></div>
+          <div class="cb-tabs"><button class="cb-tab on" data-tab="single">Per combo</button><button class="cb-tab" data-tab="grouped">Grouped batch</button><button class="cb-tab" data-tab="opt">Optimized batches</button><button class="cb-tab" data-tab="iso">Isolated</button><span class="cb-tabq"></span></div>
           <div class="cb-log"></div>
         </div>
         <div class="cb-body">
@@ -2765,6 +2814,12 @@
     const taken = new Set();     // picklists this popup already put in a batch
     let users = null, usersErr = '', usersJob = null;
     let assignee = String(store.get('cb_assign', '') || '');
+    let optShow = !!store.get('cb_opt_show', false); // the batches themselves: hidden, people + on/off is enough
+    // efficiency per person today: picklists per different product (SKU) of the batches auto batch gave them
+    const effDay = () => new Date().toISOString().slice(0, 10);
+    function effGet() { const e = store.get('cb_auto_eff', null); return e && e.day === effDay() ? e : { day: effDay(), by: {} }; }
+    function effAdd(uid, pl, sku) { const e = effGet(); const r = (e.by[uid] = e.by[uid] || { b: 0, pl: 0, sku: 0 }); r.b++; r.pl += pl; r.sku += sku; store.set('cb_auto_eff', e); }
+    const effTxt = (r) => (r && r.sku ? (r.pl / r.sku).toFixed(1).replace('.', ',') : '–');
     let gAssign = String(store.get('cb_gassign', '') || '');
 
     // auto batch (optimized tab): on per browser tab, 1 tab per PC does the work
@@ -2833,16 +2888,24 @@
     $search.oninput = renderChips;
     panel.querySelector('.cb-all').onclick = () => { visibleShops().forEach((s) => selectedShops.add(s.idfulfilment_customer)); saveShops(); renderChips(); };
     panel.querySelector('.cb-none').onclick = () => { selectedShops.clear(); saveShops(); renderChips(); };
+    const TAB_HELP = {
+      single: 'Picklists with exactly the same products, per shop. Create batch = 1 batch of that combo.',
+      grouped: 'Tick combos, put them in order, Create MEGAMULTI → 1 batch with every ticked combo after each other, named MEGAMULTI and given to who you pick. A comment marks every switch to the next combo.',
+      opt: 'Auto batch: add people and turn it on. When someone has picked everything of their batch, they get the next one by themselves (fewest different products, BE pick-up last). Named BELGIE / MIX / NON BELGIE.\nEfficiency = picklists per different product (SKU) in their batches today. Higher = less walking.',
+      iso: 'Picklists that are alone in their batch or not batched at all.',
+    };
     function showTab(name) {
       tab = ['single', 'grouped', 'opt', 'iso'].includes(name) ? name : 'single';
       panel.querySelectorAll('.cb-tab').forEach((x) => x.classList.toggle('on', x.dataset.tab === tab));
       $single.style.display = tab === 'single' ? '' : 'none';
       $grouped.style.display = tab === 'grouped' ? '' : 'none';
-      $opt.style.display = tab === 'opt' ? '' : 'none';
+      $opt.style.display = tab === 'opt' && optShow ? '' : 'none';
       $auto.style.display = tab === 'opt' ? '' : 'none';
       $iso.style.display = tab === 'iso' ? '' : 'none';
       $snz.style.display = tab === 'iso' ? 'none' : ''; // the isolated check always takes only active picklists
       store.set('cb_tab', tab);
+      const q = panel.querySelector('.cb-tabq');
+      if (q) q.innerHTML = helpBtn(TAB_HELP[tab]);
       renderAuto();
       if (tab === 'opt') renderOpt();
       if (tab === 'iso') { renderIso(); if (isOpen() && !isoBusy && (!isoData || Date.now() - isoAt > 5 * 60000)) isoCheck(); }
@@ -4167,6 +4230,7 @@
         }
         const nIn = inIds.length;
         const nSku = new Set(inB.flatMap((m) => m.items.map((it) => it.code))).size;
+        effAdd(uid, nIn, nSku);
         const perShop = [...new Set(inB.map((m) => m.pl.idfulfilment_customer))].map((sh) => ({ sh, n: inB.filter((m) => m.pl.idfulfilment_customer === sh).length }));
         const where = perShop.length > 1 ? perShop.map((x) => `${shopName(x.sh)} ${x.n}`).join(' + ') : shopName(b.og.shop);
         autoAddLog(`✓ Batch ${nr} → ${userName(uid)} · ${nIn} picklist${nIn === 1 ? '' : 's'} · ${nSku} SKU${nSku === 1 ? '' : 's'} · ${where}` +
@@ -4321,7 +4385,9 @@
         const skip = !halt && s.st === 'busy' && s.b && s.b.id
           ? `<button class="cb-auto-skip" data-act="autoskip" data-u="${esc(uid)}" data-b="${esc(s.b.id)}" data-nr="${esc(s.b.nr)}" title="Stuck (something can't be picked)? Count this batch as done so they get the next one">count as done</button>`
           : '';
+        const ef = effGet().by[uid];
         return `<div class="cb-auto-p"><span class="cb-auto-dot ${cls}"></span><b>${esc(userName(uid))}</b>` +
+          `<span class="cb-auto-eff" title="${ef ? `${ef.b} batches · ${ef.pl} picklists · ${ef.sku} SKUs today` : 'no batches yet today'}">${effTxt(ef)}<small>/SKU</small></span>` +
           `<span class="cb-auto-st${cls === 'bad' ? ' cb-warn' : ''}" title="${esc(txt)}">${esc(txt)}</span>${skip}` +
           `<button class="cb-auto-x" data-act="autodel" data-u="${esc(uid)}" title="Stop watching">✕</button></div>`;
       }).join('');
@@ -4333,12 +4399,14 @@
       if (autoOn && autoOther) notes.push('<div class="cb-auto-note cb-muted">Runs in another tab on this PC</div>');
       if (autoOn && autoErr) notes.push(`<div class="cb-auto-note cb-warn">⚠ ${esc(autoErr)}</div>`);
       const logHtml = autoLog.slice(-8).reverse().map((l) => `<div><span class="cb-muted">${esc(hm(l.t))}</span> ${esc(l.txt)}</div>`).join('');
+      const all = Object.values(effGet().by).reduce((t, r) => ({ b: t.b + r.b, pl: t.pl + r.pl, sku: t.sku + r.sku }), { b: 0, pl: 0, sku: 0 });
       $auto.innerHTML = `<div class="cb-auto${autoOn ? ' on' : ''}">
         <div class="cb-auto-hd"><b>Auto batch</b>${autoOn ? '<span class="cb-auto-live">ON</span>' : ''}
-          <span class="cb-muted cb-auto-how">when someone has picked everything (collected = total) they get the next batch of exactly ${optMax} picklists with the fewest SKUs · 1 shop or 2 together · ticked shops</span>
-          ${beSelect()}${whSel}<button class="${autoOn ? 'cb-btn cb-auto-stop' : 'cb-go'}" data-act="autotoggle">${autoOn ? 'Turn off' : 'Turn on'}</button></div>
-        <div class="cb-auto-people">${people || '<div class="cb-muted">Nobody yet · add who should get batches</div>'}<div class="cb-auto-add">${addSel}</div></div>
-        ${notes.join('')}${logHtml ? `<div class="cb-auto-log">${logHtml}</div>` : ''}
+          <span class="cb-auto-effall" title="${all.b} batches today">${effTxt(all)}<small> picklists / SKU</small></span>
+          <span class="cb-auto-sp"></span>
+          ${beSelect()}${whSel}<button class="cb-btn" data-act="optshow" title="the batches themselves + log">${optShow ? 'Hide batches' : 'Batches'}</button><button class="${autoOn ? 'cb-btn cb-auto-stop' : 'cb-go'}" data-act="autotoggle">${autoOn ? 'Turn off' : 'Turn on'}</button></div>
+        <div class="cb-auto-people">${people || '<div class="cb-muted">add who gets batches</div>'}<div class="cb-auto-add">${addSel}</div></div>
+        ${notes.join('')}${optShow && logHtml ? `<div class="cb-auto-log">${logHtml}</div>` : ''}
       </div>`;
     }
 
@@ -4346,6 +4414,7 @@
       const el = e.target.closest('[data-act]');
       if (!el || el.disabled) return;
       if (el.dataset.act === 'autotoggle') autoToggle();
+      else if (el.dataset.act === 'optshow') { optShow = !optShow; store.set('cb_opt_show', optShow); showTab('opt'); }
       else if (el.dataset.act === 'autoskip') {
         const u = el.dataset.u, id = String(el.dataset.b);
         if (!confirm(`Count batch ${el.dataset.nr} as done for ${userName(u)}?\nThen they get the next batch. For when something in it can't be picked.`)) return;
@@ -5055,13 +5124,13 @@
   }
   function darkCss() {
     const c = lsGet(DARK_LS, null);
-    if (!c || Date.now() - c.at > 86400000) {
+    if (!c || Date.now() - c.at > 86400000 || c.v !== SUITE_VERSION) {
       fetch(`${RAW}skins/dark.css?t=${Math.floor(Date.now() / 3600000)}`, { credentials: 'omit', cache: 'no-store' })
         .then((r) => (r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status))))
         .then((css) => {
           if (!/\.pq-dark/.test(css)) return;
           const fresh = !c || c.css !== css;
-          lsSet(DARK_LS, { at: Date.now(), css });
+          lsSet(DARK_LS, { at: Date.now(), css, v: SUITE_VERSION });
           if (fresh && document.getElementById('pq-skin-dark')) document.getElementById('pq-skin-dark').textContent = css;
         })
         .catch((e) => console.info('[suite] dark.css not loaded:', e.message));
@@ -5089,11 +5158,13 @@
   }
   const SKIN_VARS = ['--th', '--ah', '--as', '--acc', '--on-acc', '--hbg'];
   const LS_SKIN_LAST = 'pqsuite_skin_last_v1'; // the skin this PC showed last: put on right away on the next page (no white flash)
-  let skinNow = EARLY_SKIN;
+  let skinNow = EARLY_SKIN, skinBuilt = false;
   function applySkin(id) {
     id = SKIN_LOOK[id] ? id : null;
-    if (skinNow === id) { if (id && SKIN_LOOK[id].dark) skinFx(SKIN_LOOK[id].dark.fx); return; }
+    // the early skin (from the last page) can be from an older version: rebuild it once per page
+    if (skinNow === id && skinBuilt) { if (id && SKIN_LOOK[id].dark) skinFx(SKIN_LOOK[id].dark.fx); return; }
     skinNow = id;
+    skinBuilt = true;
     if (!id) lsSet(LS_SKIN_LAST, null);
     ['pq-skin', 'pq-skin-dark', 'pq-void-fx', 'pq-stars'].forEach((x) => document.getElementById(x)?.remove());
     const root = document.documentElement;
@@ -5493,7 +5564,7 @@
 
     const lbGear = () => openToolSettings && openToolSettings({ title: 'Leaderboard', mods: [{ id: 'leaderboard', keys: can('settings') ? null : ['theme', 'widget'] }] });
     // Ctrl+Alt+L: "15 min" = who is fast right now · "Total" = all packing points ever (from the middle stop)
-    let listTab = 'now', totQ = '', tot = null, totErr = '', totBusy = false, who = null, whoProf = null, whoErr = '';
+    let listTab = 'now', totQ = '', tot = lsGet('pqsuite_tot_v1', null), totErr = '', totBusy = false, who = null, whoProf = null, whoErr = '';
     async function loadWho(id) {
       who = id; whoProf = null; whoErr = '';
       showList(true);
@@ -5533,6 +5604,7 @@
         if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
         const map = await names().catch(() => ({}));
         tot = { at: j.at, list: j.people.filter((x) => !proxies.has(String(x.id))).map((x) => ({ ...x, id: String(x.id), name: map[x.id] || `#${x.id}` })) };
+        lsSet('pqsuite_tot_v1', tot); // names for trading / items show up right away next time
         totErr = '';
       } catch (e) { totErr = e.message; } finally { totBusy = false; }
       if (listOpen && listTab === 'total') showList(true);
@@ -5887,7 +5959,7 @@
       .sh .sh-coins{display:flex;align-items:center;gap:6px;padding:6px 12px;margin-left:auto}
       .sh .sh-coins b{display:inline;font:800 17px system-ui,sans-serif}
       .sh h3{display:flex;align-items:center;gap:6px}
-      .pq-lbx .ii{width:16px;height:16px;border-radius:50%;border:1px solid var(--line);background:var(--soft);color:var(--mut);font:700 10px/14px Georgia,serif;font-style:italic;padding:0;cursor:pointer;flex:none;display:inline-grid;place-items:center}
+      .pq-lbx .ii{width:16px;height:16px;border-radius:50%;border:1px solid var(--line);background:var(--soft);color:var(--mut);font:700 10px/14px system-ui,sans-serif;padding:0;cursor:pointer;flex:none;display:inline-grid;place-items:center}
       .pq-lbx .ii:hover{color:var(--fg);border-color:var(--mut)}
       .ii-pop{position:fixed;z-index:2147483005;width:260px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.22);padding:12px 14px;font:500 12.5px/1.45 system-ui,sans-serif}
       .ii-pop b{display:block;font:700 13px system-ui,sans-serif;margin-bottom:6px}
@@ -5985,11 +6057,12 @@
       const txt = p ? int(p.balance) : '';
       if (n.textContent !== txt) n.textContent = txt;
       const crates = p ? (p.inv || []).filter((x) => x.kind === 'crate').length : 0;
-      const ev = p && p.event && p.event.until > now, frozen = p && p.effects && p.effects.frozenUntil > now;
+      const ev = p && ((p.event && p.event.until > now) || (p.effects && p.effects.boostUntil > now)), frozen = p && p.effects && p.effects.frozenUntil > now;
+      const boost = p && p.effects && p.effects.boostUntil > now;
       a.classList.toggle('pq-hb-new', crates > 0);
       a.classList.toggle('pq-hb-x2', !!ev);
       a.classList.toggle('pq-hb-frozen', !!frozen);
-      a.title = ['Inventory · stats · shop', crates ? `${crates} crate${crates > 1 ? 's' : ''} to open` : '', ev ? 'double points event: x2 coins' : '', frozen ? `your coins are frozen (${leftTxt(p.effects.frozenUntil)})` : ''].filter(Boolean).join(' · ');
+      a.title = ['Inventory · stats · shop', crates ? `${crates} crate${crates > 1 ? 's' : ''} to open` : '', p && p.event && p.event.until > now ? 'double points event: x2 coins' : '', boost ? `coin boost x2 · ${leftTxt(p.effects.boostUntil)} left` : '', frozen ? `your coins are frozen (${leftTxt(p.effects.frozenUntil)})` : ''].filter(Boolean).join(' · ');
     }
     function coinGain(diff) {
       const a = document.getElementById('pq-hb');
@@ -6261,7 +6334,7 @@
     }
 
     // ---------- ⓘ: explanations only when you ask for them ----------
-    const ii = (k) => `<button class="ii" data-ii="${k}" title="info">i</button>`;
+    const ii = (k) => `<button class="ii" data-ii="${k}" title="what is this?">?</button>`;
     function infoHtml(k) {
       const p = prof || {};
       const tiers = (p.tiers || []).slice().reverse();
@@ -6593,12 +6666,13 @@
     const typing = (t) => t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName));
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key || '').toLowerCase() === 'l') { e.preventDefault(); if (document.getElementById('pq-lb-ov')) close('pq-lb-ov'); else showList(); return; }
+      if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Digit9' && isOwner() && URL_ && !typing(e.target)) { e.preventDefault(); openAdmin(); return; }
       if (e.ctrlKey && e.altKey && !e.shiftKey && e.code === 'KeyP' && use('pickStats')) { e.preventDefault(); if (document.getElementById('pq-pk-ov')) close('pq-pk-ov'); else openPk(false); return; }
       if (e.key === 'Escape') {
         const rv = document.querySelector('.iv-rev.open');
         if (rv) { rv.querySelector('[data-rv="ok"]')?.click(); return; }
         if (spinning || invBusy) return;
-        close('pq-lb-ov'); close('pq-pf-ov'); close('pq-pk-ov');
+        close('pq-lb-ov'); close('pq-pf-ov'); close('pq-pk-ov'); close('pq-adm-ov');
       }
     });
     try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { shown = null; render(); }); } catch (_) {}
@@ -6608,6 +6682,101 @@
     setTimeout(poll, due ? 1500 + Math.random() * 2000 : POLL - (Date.now() - data.at));
     setInterval(() => { if (!document.hidden || !data || Date.now() - data.at > POLL * 3) poll(); }, POLL);
     document.addEventListener('visibilitychange', () => { if (!document.hidden && (!data || Date.now() - data.at > POLL)) poll(); });
+
+    // ---------- Shift+9 (only Ahmad): give / take coins, crates, items, skins, pass, XP ----------
+    let adm = { who: null, q: '', p: null, note: '', log: null };
+    async function adminPost(op, target, extra = {}) {
+      const key = lsGet('pqsuite_admin_key', '');
+      const r = await fetch(`${URL_}/admin`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Admin-Key': key } : {}) }, body: JSON.stringify({ by: ME_ID, op, target, ...extra }) });
+      const j = await r.json().catch(() => ({ err: `HTTP ${r.status}` }));
+      if (r.status === 403) {
+        const k = prompt('Admin key (ADMIN_KEY of the worker in Cloudflare). Saved on this PC.', key || '');
+        if (k && k !== key) { lsSet('pqsuite_admin_key', k.trim()); return adminPost(op, target, extra); }
+      }
+      return j;
+    }
+    const admItems = () => Object.keys(ITEM_ICON);
+    function showAdmin() {
+      const ov = overlay('pq-adm-ov');
+      ov.classList.add('sh');
+      const ppl = ((tot && tot.list) || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+      const ql = low(adm.q);
+      const p = adm.p, who = ppl.find((x) => x.id === adm.who);
+      const opt = (arr) => arr.map(([v, t]) => `<option value="${escHtml(v)}">${escHtml(t)}</option>`).join('');
+      const tiers = ['common', 'uncommon', 'rare', 'epic', 'legendary'].map((t) => [t, tierName(t)]);
+      const skins = ((prof && prof.skins) || []).map((x) => [x.id, x.name]);
+      const right = !adm.who ? '<div class="iv-empty">pick someone</div>' : !p ? '<div class="iv-empty">…</div>' : `
+        <div class="ad-who"><b>${escHtml(who ? who.name : '#' + adm.who)}</b><span>🪙 ${int(p.balance)}</span></div>
+        <div class="ad-tags"><span>pass ${p.pass && p.pass.owned ? '✓' : '–'} · lv ${p.pass ? p.pass.lv : 0}</span><span>${(p.inv || []).length} in inventory</span><span>${(p.owned || []).length} skins</span>
+          ${p.effects && p.effects.frozenUntil > Date.now() ? '<span class="bad">frozen</span>' : ''}${p.effects && p.effects.boostUntil > Date.now() ? `<span class="good">boost ${leftTxt(p.effects.boostUntil)}</span>` : ''}</div>
+        <div class="ad-rows">
+          <div class="ad-r"><label>Coins</label><input type="number" id="ad-coins" value="1000" min="1"><button class="buy" data-ad="coins">Give</button><button data-ad="coins-">Take</button></div>
+          <div class="ad-r"><label>Crate</label><select id="ad-tier">${opt(tiers)}</select><input type="number" id="ad-cn" value="1" min="1"><button class="buy" data-ad="crate">Give</button></div>
+          <div class="ad-r"><label>Item</label><select id="ad-item">${opt(admItems().map((k) => [k, itemDef(k).name]))}</select><input type="number" id="ad-in" value="1" min="1"><button class="buy" data-ad="item">Give</button></div>
+          <div class="ad-r"><label>Skin</label><select id="ad-skin">${opt(skins)}</select><button class="buy" data-ad="skin">Give</button><button data-ad="unskin">Take</button></div>
+          <div class="ad-r"><label>Pass</label><button class="buy" data-ad="pass" ${p.pass && p.pass.owned ? 'disabled' : ''}>Give pass</button><input type="number" id="ad-xp" value="1000"><button data-ad="xp">+ XP</button></div>
+          <div class="ad-r"><label>Effects</label><button data-ad="clear">Unfreeze</button><input type="number" id="ad-bm" value="30"><button data-ad="boost">Boost min</button></div>
+        </div>`;
+      ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
+        ${adm.note ? `<div class="sh-note">${escHtml(adm.note)}</div>` : ''}
+        ${adm.log ? `<div class="ad-log">${adm.log.map((x) => `<div><span>${new Date(x.at).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>${escHtml(x.what.replace(/→ (\d+)$/, (m, id) => '→ ' + ((ppl.find((y) => y.id === id) || {}).name || '#' + id)))}${x.id && x.id !== '32247' && !/^admin/.test(x.what) ? ` · ${escHtml((ppl.find((y) => y.id === String(x.id)) || {}).name || '#' + x.id)}` : ''}</div>`).join('') || '–'}</div>` : ''}
+        <div class="ad-body"><div class="ad-left"><input class="iv-q ad-q" placeholder="Search…" value="${escHtml(adm.q)}"><div class="iv-ppl">${ppl.map((r) => `<button data-adw="${escHtml(r.id)}" data-n="${escHtml(low(r.name))}" class="${ql && !low(r.name).includes(ql) ? 'hide' : ''}${r.id === adm.who ? ' on' : ''}">${escHtml(r.name)}<small>${int(r.balance)}</small></button>`).join('') || '<div class="iv-empty">…</div>'}</div></div>
+        <div class="ad-right">${right}</div></div></div>`;
+      ov.querySelector('[data-adx]').onclick = () => close('pq-adm-ov');
+      ov.querySelector('[data-ad-log]').onclick = async () => { if (adm.log) { adm.log = null; return showAdmin(); } const j = await adminPost('log', ''); adm.log = j.log || []; adm.note = j.err || ''; showAdmin(); };
+      const q = ov.querySelector('.ad-q');
+      q.oninput = () => { adm.q = q.value; const v = low(q.value); ov.querySelectorAll('[data-adw]').forEach((b) => b.classList.toggle('hide', !!v && !b.dataset.n.includes(v))); };
+      ov.querySelectorAll('[data-adw]').forEach((b) => (b.onclick = async () => {
+        adm.who = b.dataset.adw; adm.p = null; adm.note = '';
+        showAdmin();
+        try { adm.p = await (await fetch(`${URL_}/profile?id=${adm.who}`, { credentials: 'omit', cache: 'no-store' })).json(); } catch (_) {}
+        showAdmin();
+      }));
+      const val = (id) => (ov.querySelector('#' + id) || {}).value;
+      ov.querySelectorAll('[data-ad]').forEach((b) => (b.onclick = async () => {
+        const k = b.dataset.ad;
+        const body = k === 'coins' ? { n: +val('ad-coins') } : k === 'coins-' ? { n: -Math.abs(+val('ad-coins')) } : k === 'crate' ? { what: val('ad-tier'), n: +val('ad-cn') }
+          : k === 'item' ? { what: val('ad-item'), n: +val('ad-in') } : k === 'skin' || k === 'unskin' ? { what: val('ad-skin') } : k === 'xp' ? { n: +val('ad-xp') } : k === 'boost' ? { n: +val('ad-bm') } : {};
+        b.disabled = true;
+        const j = await adminPost(k === 'coins-' ? 'coins' : k, adm.who, body).catch((e) => ({ err: e.message }));
+        if (j.profile) adm.p = j.profile;
+        adm.note = j.err || '✓';
+        if (adm.who === ME_ID && j.profile) setProf(j.profile);
+        showAdmin();
+        if (!j.err) loadTotals();
+      }));
+      setTimeout(() => { const i = ov.querySelector('.ad-q'); if (i && !adm.who) i.focus(); }, 20);
+    }
+    function openAdmin() {
+      if (document.getElementById('pq-adm-ov')) return close('pq-adm-ov');
+      showAdmin();
+      if (!tot || Date.now() - tot.at > 60000) loadTotals().then(() => { if (document.getElementById('pq-adm-ov')) showAdmin(); });
+    }
+    addStyle('pq-adm-style', `
+      .ad-panel{width:min(820px,100%) !important}
+      .ad-q{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:500 13px system-ui,sans-serif;margin-bottom:8px;outline:none}
+      .ad-body{display:grid;grid-template-columns:240px 1fr;gap:18px;margin-top:14px}
+      .ad-left .iv-ppl{max-height:420px}
+      .ad-left .iv-ppl button.on{background:var(--hi)}
+      .ad-who{display:flex;justify-content:space-between;align-items:baseline}
+      .ad-who b{font:800 17px system-ui,sans-serif} .ad-who span{font:700 15px system-ui,sans-serif}
+      .ad-tags{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
+      .ad-tags span{padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--soft);font:600 11.5px system-ui,sans-serif;color:var(--mut)}
+      .ad-tags .bad{color:#e11d48} .ad-tags .good{color:#059669}
+      .ad-rows{display:flex;flex-direction:column;gap:8px}
+      .ad-r{display:flex;align-items:center;gap:8px}
+      .ad-r label{width:62px;color:var(--mut);font:600 12px system-ui,sans-serif}
+      .ad-r input,.ad-r select{padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:600 12.5px system-ui,sans-serif;min-width:0}
+      .ad-r input{width:90px}
+      .ad-r button{padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:700 12px system-ui,sans-serif;cursor:pointer}
+      .ad-r button.buy{background:#6366f1;border-color:#6366f1;color:#fff}
+      .ad-r button:disabled{opacity:.45}
+      .ad-log{max-height:200px;overflow:auto;margin-top:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--soft);font:500 12px system-ui,sans-serif}
+      .ad-log span{color:var(--mut);margin-right:8px;font-variant-numeric:tabular-nums}
+      @media (max-width:700px){.ad-body{grid-template-columns:1fr}}
+    `);
+    // names for trading / items: load them quietly in the background, so the list is there when you need it
+    if (URL_) setTimeout(() => { if (document.hidden) return; names().catch(() => {}); if (!tot || Date.now() - tot.at > 10 * 60000) loadTotals(); }, 12000 + Math.random() * 15000);
     // 🪙 button in Picqer's header (Picqer can redraw the header: put it back when it's gone)
     if (URL_ && ME_ID) {
       const c = lsGet(LS_PROF, null);
@@ -6767,7 +6936,7 @@
     const fieldHtml = (m, f) => {
       const v = CFG[sec(m)][f.k];
       const a = `data-m="${sec(m)}" data-k="${f.k}" data-t="${f.type}"`;
-      if (f.type === 'bool') return `<div class="pqs-f"><label>${escHtml(f.label)}</label>${sw(v, a)}</div>`;
+      if (f.type === 'bool') return `<div class="pqs-f"><label>${escHtml(f.label)}${helpBtn(f.help)}</label>${sw(v, a)}</div>`;
       if (f.type === 'num') return `<div class="pqs-f"><label>${escHtml(f.label)}</label><input type="number" value="${escHtml(v)}" ${a}></div>`;
       const val = f.type === 'list' ? (v || []).join(', ') : v;
       return `<div class="pqs-f"><label>${escHtml(f.label)}</label><input type="text" value="${escHtml(val)}" ${a}></div>`;
@@ -6782,7 +6951,7 @@
       <div class="pqs-mod${open ? ' open' : ''}${gear ? ' gear' : ''}" data-m="${m.id}">
         <div class="pqs-top">
           <span class="ic">${MOD_ICON[m.id] || '•'}</span>
-          <span class="t">${escHtml(m.title)}</span><span class="h">${escHtml(gear || m.hint || '')}</span>
+          <span class="t">${escHtml(m.title)}${helpBtn(HELP[m.id] || HELP[m.cfgId])}</span><span class="h">${escHtml(gear || m.hint || '')}</span>
           ${(fields.length || note) && !open && !gear ? '<span class="car">▸</span>' : ''}
           ${top}
         </div>
@@ -7433,6 +7602,7 @@
 
   function main() {
     if (tagWatch) tagWatch.disconnect();
+    safe('help', helpInit);
     early();
     ME = readUser(); // now the header is there too, so names match as well
     TEAM = teamFor(ME);
