@@ -107,9 +107,17 @@ function rollDrop(st, id, rolls, now, rnd) {
 const acct = (st, id) => (st.acct[id] = st.acct[id] || { coins: 0, spent: 0, owned: [], skin: null, kingTotal: 0, kingBest: 0, picklists: 0 });
 const dayRow = (st, d, id) => { st.days[d] = st.days[d] || {}; return (st.days[d][id] = st.days[d][id] || { n: 0, multis: 0, singles: 0, points: 0, kingMin: 0 }); };
 
+// one time: Ahmad (owner) gets every skin
+export function giftAll(st) {
+  if (st.giftAll1) return;
+  const a = acct(st, '32247');
+  for (const sk of SKINS) if (!a.owned.includes(sk.id)) a.owned.push(sk.id);
+  st.giftAll1 = true;
+}
 // rows = closed picklists of the last `min` minutes · now = ms · today = 'YYYY-MM-DD' (Amsterdam)
 export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rnd = Math.random }) {
   ensure(st);
+  giftAll(st);
   const skip = new Set(proxies.map(String));
   const by = new Map();
   // the chart: every closed picklist of the warehouse per hour (like Picqer's dashboard), kept for months
