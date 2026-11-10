@@ -457,7 +457,7 @@ function sideView(st, owner, o) {
 export function tradesFor(st, id, now) {
   tradeClean(st, now);
   return Object.values(st.trades).filter((t) => t.from === id || t.to === id).map((t) => ({
-    id: t.id, from: t.from, to: t.to, status: t.status, why: t.why || '', at: t.at, ok: t.ok,
+    id: t.id, from: t.from, to: t.to, status: t.status, why: t.why || '', at: t.at, ended: t.ended || 0, ok: t.ok,
     offer: { [t.from]: sideView(st, t.from, t.offer[t.from]), [t.to]: sideView(st, t.to, t.offer[t.to]) },
   }));
 }
@@ -498,6 +498,7 @@ export function tradeOp(st, id, op, b, now) {
   if (op === 'decline' || op === 'cancel') {
     if (!['pending', 'open'].includes(t.status)) return { ok: true };
     t.status = 'closed';
+    t.ended = now;
     t.why = `${op === 'decline' ? 'declined' : 'cancelled'}:${id}`;
     return { ok: true };
   }
@@ -522,6 +523,7 @@ export function tradeOp(st, id, op, b, now) {
       for (const s of o.skins) { A.owned = A.owned.filter((x) => x !== s); if (A.skin === s) A.skin = null; if (!B.owned.includes(s)) B.owned.push(s); }
     }
     t.status = 'done';
+    t.ended = now;
     st.log = (st.log || []).concat({ at: now, id: t.from, what: `traded with ${t.to}` }).slice(-50);
     return { ok: true, done: true };
   }
