@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.62
+// @version      3.63
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.62';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.63';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5686,11 +5686,11 @@
     function spinHtml(p) {
       if (!p.crate) return '';
       const odds = p.crate.odds || [];
-      return `<div class="sp-card">
-        <div class="sp-box">🎁</div>
+      return `<div class="sh-crate sp-card">
         <div class="sp-name"><b>Skin crate</b>${ii('crate')}</div>
-        <div class="sp-row">${odds.slice().reverse().map((o) => `<i title="${escHtml(nameOfSkin(o.id))} · ${String(o.pct).replace('.', ',')}%" style="background:${(SKIN_LOOK[o.id] || {}).bg || '#334155'};--r:${RARITY[o.id] || '#94a3b8'}"></i>`).join('')}</div>
-        <button class="buy sp-go" data-crate ${p.balance < p.crate.price ? 'disabled' : ''}>🪙 ${int(p.crate.price)}</button>
+        <div class="cr-win"><div class="cr-strip">${odds.slice().reverse().concat(odds).map((o) => reelCard(o.id)).join('')}</div><div class="cr-mark"></div></div>
+        <div class="cr-res"></div>
+        <div class="cr-btns"><button class="buy sp-go" data-crate ${p.balance < p.crate.price ? 'disabled' : ''}>🪙 ${int(p.crate.price)}</button></div>
         <small>${int(p.crates || 0)} opened</small>
       </div>`;
     }
@@ -5752,40 +5752,76 @@
     }
     // ---------- crate: the middle stop picks the skin, then the reel spins to it (right side of the shop) ----------
     async function openCrate(btn) {
-      if (spinning || invBusy) return;
+      if (spinning) return;
       if (btn) btn.disabled = true;
-      spinning = true;
-      const rv = openStage('#a855f7', '🎁', 'Skin crate', '');
-      const t0 = Date.now();
       let j;
       try {
         const r = await fetch(`${URL_}/crate`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ME_ID }) });
         j = await r.json();
       } catch (e) { j = { err: 'could not reach the middle stop' }; }
-      await new Promise((ok) => setTimeout(ok, Math.max(0, 900 - (Date.now() - t0))));
-      if (!j.ok) { rv.remove(); spinning = false; showProfile(j.err || 'crate failed'); return; }
-      // weighted like the real odds, so common ones flash by more often
+      if (!j.ok) { showProfile(j.err || 'crate failed'); return; }
+      const before = prof;
+      if (j.profile) setProf(j.profile);
+      spin(j, before);
+    }
+    function spin(j, before) {
+      const box = document.querySelector('#pq-pf-ov .sh-crate');
+      if (!box) { showProfile(); return; }
+      spinning = true;
+      const coins = document.querySelector('#pq-pf-ov .sh-coins b');
+      if (coins && prof) coins.textContent = int(prof.balance - (j.dup ? j.back : 0));
       const odds = (prof && prof.crate && prof.crate.odds) || [];
-      const pool = [];
-      odds.forEach((o) => { for (let k = 0; k < Math.max(1, Math.round(o.pct / 4)); k++) pool.push(sfSkin(o.id)); });
-      const rare = ['voidescent', 'carbon', 'crown', 'neon', 'nebula'].includes(j.won);
-      rv.classList.add('sf');
-      shuffleTo(rv.querySelector('.rv-sf'), pool.length ? pool : [sfSkin(j.won)], sfSkin(j.won), () => {
-        if (j.profile) setProf(j.profile);
+      const tot = odds.reduce((n, o) => n + o.pct, 0) || 1;
+      const pick = () => { let x = Math.random() * tot; for (const o of odds) { if (x < o.pct) return o.id; x -= o.pct; } return odds[0] ? odds[0].id : j.won; };
+      const N = 60, WIN = 52, W = 112;
+      const items = Array.from({ length: N }, (_, i) => (i === WIN ? j.won : i === WIN - 1 || i === WIN + 2 ? ['voidescent', 'carbon', 'crown'][Math.floor(Math.random() * 3)] : pick()));
+      const winEl = box.querySelector('.cr-win');
+      const old = box.querySelector('.cr-strip');
+      const strip = document.createElement('div');
+      strip.className = 'cr-strip go';
+      strip.innerHTML = items.map(reelCard).join('');
+      old.replaceWith(strip);
+      box.querySelector('.cr-res').textContent = '';
+      box.querySelector('.cr-btns').innerHTML = '';
+      box.classList.add('spin');
+      const stop = WIN * W + W / 2 - winEl.clientWidth / 2 + (Math.random() * 0.7 - 0.35) * (W - 14);
+      let done = false;
+      const finish = () => {
+        if (done) return; done = true;
+        spinning = false;
+        box.classList.remove('spin');
+        strip.style.transition = 'none';
+        strip.style.transform = `translate3d(${-stop}px,0,0)`;
+        strip.children[WIN].classList.add('won');
+        if (coins && prof) coins.textContent = int(prof.balance);
+        const nm = escHtml(nameOfSkin(j.won)), rare = ['voidescent', 'carbon', 'crown'].includes(j.won);
+        if (rare) box.classList.add('jackpot');
+        box.querySelector('.cr-res').innerHTML = (rare ? '<b class="cr-jp">🔥 JACKPOT 🔥</b><br>' : '') + (j.dup
+          ? `<b style="color:${RARITY[j.won]}">${nm}</b> · you already had it · <b>+${int(j.back)} coins</b>`
+          : `You got <b style="color:${RARITY[j.won]}">${nm}</b>!`);
         const can = prof && prof.crate && prof.balance >= prof.crate.price;
-        if (rare) rv.classList.add('jackpot');
-        rv.querySelector('.rv-res').innerHTML = `<span>${j.dup ? `already yours · +${int(j.back)} coins` : 'yours now'}</span>
-          <div class="rv-btns">${!j.dup ? '<button class="go" data-rv="wear">Wear</button>' : ''}<button data-rv="again" ${can ? '' : 'disabled'}>Again · 🪙 ${int((prof && prof.crate && prof.crate.price) || 0)}</button><button data-rv="ok">Nice</button></div>`;
-        rv.classList.add('open');
-        const done = async (what) => {
-          rv.remove();
-          spinning = false;
-          if (what === 'wear') { const r = await change('equip', j.won).catch(() => ({})); showProfile(r.err || ''); }
-          else if (what === 'again') { showProfile(); openCrate(null); }
-          else showProfile();
-        };
-        rv.querySelectorAll('[data-rv]').forEach((b) => (b.onclick = () => done(b.dataset.rv)));
-      });
+        box.querySelector('.cr-btns').innerHTML = `${!j.dup ? '<button class="wear" data-cr="wear">Wear it</button>' : ''}<button class="buy" data-cr="again" ${can ? '' : 'disabled'}>Again · 🪙 ${int((prof && prof.crate && prof.crate.price) || 0)}</button>`;
+        box.querySelectorAll('[data-cr]').forEach((b) => (b.onclick = async () => {
+          if (b.dataset.cr === 'wear') { const r = await change('equip', j.won).catch(() => ({})); showProfile(r.err || `wearing ${nameOfSkin(j.won)} ✓`); }
+          else { box.classList.remove('jackpot'); b.disabled = true; openCrate(null); }
+        }));
+        // the skins on the left (owned / balance) follow, without touching the reel
+        const left = document.querySelector('#pq-pf-ov .sh-grid');
+        if (left && prof) left.innerHTML = (prof.skins || []).map((s) => skinCard(prof, s)).join('');
+        document.querySelectorAll('#pq-pf-ov .sh-grid [data-pf]').forEach((b) => b.addEventListener('click', async () => {
+          const kind = b.dataset.pf === 'buy' ? 'buy' : 'equip';
+          const skin = b.dataset.pf === 'off' ? null : b.dataset.s;
+          if (b.dataset.pf === 'buy' && !confirm(`Buy ${nameOfSkin(skin)}?`)) return;
+          b.disabled = true;
+          const r = await change(kind, skin).catch(() => ({ err: 'could not reach the middle stop' }));
+          showProfile(r.err || '');
+        }));
+      };
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        strip.style.transform = `translate3d(${-stop}px,0,0)`;
+        strip.addEventListener('transitionend', finish, { once: true });
+        setTimeout(finish, 7500); // tab in the background: still finish
+      }));
     }
     async function openProfile(tab) {
       if (document.getElementById('pq-pf-ov') && !tab) return close('pq-pf-ov');
@@ -5993,9 +6029,11 @@
       .sh .bp-t.next{outline:2px solid #e4ae39;outline-offset:1px}
       .sh .bp-track.locked .bp-t:not(.reach){opacity:.55}
       .pq-drop .dp-box .bp-sw{width:38px;height:24px;border-radius:6px;display:block}
-      .sh .sp-card{margin:28px auto 8px;max-width:360px;padding:28px 24px 20px;border-radius:18px;background:#0b0b12;color:#e2e8f0;border:1px solid #20202c;display:flex;flex-direction:column;align-items:center;gap:12px;box-shadow:inset 0 0 60px rgba(168,85,247,.12)}
+      .sh .sp-card{margin:28px auto 8px;max-width:640px;padding:28px 24px 20px;border-radius:18px;background:#0b0b12;color:#e2e8f0;border:1px solid #20202c;display:flex;flex-direction:column;align-items:center;gap:12px;box-shadow:inset 0 0 60px rgba(168,85,247,.12)}
       .sh .sp-box{font-size:64px;line-height:1;filter:drop-shadow(0 0 24px rgba(168,85,247,.6));animation:spFloat 3s ease-in-out infinite}
       .sh .sp-name{display:flex;align-items:center;gap:8px}
+      .sh .sp-card .cr-win{align-self:stretch;margin:4px 0}
+      .sh .sp-card .cr-res{min-height:20px}
       .sh .sp-name b{font:800 18px system-ui,sans-serif;color:#fff}
       .sh .sp-card .ii{border-color:#2a2a38;background:#16161f;color:#94a3b8}
       .sh .sp-row{display:flex;flex-wrap:wrap;justify-content:center;gap:5px;max-width:300px}
@@ -6240,17 +6278,18 @@
       if (!x) return;
       invBusy = true;
       if (btn) btn.disabled = true;
-      const rv = openStage(TIER_COL[x.tier] || '#94a3b8', TIER_ICON[x.tier] || '📦', `${tierName(x.tier)} crate`, `1/${int(tierOne(x.tier))}`);
-      const t0 = Date.now();
-      let j;
-      try { j = await post('open', { id: ME_ID, uid }); } catch (e) { j = { err: 'could not reach the middle stop' }; }
-      await new Promise((ok) => setTimeout(ok, Math.max(0, 1100 - (Date.now() - t0))));
-      if (!j.ok) { rv.remove(); invBusy = false; showProfile(j.err || 'could not open it'); return; }
-      const g = j.got || {};
-      const fin = g.kind === 'coins' ? sfCoins(g.coins) : g.kind === 'skin' ? sfSkin(g.skin) : sfItem(g.item);
-      const pool = (TIER_LOOT[x.tier] || TIER_LOOT.common).map((k) => (k.startsWith('c:') ? sfCoins(+k.slice(2)) : k.startsWith('s:') ? sfSkin(k.slice(2)) : sfItem(k)));
+      const rv = openStage(TIER_COL[x.tier] || '#94a3b8', '', `${tierName(x.tier)} crate`, '');
       rv.classList.add('sf');
+      const pool = (TIER_LOOT[x.tier] || TIER_LOOT.common).map((k) => (k.startsWith('c:') ? sfCoins(+k.slice(2)) : k.startsWith('s:') ? sfSkin(k.slice(2)) : sfItem(k)));
+      // prizes pop right away (fast) while the middle stop decides, then it slows down onto what you got
+      let j = null, g = {};
+      const fin = post('open', { id: ME_ID, uid }).catch(() => ({ err: 'could not reach the middle stop' })).then((r) => {
+        j = r; g = (r && r.got) || {};
+        if (!r || !r.ok) return null;
+        return g.kind === 'coins' ? sfCoins(g.coins) : g.kind === 'skin' ? sfSkin(g.skin) : sfItem(g.item);
+      });
       shuffleTo(rv.querySelector('.rv-sf'), pool, fin, () => {
+        if (!j || !j.ok) { rv.remove(); invBusy = false; showProfile((j && j.err) || 'could not open it'); return; }
         if (j.profile) setProf(j.profile);
         if (x.tier === 'legendary' || x.tier === 'epic' || g.kind === 'skin') rv.classList.add('jackpot');
         const sub = g.kind === 'skin' ? (g.dup ? `already yours · +${int(g.coins)} coins` : 'drop only skin · yours now') : g.kind === 'item' ? escHtml(itemDef(g.item).desc) : '';
@@ -6283,16 +6322,19 @@
       return rv;
     }
     function shuffleTo(box, pool, fin, done) {
-      let delay = 55, last = -1;
+      let delay = 55, last = -1, prize, ready = false;
+      const t0 = Date.now();
+      Promise.resolve(fin).then((x) => { prize = x; ready = true; });
       const show = (it, win) => { box.style.setProperty('--r', it.col); box.innerHTML = `<div class="sf-it${win ? ' win' : ''}">${it.html}</div>`; };
       const step = () => {
         if (!box.isConnected) return;
-        if (delay > 560) { show(fin, true); setTimeout(done, 700); return; }
+        if (ready && !prize) { done(); return; } // failed
+        if (delay > 560) { show(prize, true); setTimeout(done, 700); return; }
         let k;
         do { k = Math.floor(Math.random() * pool.length); } while (pool.length > 1 && k === last);
         last = k;
         show(pool[k], false);
-        delay *= 1.16;
+        if (ready && Date.now() - t0 > 500) delay *= 1.16;
         setTimeout(step, delay);
       };
       step();
