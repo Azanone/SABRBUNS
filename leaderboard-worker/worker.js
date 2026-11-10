@@ -221,7 +221,8 @@ export default {
     const url = new URL(req.url);
     try {
       if (url.pathname === '/leaderboard') {
-        let b = await game(env).boardAll(); // board + pickers in 1 call (the free plan counts calls)
+        // board + pickers in 1 call (the free plan counts calls); right after a deploy the old object may not know it yet
+        let b = await game(env).boardAll().catch(() => game(env).board());
         if (!b || Date.now() - b.at > 3 * 60000) b = await run(env); // cron behind (or first time): do it now
         return json(b.picks ? b : { ...b, picks: await game(env).picks() });
       }
