@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.63
+// @version      3.64
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.63';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.64';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -148,7 +148,7 @@
     unpick: 'Unpick all',
     pickStats: 'Picker dashboard (Ctrl+Alt+P)',
     leaderboard: 'Leaderboard: your rank in closed picklists (last 15 min)',
-    autoNext: 'Auto print + auto next (A / N)',
+    autoNext: 'Auto print + auto next (A)',
     cardColor: 'Product colors on picklists',
     colors: 'Edit this PC\'s colors (Shift+8)',
     pickAll: 'Picqer "Pick alles" buttons',
@@ -256,11 +256,10 @@
     ]},
     { id: 'unpick', title: 'Unpick all', hint: 'button next to Pick alles', fields: [] },
     { id: 'autoNext', always: true, switchKey: 'goNext', title: 'Auto next', hint: 'after a shipment: the next picklist of the batch opens by itself',
-      note: 'Works in a batch: as soon as the shipment is made you go to the next picklist that still needs packing. N = go to the next one yourself.', fields: [
+      note: 'Works in a batch: as soon as the shipment is made you go to the next picklist that still needs packing.', fields: [
       { k: 'goNext', label: 'Go to the next picklist after a shipment', type: 'bool', def: true },
       { k: 'skipClosed', label: 'You land on a closed picklist: go on to the next one right away (not when you came back with <)', type: 'bool', def: true },
       { k: 'delayMs', label: 'Wait before going on (ms)', type: 'num', def: 800 },
-      { k: 'nextKey', label: 'Key for "next picklist"', type: 'text', def: 'n' },
     ] },
     { id: 'autoPrint', cfgId: 'autoNext', switchKey: 'printLabel', title: 'Auto print label', hint: 'prints the shipping label as soon as the shipment is made',
       note: 'Only fill in a printer id when the label does not come out of the right printer by itself.', fields: [
@@ -519,7 +518,7 @@
     dayson: 'Button on a batch page: gives every open picklist of that batch to DAYSON.',
     zaplog: 'The shared log behind ZAP and DAYSON. Proxy ids are accounts that never count as a picker or packer.',
     unpick: 'A button next to Pick alles that takes back everything that was picked on the picklist.',
-    autoNext: 'In a batch: the shipment is made → the next picklist that still needs packing opens by itself. N = next yourself.',
+    autoNext: 'In a batch: the shipment is made → the next picklist that still needs packing opens by itself.',
     pickAllKey: 'A on a picklist = pick everything in 1 go.',
     pickStats: 'Ctrl+Alt+P: who is picking right now (last 15 min, idle time), who packs, and charts per hour for any day.',
     leaderboard: 'Packing points (multi 2, single 1,334) of the last 15 min. Your rank bottom right, Ctrl+Alt+L for everyone. Points are coins for the shop, crates and the pass (🪙 at the top).',
@@ -4477,7 +4476,6 @@
     const PROCESSED_MIN = 3;          // "Verwerkt op ... door <you>" this recent counts as just made
     const LS_ON = 'pqsuite_autonext_on_v1';
     const pickKey = String(C.pickAllKey || 'a').toLowerCase();
-    const nextKey = String(C.nextKey || 'n').toLowerCase();
     let isProcessing = false;
     const enabled = C.goNext !== false; // Shift+8 -> Auto print + auto next
     let rowsPromise = null, flashAtLoad = new Set(), arrival = null, pendingWarn = null;
@@ -4871,9 +4869,6 @@
         if (!btn) return;
         if (!can('pickAll') || btn.disabled || btn.dataset.pqLock) { setInfo('Pick alles is not for your team'); return; }
         btn.click();
-      } else if (k === nextKey && PID && !isProcessing) {
-        isProcessing = true;
-        goNext([]);
       }
     });
 
