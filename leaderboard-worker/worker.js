@@ -143,7 +143,7 @@ export default {
       if (url.pathname === '/leaderboard') {
         let b = await game(env).board();
         if (!b || Date.now() - b.at > 3 * 60000) b = await run(env); // cron behind (or first time): do it now
-        return json(b);
+        return json({ ...b, picks: await game(env).picks() }); // pickers too: one call for the corner card
       }
       if (url.pathname === '/totals') return json(await game(env).totals());
       if (url.pathname === '/picks') return json(await game(env).picks());

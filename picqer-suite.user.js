@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.55
+// @version      3.56
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.55';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.56';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5208,13 +5208,13 @@
       if (lock && lock.tab !== TAB && Date.now() - lock.ts < POLL * 1.6) return; // another tab on this PC does it
       lsSet(LS_LOCK, { tab: TAB, ts: Date.now() });
       try {
-        let people = null, whName = '', via = '', king = null;
+        let people = null, whName = '', via = '', king = null, pickPeople = null;
         if (URL_) {
           try {
             const r = await fetch(`${URL_}/leaderboard`, { credentials: 'omit', cache: 'no-store' });
             const j = await r.json();
             if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
-            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed);
+            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed); pickPeople = j.picks && j.picks.people;
           } catch (e) { console.info('[leaderboard] middle stop:', e.message, '· asking Picqer myself'); }
         }
         if (!people) {
@@ -5232,7 +5232,8 @@
         const list = people.filter((r) => !proxies.has(String(r.id)))
           .map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}`, n: r.picklists }))
           .sort((a, b) => b.points - a.points || b.n - a.n);
-        data = { at: Date.now(), wh: norm(whName || ''), list, king, via: via || 'Picqer', err: '' };
+        const plist = (pickPeople || []).filter((r) => !proxies.has(String(r.id))).map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}` }));
+        data = { at: Date.now(), wh: norm(whName || ''), list, king, via: via || 'Picqer', err: '', picks: plist };
       } catch (e) {
         data = { ...(data || { list: [] }), at: Date.now(), err: e.message };
       }
@@ -5244,6 +5245,13 @@
     // colors: only what they really did in the last 15 min
     const per15 = (pts) => pts * 900000 / WIN;
     const tierOf = (p) => (p >= 46 ? 'blue' : p >= 38 ? 'turq' : p >= 30 ? 'dgreen' : p >= 21 ? 'green' : p >= 14 ? 'orange' : 'red');
+    // pickers: colors = pick points in the last hour (batches count when completed)
+    const pickTier = (h) => (h >= 300 ? 'blue' : h >= 240 ? 'turq' : h >= 180 ? 'dgreen' : h >= 120 ? 'green' : h >= 70 ? 'orange' : 'red');
+    function pickRanked() {
+      const list = ((data && data.picks) || []).slice().sort((a, b) => b.hour - a.hour || b.points - a.points);
+      let rank = 0, prev = null;
+      return list.map((r, i) => { if (prev === null || r.hour !== prev) rank = i + 1; prev = r.hour; return { ...r, rank, tier: pickTier(r.hour) }; });
+    }
     function ranked() {
       const list = (data && data.list) || [];
       const kingId = data && data.king ? String(data.king.id) : (data && data.via !== 'middle stop' && list[0] && per15(list[0].points) >= 21 ? list[0].id : null);
@@ -5393,13 +5401,27 @@
     box.id = 'pq-lb';
     box.className = 'pq-lbx';
     box.title = 'Leaderboard · click for everyone (Ctrl+Alt+L) · 🪙 at the top = inventory, stats, shop';
-    box.addEventListener('click', () => showList());
+    box.addEventListener('click', () => (box.dataset.mode === 'pick' ? openPk(false) : showList()));
     if (C.widget !== false) document.body.appendChild(box);
 
     function render() {
       const th = theme();
       box.classList.toggle('dark', th === 'dark');
-      if (C.widget !== false) {
+      const pl = pickRanked(), pme = pl.find((r) => r.id === ME_ID);
+      const packMe = ranked().find((r) => r.id === ME_ID);
+      box.dataset.mode = pme && !packMe ? 'pick' : 'pack';
+      if (C.widget !== false && box.dataset.mode === 'pick') {
+        const key = JSON.stringify(['pick', th, pme.tier, pme.rank, pme.hour, pme.points, pl.length]);
+        if (key !== shown) {
+          shown = key;
+          const gap = pme.rank > 1 ? pl[0].hour - pme.hour : 0;
+          box.innerHTML = `<div class="lb-card t-${pme.tier}"><div class="lb-rank">#${pme.rank}</div><div class="lb-main">
+            <div class="lb-pts">${fmt(pme.hour)} <small>pick pts · last hour</small></div>
+            <div class="lb-sub">${fmt(pme.points)} today · ${int(pme.batches)} batch${pme.batches === 1 ? '' : 'es'} · ${pme.rank === 1 ? `#1 of ${pl.length}` : `${fmt(gap)} behind #1`}</div></div></div>`;
+          if (prevRank != null && pme.rank !== prevRank) { box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash'); }
+          prevRank = pme.rank;
+        }
+      } else if (C.widget !== false) {
         const list = ranked();
         const me = list.find((r) => r.id === ME_ID);
         const key = JSON.stringify([th, me && me.tier, me && me.rank, me && me.points, me && me.kingMin, list.length]);
@@ -6358,14 +6380,15 @@
       const rows = (picks && picks.list) || [];
       const hm = picks && picks.at ? new Date(picks.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
       let rank = 0, prev = null;
-      return `<div class="lb-meta">today · 3 per pick location + 0,2 per product · counts when the batch is completed · ${hm}${picksErr ? ' · ⚠ ' + escHtml(picksErr) : ''}</div>
+      return `<div class="lb-meta">today · 3 per pick location + 0,2 per product · counts when the batch is completed · color = last hour · ${hm}${picksErr ? ' · ⚠ ' + escHtml(picksErr) : ''}</div>
         ${rows.length ? rows.map((r, i) => {
           if (prev === null || r.points !== prev) rank = i + 1;
           prev = r.points;
-          return `<div class="lb-row t-${rank === 1 ? 'gold' : 'none'}${r.id === ME_ID ? ' me' : ''}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
+          return `<div class="lb-row t-${pickTier(r.hour)}${r.id === ME_ID ? ' me' : ''}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
             <span class="nm">${escHtml(r.name)}<small>${int(r.batches)} batch${r.batches === 1 ? '' : 'es'} · ${int(r.locations)} locations · ${int(r.items)} products${r.hour ? ` · ${fmt(r.hour)} last hour` : ''}</small></span>
             <span class="v">${fmt(r.points)}<small>pts</small></span></div>`;
-        }).join('') : `<div class="lb-empty">${picks ? 'No batch completed yet today' : picksErr ? '' : 'Loading…'}</div>`}`;
+        }).join('') : `<div class="lb-empty">${picks ? 'No batch completed yet today' : picksErr ? '' : 'Loading…'}</div>`}
+        <div class="lb-legend"><span class="t-blue"><i></i>300+</span><span class="t-turq"><i></i>240+</span><span class="t-dgreen"><i></i>180+</span><span class="t-green"><i></i>120+</span><span class="t-orange"><i></i>70+</span><span class="t-red"><i></i>less</span><span>pick points in the last hour</span></div>`;
     }
     function showPk(refresh) {
       if (refresh && !document.getElementById('pq-pk-ov')) return;
