@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.59
+// @version      3.60
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.59';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.60';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -183,8 +183,7 @@
   const isOwner = () => String(ME.id || '') === OWNER_ID;
   let TEAM = null;
   const allowOf = (t) => (t ? t.allow : LEFTOVERS.allow);
-  const ALWAYS = ['pickAll']; // Picqer's own "Pick alles": everyone, whatever the team says
-  const can = (f) => { if (ALWAYS.includes(f)) return true; const a = allowOf(TEAM); return a === '*' || (Array.isArray(a) && a.includes(f)); };
+  const can = (f) => { const a = allowOf(TEAM); return a === '*' || (Array.isArray(a) && a.includes(f)); };
   const teamName = () => (TEAM ? TEAM.name : 'Leftovers');
   [...TEAMS, LEFTOVERS].forEach((t) => Array.isArray(t.allow) && t.allow.forEach((f) => {
     if (!FEATURES.includes(f)) console.warn(`[pq-suite] unknown feature "${f}" in team ${t.name || 'Leftovers'}`);
@@ -6800,17 +6799,19 @@
    * ========================================================================= */
   function locksCss() {
     if (can('pickAll')) document.getElementById('pq-lock-css')?.remove();
-    else addStyle('pq-lock-css', '.pick-all-button-container{display:none!important}');
+    // singles: Picqer's own "Pick alles" stays for everyone (only on multi picklists it is a team thing)
+    else addStyle('pq-lock-css', 'html:not(:has(#bundle-script-tag-picqer-picklists-batches-show-singles)) .pick-all-button-container:not(#singles-picklist-dialogue .pick-all-button-container){display:none!important}');
   }
+  const SINGLES_PAGE = () => /singles/i.test(location.pathname) || !!document.getElementById('bundle-script-tag-picqer-picklists-batches-show-singles');
   function locks() {
     locksCss();
     const rules = [];
-    if (!can('pickAll')) rules.push(/^(pick alles|pick all|ik heb ze allemaal|i have them all)$/i);
+    if (!can('pickAll') && !SINGLES_PAGE()) rules.push(/^(pick alles|pick all|ik heb ze allemaal|i have them all)$/i);
     if (!can('bulkSingles')) rules.push(/^(verwerk in bulk|process in bulk)$/i);
     if (!rules.length) return;
     const sweep = () => {
       document.querySelectorAll('button, a.btn').forEach((b) => {
-        if (b.dataset.pqLock) return;
+        if (b.dataset.pqLock || b.closest('#singles-picklist-dialogue')) return; // singles: always allowed
         const t = norm(b.textContent);
         if (!t || t.length > 30 || !rules.some((re) => re.test(t))) return;
         b.dataset.pqLock = '1';
