@@ -96,7 +96,12 @@ export class Game extends DurableObject {
     const open = list.filter((b) => b.status === 'open' && b.assigned_to && (!w || String(b.idwarehouse) === String(w.id)));
     const due = liveDue(await this.ctx.storage.get('live'), open, now, 40);
     const details = [];
-    for (const b of due) { try { details.push(await picqer(env, `/picklists/batches/${b.idpicklist_batch}`)); } catch (e) { console.log('live batch', b.idpicklist_batch, e.message); } }
+    // 6 at a time: one batch with all its products takes Picqer a few seconds
+    for (let i = 0; i < due.length; i += 6) {
+      const got = await Promise.all(due.slice(i, i + 6).map((b) => picqer(env, `/picklists/batches/${b.idpicklist_batch}`).catch((e) => { console.log('live batch', b.idpicklist_batch, e.message); return null; })));
+      details.push(...got.filter(Boolean));
+    }
+    await this.ctx.storage.put('liveTook', Date.now() - now);
     const L = liveTick(await this.ctx.storage.get('live'), open, details, { now, proxies: proxiesOf(env) });
     await this.ctx.storage.put('live', L);
   }
@@ -128,7 +133,7 @@ export class Game extends DurableObject {
   async health() {
     const st = await this.load(), L = (await this.ctx.storage.get('live')) || { b: {}, ev: [] };
     const bs = Object.values(L.b);
-    return { stateBytes: JSON.stringify(st).length, accounts: Object.keys(st.acct).length, alarm: await this.ctx.storage.getAlarm(), liveErr: (await this.ctx.storage.get('liveErr')) || null,
+    return { stateBytes: JSON.stringify(st).length, accounts: Object.keys(st.acct).length, alarm: await this.ctx.storage.getAlarm(), liveErr: (await this.ctx.storage.get('liveErr')) || null, liveTookMs: (await this.ctx.storage.get('liveTook')) || null,
       live: { batches: bs.length, lastCheck: bs.length ? Math.max(...bs.map((b) => b.checked)) : null, events: L.ev.length, pickers: Object.keys(L.last || {}).length } };
   }
   async totals() { return { at: Date.now(), people: totals(await this.load()) }; }
