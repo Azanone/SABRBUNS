@@ -10,7 +10,7 @@
 //   PROXIES      text    user ids that never count, comma separated (optional)
 //   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
-import { newState, tick, profile, buy, equip, grant, totals, crate } from './game.js';
+import { newState, tick, profile, buy, equip, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
@@ -55,11 +55,32 @@ export class Game extends DurableObject {
   async load() { return (await this.ctx.storage.get('state')) || newState(); }
   async tick(rows, wh, proxies) {
     const st = await this.load();
-    const board = tick(st, rows, { now: Date.now(), min: 15, today: amsNow().slice(0, 10), proxies, wh });
+    const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
+    const board = tick(st, rows, { now: Date.now(), min: 15, today: amsNow().slice(0, 10), proxies, wh, rnd });
     await this.ctx.storage.put('state', st);
     return board;
   }
   async board() { return (await this.load()).board; }
+  // picking: which completed batches are new (not counted yet)
+  async newBatchIds(ids) { const st = await this.load(); const seen = new Set(st.pseen || []); return ids.filter((x) => !seen.has(String(x))); }
+  async markBatches(ids) { const st = await this.load(); st.pseen = (st.pseen || []).concat(ids.map(String)).slice(-600); await this.ctx.storage.put('state', st); }
+  async pickTick(batches, proxies) {
+    const st = await this.load();
+    const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
+    const b = pickTick(st, batches, { now: Date.now(), today: amsNow().slice(0, 10), proxies, rnd });
+    await this.ctx.storage.put('state', st);
+    return b;
+  }
+  async picks() { return pickBoard(await this.load(), Date.now(), amsNow().slice(0, 10)); }
+  async chart(date) { return chart(await this.load(), date); }
+  async inv(kind, id, uid, target) {
+    const st = await this.load();
+    const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
+    const res = kind === 'open' ? openDrop(st, id, uid, Date.now(), rnd) : useItem(st, id, uid, target, Date.now());
+    if (res.ok) await this.ctx.storage.put('state', st);
+    return { ...res, profile: profile(st, id, amsNow().slice(0, 10)) };
+  }
+  async seenNews(id, at) { const st = await this.load(); const a = st.acct[String(id)]; if (a && a.news) { a.news = a.news.filter((x) => x.at > at); await this.ctx.storage.put('state', st); } return { ok: true }; }
   // Suite settings per Picqer account (own key each, so the game state stays small)
   async getSettings(id) { return (await this.ctx.storage.get('set:' + id)) || null; }
   async putSettings(id, cfg, at) {
@@ -82,9 +103,28 @@ export class Game extends DurableObject {
 }
 
 const game = (env) => env.GAME.get(env.GAME.idFromName('main'));
+const proxiesOf = (env) => String(env.PROXIES || PROXIES_DEFAULT).split(',').map((x) => x.trim()).filter(Boolean);
 async function run(env) {
   const { wh: w, rows } = await closedRows(env, 15);
-  return game(env).tick(rows, w, String(env.PROXIES || PROXIES_DEFAULT).split(',').map((x) => x.trim()).filter(Boolean));
+  const board = await game(env).tick(rows, w, proxiesOf(env));
+  try { await runPicks(env); } catch (e) { console.log('picks', e.message); }
+  return board;
+}
+// picking points: newly completed batches (Picqer lists the newest first). Max 15 details per minute.
+async function runPicks(env) {
+  const w = await warehouse(env);
+  const list = (await picqer(env, `/picklists/batches?status=completed${w ? `&idwarehouse=${w.id}` : ''}`)) || [];
+  const today = amsNow().slice(0, 10);
+  const mine = list.filter((b) => !w || String(b.idwarehouse) === String(w.id));
+  const fresh = await game(env).newBatchIds(mine.map((b) => b.idpicklist_batch));
+  const isNew = new Set(fresh.map(String));
+  const old = mine.filter((b) => isNew.has(String(b.idpicklist_batch)) && String(b.completed_at || '').slice(0, 10) < today);
+  if (old.length) await game(env).markBatches(old.map((b) => b.idpicklist_batch)); // from before today: don't count
+  const todo = mine.filter((b) => isNew.has(String(b.idpicklist_batch)) && String(b.completed_at || '').slice(0, 10) >= today).slice(0, 15);
+  if (!todo.length) return;
+  const full = [];
+  for (const b of todo) { try { full.push(await picqer(env, `/picklists/batches/${b.idpicklist_batch}`)); } catch (e) { console.log('batch', b.idpicklist_batch, e.message); } }
+  await game(env).pickTick(full, proxiesOf(env));
 }
 
 export default {
@@ -99,6 +139,22 @@ export default {
         return json(b);
       }
       if (url.pathname === '/totals') return json(await game(env).totals());
+      if (url.pathname === '/picks') return json(await game(env).picks());
+      if (url.pathname === '/chart') {
+        const d = String(url.searchParams.get('date') || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return json({ err: 'date needed (YYYY-MM-DD)' }, 400);
+        return json(await game(env).chart(d));
+      }
+      if ((url.pathname === '/open' || url.pathname === '/use') && req.method === 'POST') {
+        const b = await req.json().catch(() => ({}));
+        if (!/^\d+$/.test(String(b.id || '')) || !b.uid) return json({ err: 'id and uid needed' }, 400);
+        return json(await game(env).inv(url.pathname.slice(1), String(b.id), String(b.uid), b.target ? String(b.target) : null));
+      }
+      if (url.pathname === '/seen' && req.method === 'POST') {
+        const b = await req.json().catch(() => ({}));
+        if (!/^\d+$/.test(String(b.id || ''))) return json({ err: 'id needed' }, 400);
+        return json(await game(env).seenNews(String(b.id), +b.at || 0));
+      }
       if (url.pathname === '/health') return json(await game(env).health());
       if (url.pathname === '/settings') {
         const id = String(url.searchParams.get('id') || '');

@@ -3,6 +3,9 @@
 //  · today: every closed picklist counted once per day (Amsterdam date of closed_at)
 //  · coins: every packing point = 1 coin, + 20 coins per minute as king of the hill (#1 with 15+ points)
 //  · skins: bought with coins, 1 equipped
+//  · picking: per batch (assigned picker) 3 points per different location + 0,2 per product picked there
+//  · drops: every packed picklist / picked batch can drop a crate (common … legendary) into your inventory
+//  · items from crates: boost, shield, freeze, skin off, double points event
 
 export const MULTI = 2, SINGLE = 1.334;
 export const KING_MIN_POINTS = 21;   // green or better in the last 15 min
@@ -23,7 +26,35 @@ export const SKINS = [
   { id: 'neon', name: 'Neon', price: 20000 },
   { id: 'carbon', name: 'Carbon', price: 25000 },
   { id: 'voidescent', name: 'Voidescent', price: 50000, limit: 10 }, // limited edition: only 10 people can own it
+  // only from drop crates
+  { id: 'phantom', name: 'Phantom', price: 15000, crateOnly: true },
+  { id: 'inferno', name: 'Inferno', price: 30000, crateOnly: true },
+  { id: 'celestial', name: 'Celestial', price: 60000, crateOnly: true },
 ];
+export const PICK_LOC = 3, PICK_ITEM = 0.2;
+// drop chance per packed picklist (a picked batch counts as 3 rolls). 1 in N.
+export const TIERS = [
+  { id: 'legendary', name: 'Legendary', one: 30000 },
+  { id: 'epic', name: 'Epic', one: 8000 },
+  { id: 'rare', name: 'Rare', one: 2000 },
+  { id: 'uncommon', name: 'Uncommon', one: 500 },
+  { id: 'common', name: 'Common', one: 150 },
+];
+export const ITEMS = {
+  boost: { name: 'Coin boost', desc: 'your coins x2 for 30 min', self: true, min: 30 },
+  shield: { name: 'Shield', desc: 'blocks the next freeze or skin off on you (24 h)', self: true, min: 24 * 60 },
+  freeze: { name: 'Freeze', desc: "someone's coins stop for 20 min", target: true, min: 20 },
+  skinoff: { name: 'Skin off', desc: "someone's skin is gone for 30 min", target: true, min: 30 },
+  double: { name: 'Double points event', desc: 'everyone gets x2 coins for 1 hour', self: true, min: 60 },
+};
+// what a drop crate can hold, weights per tier
+const LOOT = {
+  common: [['coins', 60, 50, 150], ['boost', 20], ['shield', 20]],
+  uncommon: [['coins', 45, 200, 500], ['boost', 15], ['shield', 10], ['freeze', 15], ['skinoff', 15]],
+  rare: [['coins', 35, 800, 2000], ['freeze', 15], ['skinoff', 15], ['double', 20], ['skin:phantom', 15]],
+  epic: [['coins', 30, 3000, 6000], ['double', 25], ['skin:phantom', 20], ['skin:inferno', 25]],
+  legendary: [['coins', 25, 10000, 20000], ['double', 15], ['skin:inferno', 30], ['skin:celestial', 30]],
+};
 // crate: pay, spin, get a skin. Weights out of 10.000. Crown, Carbon and Voidescent are very rare.
 // Already have it? You get a quarter of its shop price back in coins.
 export const CRATE = {
@@ -39,13 +70,57 @@ export function pointsOf(p) {
   return codes.size >= 2 ? { multi: 1, single: 0, pts: MULTI } : { multi: 0, single: 1, pts: SINGLE };
 }
 export function newState() { return { v: 1, seen: {}, days: {}, acct: {}, king: null, board: null }; }
+const ensure = (st) => {
+  st.hours = st.hours || {}; st.seenH = st.seenH || {}; st.pdays = st.pdays || {}; st.pseen = st.pseen || []; st.precent = st.precent || [];
+  st.event = st.event || null; st.log = st.log || [];
+  return st;
+};
+// coins with effects: frozen = 0 · double event and own boost = x2 each
+export function earn(st, id, amount, now) {
+  const a = acct(st, id);
+  if (a.frozenUntil > now) return 0;
+  let x = amount;
+  if (st.event && st.event.until > now) x *= 2;
+  if (a.boostUntil > now) x *= 2;
+  a.coins = r3(a.coins + x);
+  return x;
+}
+// maybe a crate drops (rolls = how many tries)
+function rollDrop(st, id, rolls, now, rnd) {
+  const a = acct(st, id);
+  for (let i = 0; i < rolls; i++) {
+    const x = rnd();
+    let acc = 0;
+    for (const t of TIERS) {
+      acc += 1 / t.one;
+      if (x < acc) {
+        a.inv = a.inv || [];
+        const uid = `${now.toString(36)}${Math.floor(rnd() * 1e6).toString(36)}`;
+        a.inv.push({ uid, kind: 'crate', tier: t.id, at: now });
+        a.news = (a.news || []).concat({ at: now, kind: 'crate', tier: t.id, one: t.one, uid }).slice(-20);
+        st.log = (st.log || []).concat({ at: now, id, what: `${t.name} crate` }).slice(-50);
+        break;
+      }
+    }
+  }
+}
 const acct = (st, id) => (st.acct[id] = st.acct[id] || { coins: 0, spent: 0, owned: [], skin: null, kingTotal: 0, kingBest: 0, picklists: 0 });
 const dayRow = (st, d, id) => { st.days[d] = st.days[d] || {}; return (st.days[d][id] = st.days[d][id] || { n: 0, multis: 0, singles: 0, points: 0, kingMin: 0 }); };
 
 // rows = closed picklists of the last `min` minutes · now = ms · today = 'YYYY-MM-DD' (Amsterdam)
-export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '' }) {
+export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rnd = Math.random }) {
+  ensure(st);
   const skip = new Set(proxies.map(String));
   const by = new Map();
+  // the chart: every closed picklist of the warehouse per hour (like Picqer's dashboard), kept for months
+  for (const p of rows) {
+    const d = String(p.closed_at || today).slice(0, 10), h = +String(p.closed_at || '').slice(11, 13) || 0;
+    st.seenH[d] = st.seenH[d] || {};
+    if (st.seenH[d][p.idpicklist]) continue;
+    st.seenH[d][p.idpicklist] = 1;
+    st.hours[d] = st.hours[d] || { packed: Array(24).fill(0), picked: Array(24).fill(0) };
+    st.hours[d].packed[h]++;
+  }
   for (const p of rows) {
     const id = p.closed_by_iduser == null ? null : String(p.closed_by_iduser);
     if (!id || skip.has(id)) continue;
@@ -64,8 +139,9 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '' }) 
     const t = dayRow(st, d, id);
     t.n++; t.multis += pt.multi; t.singles += pt.single; t.points = r3(t.points + pt.pts);
     const a = acct(st, id);
-    a.coins = r3(a.coins + pt.pts); a.picklists++;
+    earn(st, id, pt.pts, now); a.picklists++;
     a.points = r3(a.points + pt.pts);
+    rollDrop(st, id, 1, now, rnd);
   }
   const people = [...by.values()].sort((a, b) => b.points - a.points || b.picklists - a.picklists);
   // king of the hill
@@ -77,7 +153,7 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '' }) 
     const add = Math.min(3, Math.floor((now - k.last) / 60000));
     if (add > 0) {
       const a = acct(st, k.id);
-      a.coins = r3(a.coins + add * KING_PER_MIN);
+      earn(st, k.id, add * KING_PER_MIN, now);
       a.kingTotal += add;
       dayRow(st, today, k.id).kingMin += add;
       k.last += add * 60000;
@@ -89,7 +165,11 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '' }) 
   for (const d of Object.keys(st.days)) if (!keepDays.includes(d)) delete st.days[d];
   const keepSeen = Object.keys(st.seen).sort().slice(-2);
   for (const d of Object.keys(st.seen)) if (!keepSeen.includes(d)) delete st.seen[d];
-  st.board = { at: now, min, wh, people, king: st.king ? { id: st.king.id, since: st.king.since, min: Math.floor((now - st.king.since) / 60000) } : null };
+  for (const d of Object.keys(st.seenH).sort().slice(0, -2)) delete st.seenH[d];
+  for (const d of Object.keys(st.hours).sort().slice(0, -120)) delete st.hours[d];
+  for (const d of Object.keys(st.pdays).sort().slice(0, -8)) delete st.pdays[d];
+  if (st.event && st.event.until <= now) st.event = null;
+  st.board = { at: now, min, wh, people, event: st.event ? { until: st.event.until, by: st.event.by } : null, king: st.king ? { id: st.king.id, since: st.king.since, min: Math.floor((now - st.king.since) / 60000) } : null };
   return st.board;
 }
 
@@ -106,11 +186,11 @@ function totalPoints(st, id) {
 export function totals(st) {
   return Object.keys(st.acct).map((id) => {
     const a = st.acct[id];
-    return { id, points: totalPoints(st, id), picklists: a.picklists || 0, kingTotal: a.kingTotal || 0, kingBest: a.kingBest || 0, coins: a.coins || 0, balance: r3(a.coins - a.spent) };
-  }).filter((x) => x.points > 0 || x.picklists > 0 || x.balance > 0).sort((x, y) => y.balance - x.balance || y.points - x.points);
+    return { id, points: totalPoints(st, id), picklists: a.picklists || 0, pickPoints: a.pickPoints || 0, batches: a.batches || 0, kingTotal: a.kingTotal || 0, kingBest: a.kingBest || 0, coins: a.coins || 0, balance: r3(a.coins - a.spent) };
+  }).filter((x) => x.points > 0 || x.picklists > 0 || x.balance > 0 || x.pickPoints > 0).sort((x, y) => y.balance - x.balance || y.points - x.points);
 }
 
-export function profile(st, id, today) {
+export function profile(st, id, today, now = Date.now()) {
   id = String(id);
   const a = st.acct[id] || { coins: 0, spent: 0, owned: [], skin: null, kingTotal: 0, kingBest: 0, picklists: 0 };
   const day = st.days[today] || {};
@@ -119,7 +199,12 @@ export function profile(st, id, today) {
   const week = Object.entries(st.days).filter(([d]) => d <= today).slice(-7).map(([d, v]) => ({ day: d, ...(v[id] || { n: 0, points: 0, kingMin: 0 }) }));
   return {
     id, today: day[id] || { n: 0, multis: 0, singles: 0, points: 0, kingMin: 0 }, rankToday: pos < 0 ? null : pos + 1, ofToday: ranked.length,
-    balance: r3(a.coins - a.spent), coins: a.coins, spent: a.spent, points: st.acct[id] ? totalPoints(st, id) : 0, owned: a.owned, skin: a.skin, kingTotal: a.kingTotal, kingBest: a.kingBest, picklists: a.picklists,
+    balance: r3(a.coins - a.spent), coins: a.coins, spent: a.spent, points: st.acct[id] ? totalPoints(st, id) : 0, owned: a.owned,
+    skin: a.skinOffUntil > now ? null : a.skin, mySkin: a.skin, kingTotal: a.kingTotal, kingBest: a.kingBest, picklists: a.picklists,
+    pickPoints: a.pickPoints || 0, batches: a.batches || 0, pickToday: ((st.pdays || {})[today] || {})[id] || { batches: 0, locations: 0, items: 0, points: 0 },
+    inv: a.inv || [], news: a.news || [], items: ITEMS, tiers: TIERS,
+    effects: { frozenUntil: a.frozenUntil || 0, skinOffUntil: a.skinOffUntil || 0, boostUntil: a.boostUntil || 0, shieldUntil: a.shieldUntil || 0 },
+    event: st.event && st.event.until > now ? st.event : null,
     king: st.king && st.king.id === id ? { min: Math.floor((Date.now() - st.king.since) / 60000) } : null,
     week, skins: shop(st), crate: crateInfo(st, a), crates: a.crates || 0,
   };
@@ -153,6 +238,7 @@ export function buy(st, id, skin) {
   id = String(id);
   const s = SKINS.find((x) => x.id === skin);
   if (!s) return { err: 'no such skin' };
+  if (s.crateOnly && !acct(st, id).owned.includes(skin)) return { err: `${s.name} only comes out of drop crates` };
   const a = acct(st, id);
   if (!a.owned.includes(skin)) {
     if (s.limit && owners(st, skin) >= s.limit) return { err: `sold out (only ${s.limit} people can have ${s.name})` };
@@ -177,4 +263,124 @@ export function grant(st, id, coins) {
   const a = acct(st, String(id));
   a.coins = r3(a.coins + n);
   return { ok: true };
+}
+
+// ---------- picking ----------
+// batch = a completed batch from Picqer (with products[].stock_location and products[].picklists[].amount_picked)
+export function batchPoints(b) {
+  const locs = new Map();
+  for (const pr of b.products || []) {
+    const loc = String(pr.stock_location || '').trim() || '?';
+    const n = (pr.picklists || []).reduce((s, x) => s + (+x.amount_picked || 0), 0);
+    if (!n) continue;
+    locs.set(loc, (locs.get(loc) || 0) + n);
+  }
+  const items = [...locs.values()].reduce((s, n) => s + n, 0);
+  return { locations: locs.size, items, points: r3(locs.size * PICK_LOC + items * PICK_ITEM) };
+}
+export const pickerOf = (b) => String((b.assigned_to && b.assigned_to.iduser) || (b.completed_by && b.completed_by.iduser) || '');
+// batches = details of newly completed batches · each batch counts once
+export function pickTick(st, batches, { now, today, proxies = [], rnd = Math.random }) {
+  ensure(st);
+  const skip = new Set(proxies.map(String));
+  for (const b of batches) {
+    const bid = String(b.idpicklist_batch);
+    if (st.pseen.includes(bid)) continue;
+    st.pseen.push(bid);
+    const id = pickerOf(b);
+    if (!id || skip.has(id)) continue;
+    const pt = batchPoints(b);
+    if (!pt.points) continue;
+    const d = String(b.completed_at || today).slice(0, 10), h = +String(b.completed_at || '').slice(11, 13) || 0;
+    st.pdays[d] = st.pdays[d] || {};
+    const r = (st.pdays[d][id] = st.pdays[d][id] || { batches: 0, locations: 0, items: 0, points: 0 });
+    r.batches++; r.locations += pt.locations; r.items += pt.items; r.points = r3(r.points + pt.points);
+    st.hours[d] = st.hours[d] || { packed: Array(24).fill(0), picked: Array(24).fill(0) };
+    st.hours[d].picked[h] = r3((st.hours[d].picked[h] || 0) + pt.points);
+    const a = acct(st, id);
+    a.pickPoints = r3((a.pickPoints || 0) + pt.points);
+    a.batches = (a.batches || 0) + 1;
+    earn(st, id, pt.points, now);
+    st.precent.push({ id, at: now, points: pt.points });
+    rollDrop(st, id, 3, now, rnd);
+  }
+  st.pseen = st.pseen.slice(-600);
+  st.precent = st.precent.filter((x) => now - x.at < 2 * 3600000);
+  return pickBoard(st, now, today);
+}
+export function pickBoard(st, now, today) {
+  ensure(st);
+  const day = st.pdays[today] || {};
+  const hour = {};
+  for (const x of st.precent) if (now - x.at < 3600000) hour[x.id] = r3((hour[x.id] || 0) + x.points);
+  const ids = new Set([...Object.keys(day), ...Object.keys(hour)]);
+  const people = [...ids].map((id) => ({ id, ...(day[id] || { batches: 0, locations: 0, items: 0, points: 0 }), hour: hour[id] || 0 }))
+    .sort((a, b) => b.points - a.points || b.hour - a.hour);
+  return { at: now, day: today, people };
+}
+export function chart(st, date) {
+  ensure(st);
+  const h = st.hours[date];
+  return { date, have: !!h, packed: h ? h.packed : Array(24).fill(0), picked: h ? h.picked : Array(24).fill(0) };
+}
+
+// ---------- inventory: open a drop crate, use an item ----------
+function pick(rnd, list) {
+  const tot = list.reduce((n, x) => n + x[1], 0);
+  let x = rnd() * tot;
+  for (const it of list) { if (x < it[1]) return it; x -= it[1]; }
+  return list[list.length - 1];
+}
+export function openDrop(st, id, uid, now, rnd = Math.random) {
+  id = String(id);
+  const a = acct(st, id);
+  const i = (a.inv || []).findIndex((x) => x.uid === uid && x.kind === 'crate');
+  if (i < 0) return { err: 'no such crate' };
+  const c = a.inv[i];
+  a.inv.splice(i, 1);
+  const it = pick(rnd, LOOT[c.tier] || LOOT.common);
+  let got;
+  if (it[0] === 'coins') {
+    const n = Math.round(it[2] + rnd() * (it[3] - it[2]));
+    a.coins = r3(a.coins + n);
+    got = { kind: 'coins', coins: n };
+  } else if (it[0].startsWith('skin:')) {
+    const skin = it[0].slice(5), sk = SKINS.find((x) => x.id === skin);
+    if (a.owned.includes(skin)) { const back = Math.round(sk.price * 0.25); a.coins = r3(a.coins + back); got = { kind: 'skin', skin, dup: true, coins: back }; }
+    else { a.owned.push(skin); got = { kind: 'skin', skin }; }
+  } else {
+    const nu = `${now.toString(36)}${Math.floor(rnd() * 1e6).toString(36)}`;
+    a.inv.push({ uid: nu, kind: 'item', item: it[0], at: now });
+    got = { kind: 'item', item: it[0], uid: nu };
+  }
+  st.log = (st.log || []).concat({ at: now, id, what: `opened ${c.tier} crate` }).slice(-50);
+  return { ok: true, tier: c.tier, got };
+}
+export function useItem(st, id, uid, target, now) {
+  id = String(id);
+  const a = acct(st, id);
+  const i = (a.inv || []).findIndex((x) => x.uid === uid && x.kind === 'item');
+  if (i < 0) return { err: 'no such item' };
+  const item = a.inv[i].item, def = ITEMS[item];
+  if (!def) return { err: 'unknown item' };
+  const until = now + def.min * 60000;
+  if (def.target) {
+    target = String(target || '');
+    if (!target || target === id) return { err: 'pick someone else' };
+    if (!st.acct[target]) return { err: 'that person has no account here yet' };
+    const t = acct(st, target);
+    a.inv.splice(i, 1);
+    if (t.shieldUntil > now) { t.shieldUntil = 0; t.news = (t.news || []).concat({ at: now, kind: 'blocked', item, from: id }).slice(-20); return { ok: true, blocked: true }; }
+    if (item === 'freeze') t.frozenUntil = Math.max(t.frozenUntil || 0, until);
+    if (item === 'skinoff') t.skinOffUntil = Math.max(t.skinOffUntil || 0, until);
+    t.news = (t.news || []).concat({ at: now, kind: 'hit', item, from: id, until }).slice(-20);
+    st.log = (st.log || []).concat({ at: now, id, what: `${def.name} on ${target}` }).slice(-50);
+    return { ok: true, until };
+  }
+  a.inv.splice(i, 1);
+  if (item === 'boost') a.boostUntil = Math.max(a.boostUntil || 0, now) + def.min * 60000;
+  if (item === 'shield') a.shieldUntil = until;
+  if (item === 'double') st.event = { kind: 'double', until: Math.max((st.event && st.event.until) || 0, now) + def.min * 60000, by: id };
+  st.log = (st.log || []).concat({ at: now, id, what: def.name }).slice(-50);
+  return { ok: true, until };
 }
