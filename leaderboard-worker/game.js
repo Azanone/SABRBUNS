@@ -509,3 +509,75 @@ export function tradeOp(st, id, op, b, now) {
   }
   return { err: 'unknown' };
 }
+
+// ---------- live picking: open batches, how much is collected (amount_collected), checked every minute ----------
+// Points like a completed batch (3 per location fully collected + 0,2 per product) but counted while picking.
+// Only for the board (who is picking right now, last 15 min, how long idle). Coins still come when the batch is completed.
+export const LIVE_ACTIVE_MIN = 60; // shown as "picking" when something was collected in the last hour
+export function newLive() { return { b: {}, ev: [], last: {} }; }
+function snap(d) {
+  let items = 0, total = 0;
+  const locs = {};
+  for (const p of d.products || []) {
+    const k = String(p.stock_location || p.idproduct);
+    const L = (locs[k] = locs[k] || { need: 0, got: 0 });
+    for (const x of p.picklists || []) { L.need += +x.amount || 0; L.got += Math.min(+x.amount_collected || 0, +x.amount || 0); }
+  }
+  let done = 0;
+  for (const L of Object.values(locs)) { items += L.got; total += L.need; if (L.need > 0 && L.got >= L.need) done++; }
+  return { items, total, locs: done, locTotal: Object.keys(locs).length };
+}
+// which open batches to look at this minute: new ones and busy ones every minute, quiet ones every 5 min
+export function liveDue(L, open, now, max = 40) {
+  L = L || newLive();
+  const score = (b) => {
+    const s = L.b[String(b.idpicklist_batch)];
+    if (!s) return 0;
+    if (now - (s.changed || 0) < 30 * 60000) return 1;
+    return now - s.checked >= 5 * 60000 ? 2 : 9;
+  };
+  return open.map((b) => [score(b), b]).filter(([s]) => s < 9).sort((a, b) => a[0] - b[0]).slice(0, max).map(([, b]) => b);
+}
+export function liveTick(L, open, details, { now, proxies = [] }) {
+  L = L || newLive();
+  const skip = new Set(proxies.map(String));
+  const openIds = new Set(open.map((b) => String(b.idpicklist_batch)));
+  for (const k of Object.keys(L.b)) if (!openIds.has(k)) delete L.b[k];
+  for (const d of details) {
+    const bid = String(d.idpicklist_batch);
+    const who = String((d.assigned_to && d.assigned_to.iduser) || '');
+    if (!who || skip.has(who)) continue;
+    const s = snap(d), prev = L.b[bid];
+    let changed = prev ? prev.changed || 0 : 0;
+    if (prev && prev.who === who) {
+      const di = Math.max(0, s.items - prev.items), dl = Math.max(0, s.locs - prev.locs);
+      if (di || dl) {
+        L.ev.push({ id: who, at: now, items: di, locs: dl, pts: r3(dl * PICK_LOC + di * PICK_ITEM) });
+        L.last[who] = now;
+        changed = now;
+      }
+    }
+    L.b[bid] = { who, ...s, checked: now, changed };
+  }
+  L.ev = L.ev.filter((e) => now - e.at < 60 * 60000);
+  for (const k of Object.keys(L.last)) if (now - L.last[k] > 12 * 3600000) delete L.last[k];
+  return L;
+}
+export function liveBoard(L, now) {
+  L = L || newLive();
+  const by = {};
+  const row = (id) => (by[id] = by[id] || { m15: 0, items15: 0, locs15: 0, h60: 0, last: L.last[id] || 0, batch: null });
+  for (const e of L.ev) {
+    const r = row(e.id);
+    r.h60 = r3(r.h60 + e.pts);
+    if (now - e.at < 15 * 60000) { r.m15 = r3(r.m15 + e.pts); r.items15 += e.items; r.locs15 += e.locs; }
+  }
+  for (const id of Object.keys(L.last)) row(id);
+  // the batch they're on now: the one that changed last
+  for (const s of Object.values(L.b)) {
+    const r = by[s.who];
+    if (r && (!r.batch || s.changed > r.batch.changed)) r.batch = { items: s.items, total: s.total, locs: s.locs, locTotal: s.locTotal, changed: s.changed };
+  }
+  for (const r of Object.values(by)) { r.idleMin = r.last ? Math.floor((now - r.last) / 60000) : null; if (r.batch) delete r.batch.changed; }
+  return by;
+}

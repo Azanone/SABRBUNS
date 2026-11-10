@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.56
+// @version      3.57
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.56';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.57';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5245,13 +5245,18 @@
     // colors: only what they really did in the last 15 min
     const per15 = (pts) => pts * 900000 / WIN;
     const tierOf = (p) => (p >= 46 ? 'blue' : p >= 38 ? 'turq' : p >= 30 ? 'dgreen' : p >= 21 ? 'green' : p >= 14 ? 'orange' : 'red');
-    // pickers: colors = pick points in the last hour (batches count when completed)
-    const pickTier = (h) => (h >= 300 ? 'blue' : h >= 240 ? 'turq' : h >= 180 ? 'dgreen' : h >= 120 ? 'green' : h >= 70 ? 'orange' : 'red');
-    function pickRanked() {
-      const list = ((data && data.picks) || []).slice().sort((a, b) => b.hour - a.hour || b.points - a.points);
+    // pickers: live from the open batches (what is collected), checked every minute by the middle stop
+    //  colors = pick points in the last 15 min · only people who collected something in the last hour count as picking
+    const pickTier = (m) => (m >= 75 ? 'blue' : m >= 60 ? 'turq' : m >= 45 ? 'dgreen' : m >= 30 ? 'green' : m >= 18 ? 'orange' : 'red');
+    const picking = (r) => r.live && r.live.idleMin != null && r.live.idleMin < 60;
+    const idleTxt = (r) => (!r.live || r.live.idleMin == null ? '' : r.live.idleMin < 2 ? 'picking now' : `idle ${r.live.idleMin} min`);
+    const idleCls = (r) => (!r.live || r.live.idleMin == null || r.live.idleMin < 5 ? '' : r.live.idleMin < 10 ? 'pk-idle' : 'pk-idle bad');
+    function pickSort(list) {
+      const act = list.filter(picking).sort((a, b) => b.live.m15 - a.live.m15 || a.live.idleMin - b.live.idleMin);
       let rank = 0, prev = null;
-      return list.map((r, i) => { if (prev === null || r.hour !== prev) rank = i + 1; prev = r.hour; return { ...r, rank, tier: pickTier(r.hour) }; });
+      return act.map((r, i) => { if (prev === null || r.live.m15 !== prev) rank = i + 1; prev = r.live.m15; return { ...r, rank, tier: pickTier(r.live.m15) }; });
     }
+    const pickRanked = () => pickSort((data && data.picks) || []);
     function ranked() {
       const list = (data && data.list) || [];
       const kingId = data && data.king ? String(data.king.id) : (data && data.via !== 'middle stop' && list[0] && per15(list[0].points) >= 21 ? list[0].id : null);
@@ -5409,15 +5414,15 @@
       box.classList.toggle('dark', th === 'dark');
       const pl = pickRanked(), pme = pl.find((r) => r.id === ME_ID);
       const packMe = ranked().find((r) => r.id === ME_ID);
-      box.dataset.mode = pme && !packMe ? 'pick' : 'pack';
+      box.dataset.mode = pme && !packMe ? 'pick' : 'pack'; // pme = only when picking (something collected in the last hour)
       if (C.widget !== false && box.dataset.mode === 'pick') {
-        const key = JSON.stringify(['pick', th, pme.tier, pme.rank, pme.hour, pme.points, pl.length]);
+        const key = JSON.stringify(['pick', th, pme.tier, pme.rank, pme.live.m15, pme.live.idleMin, pme.live.batch, pl.length]);
         if (key !== shown) {
           shown = key;
-          const gap = pme.rank > 1 ? pl[0].hour - pme.hour : 0;
+          const gap = pme.rank > 1 ? pl[0].live.m15 - pme.live.m15 : 0, bt = pme.live.batch;
           box.innerHTML = `<div class="lb-card t-${pme.tier}"><div class="lb-rank">#${pme.rank}</div><div class="lb-main">
-            <div class="lb-pts">${fmt(pme.hour)} <small>pick pts · last hour</small></div>
-            <div class="lb-sub">${fmt(pme.points)} today · ${int(pme.batches)} batch${pme.batches === 1 ? '' : 'es'} · ${pme.rank === 1 ? `#1 of ${pl.length}` : `${fmt(gap)} behind #1`}</div></div></div>`;
+            <div class="lb-pts">${fmt(pme.live.m15)} <small>pick pts · 15 min</small></div>
+            <div class="lb-sub"><span class="${idleCls(pme)}">${idleTxt(pme)}</span>${bt ? ` · batch ${int(bt.items)}/${int(bt.total)}` : ''} · ${pme.rank === 1 ? `#1 of ${pl.length}` : `${fmt(gap)} behind #1`}</div></div></div>`;
           if (prevRank != null && pme.rank !== prevRank) { box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash'); }
           prevRank = pme.rank;
         }
@@ -5854,6 +5859,11 @@
       #pq-trade #tr-st{font:600 13px system-ui,sans-serif}
       @media (max-width:640px){#pq-trade .tr-cols,#pq-trade .tr-done{grid-template-columns:1fr}}
       .sh .sh-only{position:absolute;top:6px;left:6px;z-index:1;font-style:normal;font:800 9.5px system-ui,sans-serif;letter-spacing:.05em;color:#fff;background:linear-gradient(90deg,#d32ce6,#eb4b4b);padding:2px 7px;border-radius:999px}
+      .pq-lbx .pk-idle{color:#f97316;font-weight:700} .pq-lbx .pk-idle.bad{color:#ef4444}
+      .pq-lb-ov .lb-row .nm small b{font-weight:600}
+      .pq-lb-ov .pk-h{font:700 13px system-ui,sans-serif;margin:18px 0 6px;color:var(--mut)}
+      .pq-lb-ov .pk-h small{font-weight:500}
+      .pq-lb-ov .lb-row.pk-off{opacity:.7}
       .pq-lb-ov .lb-q{width:100%;box-sizing:border-box;margin:0 0 10px;padding:8px 11px;border-radius:9px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:500 13px system-ui,sans-serif;outline:none}
       .pq-lb-ov .lb-q:focus{border-color:#6366f1}
       .pq-lb-ov .lb-row.hide{display:none}
@@ -6377,18 +6387,22 @@
         <div class="lb-legend"><span class="t-blue"><i></i>46+</span><span class="t-turq"><i></i>38+</span><span class="t-dgreen"><i></i>30+</span><span class="t-green"><i></i>21+</span><span class="t-orange"><i></i>14+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 21+ · +20 coins a minute</span></div>`;
     }
     function pickHtml() {
-      const rows = (picks && picks.list) || [];
+      const all = (picks && picks.list) || [];
+      const act = pickSort(all);
+      const rest = all.filter((r) => !picking(r) && r.points > 0).sort((a, b) => b.points - a.points);
       const hm = picks && picks.at ? new Date(picks.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
-      let rank = 0, prev = null;
-      return `<div class="lb-meta">today · 3 per pick location + 0,2 per product · counts when the batch is completed · color = last hour · ${hm}${picksErr ? ' · ⚠ ' + escHtml(picksErr) : ''}</div>
-        ${rows.length ? rows.map((r, i) => {
-          if (prev === null || r.points !== prev) rank = i + 1;
-          prev = r.points;
-          return `<div class="lb-row t-${pickTier(r.hour)}${r.id === ME_ID ? ' me' : ''}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
-            <span class="nm">${escHtml(r.name)}<small>${int(r.batches)} batch${r.batches === 1 ? '' : 'es'} · ${int(r.locations)} locations · ${int(r.items)} products${r.hour ? ` · ${fmt(r.hour)} last hour` : ''}</small></span>
-            <span class="v">${fmt(r.points)}<small>pts</small></span></div>`;
-        }).join('') : `<div class="lb-empty">${picks ? 'No batch completed yet today' : picksErr ? '' : 'Loading…'}</div>`}
-        <div class="lb-legend"><span class="t-blue"><i></i>300+</span><span class="t-turq"><i></i>240+</span><span class="t-dgreen"><i></i>180+</span><span class="t-green"><i></i>120+</span><span class="t-orange"><i></i>70+</span><span class="t-red"><i></i>less</span><span>pick points in the last hour</span></div>`;
+      const row = (r) => {
+        const L = r.live, bt = L.batch;
+        return `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.rank === 1 ? '🏆' : '#' + r.rank}</span>
+          <span class="nm">${escHtml(r.name)}<small><b class="${idleCls(r)}">${idleTxt(r)}</b> · ${int(L.locs15)} locations · ${int(L.items15)} products in 15 min${bt ? ` · batch ${int(bt.items)}/${int(bt.total)}` : ''}</small></span>
+          <span class="v">${fmt(L.m15)}<small>pts · 15 min · ${fmt(r.points)} today</small></span></div>`;
+      };
+      return `<div class="lb-meta">picking now · 3 per location + 0,2 per product collected · color = last 15 min · ${hm}${picksErr ? ' · ⚠ ' + escHtml(picksErr) : ''}</div>
+        ${act.length ? act.map(row).join('') : `<div class="lb-empty">${picks ? 'Nobody collected anything in the last hour' : picksErr ? '' : 'Loading…'}</div>`}
+        <div class="lb-legend"><span class="t-blue"><i></i>75+</span><span class="t-turq"><i></i>60+</span><span class="t-dgreen"><i></i>45+</span><span class="t-green"><i></i>30+</span><span class="t-orange"><i></i>18+</span><span class="t-red"><i></i>less</span><span>pick points in the last 15 min · idle = nothing collected</span></div>
+        ${rest.length ? `<h3 class="pk-h">Not picking right now <small>completed today</small></h3>${rest.map((r) => `<div class="lb-row t-none pk-off${r.id === ME_ID ? ' me' : ''}"><span class="r">–</span>
+          <span class="nm">${escHtml(r.name)}<small>${int(r.batches)} batch${r.batches === 1 ? '' : 'es'} · ${int(r.locations)} locations · ${int(r.items)} products${r.live && r.live.last ? ` · last pick ${new Date(r.live.last).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}` : ''}</small></span>
+          <span class="v">${fmt(r.points)}<small>pts today</small></span></div>`).join('')}` : ''}`;
     }
     function showPk(refresh) {
       if (refresh && !document.getElementById('pq-pk-ov')) return;

@@ -10,7 +10,7 @@
 //   PROXIES      text    user ids that never count, comma separated (optional)
 //   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
-import { newState, tick, profile, buy, equip, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor } from './game.js';
+import { newState, tick, profile, buy, equip, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, liveDue, liveTick, liveBoard, LIVE_ACTIVE_MIN } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
@@ -58,6 +58,7 @@ export class Game extends DurableObject {
     const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
     const board = tick(st, rows, { now: Date.now(), min: 15, today: amsNow().slice(0, 10), proxies, wh, rnd });
     await this.ctx.storage.put('state', st);
+    await this.ensureAlarm();
     return board;
   }
   async board() { return (await this.load()).board; }
@@ -71,7 +72,34 @@ export class Game extends DurableObject {
     await this.ctx.storage.put('state', st);
     return b;
   }
-  async picks() { return pickBoard(await this.load(), Date.now(), amsNow().slice(0, 10)); }
+  // picks = completed batches today (points, coins) + live picking (last 15 min, idle) per person
+  async picks() {
+    const now = Date.now();
+    const b = pickBoard(await this.load(), now, amsNow().slice(0, 10));
+    const live = liveBoard(await this.ctx.storage.get('live'), now);
+    const ids = new Set([...b.people.map((p) => p.id), ...Object.keys(live)]);
+    const zero = { batches: 0, locations: 0, items: 0, points: 0, hour: 0 };
+    b.people = [...ids].map((id) => ({ ...zero, ...(b.people.find((p) => p.id === id) || { id }), live: live[id] || null }));
+    b.activeMin = LIVE_ACTIVE_MIN;
+    return b;
+  }
+  // live picking runs on its own alarm every minute (own request budget, next to the cron)
+  async ensureAlarm() { if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + 5000); }
+  async alarm() {
+    try { await this.live(); } catch (e) { console.log('live', e.message); }
+    await this.ctx.storage.setAlarm(Date.now() + 60000);
+  }
+  async live() {
+    const env = this.env, now = Date.now();
+    const w = await warehouse(env);
+    const list = (await picqer(env, `/picklists/batches?status=open${w ? `&idwarehouse=${w.id}` : ''}`)) || [];
+    const open = list.filter((b) => b.status === 'open' && b.assigned_to && (!w || String(b.idwarehouse) === String(w.id)));
+    const due = liveDue(await this.ctx.storage.get('live'), open, now, 40);
+    const details = [];
+    for (const b of due) { try { details.push(await picqer(env, `/picklists/batches/${b.idpicklist_batch}`)); } catch (e) { console.log('live batch', b.idpicklist_batch, e.message); } }
+    const L = liveTick(await this.ctx.storage.get('live'), open, details, { now, proxies: proxiesOf(env) });
+    await this.ctx.storage.put('live', L);
+  }
   async chart(date) { return chart(await this.load(), date); }
   async inv(kind, id, uid, target) {
     const st = await this.load();
