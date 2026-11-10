@@ -651,6 +651,13 @@ export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
   ensure(st);
   target = String(target || '');
   if (op === 'log') return { ok: true, log: (st.log || []).slice(-50).reverse() };
+  // switches for everyone (false = off on every PC)
+  if (op === 'flags') {
+    const f = { ...(st.flags || {}) };
+    for (const k of ['cardColor', 'skins']) if (b.flags && typeof b.flags[k] === 'boolean') f[k] = b.flags[k];
+    if (b.flags) { st.flags = f; st.log = (st.log || []).concat({ at: now, id: OWNER, what: `admin: everyone ${JSON.stringify(f)}` }).slice(-50); }
+    return { ok: true, flags: f };
+  }
   if (!st.acct[target]) return { err: 'no account for that person yet' };
   const a = acct(st, target), n = Math.round(Number(b.n) || 0);
   const note = (what) => { st.log = (st.log || []).concat({ at: now, id: OWNER, what: `admin: ${what} → ${target}` }).slice(-50); };

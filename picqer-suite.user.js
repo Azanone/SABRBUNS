@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.68
+// @version      3.69
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -26,6 +26,8 @@
     try {
       const l = JSON.parse(localStorage.getItem('pqsuite_skin_last_v1') || 'null');
       if (!l || !l.id || !l.base) return null;
+      const fl = JSON.parse(localStorage.getItem('pqsuite_flags_v1') || 'null');
+      if (fl && fl.skins === false) return null; // Ahmad switched skins off for everyone
       const r = document.documentElement;
       const put = (id, css) => { const st = document.createElement('style'); st.id = id; st.textContent = css; (document.head || r).appendChild(st); };
       if (l.vars) {
@@ -52,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.68';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.69';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -506,6 +508,10 @@
       pop.style.top = (r.bottom + pop.offsetHeight + 8 > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
     }, true);
   }
+  // switches for everyone, set by Ahmad (Shift+9), come with the leaderboard every 30 s. false = off on every PC
+  const LS_FLAGS = 'pqsuite_flags_v1';
+  const flagOff = (k) => { const f = lsGet(LS_FLAGS, null); return !!(f && f[k] === false); };
+  window.addEventListener('storage', (e) => { if (e.key === LS_FLAGS) window.dispatchEvent(new Event('pq-flags')); });
   const HELP = {
     comboBatcher: 'Makes batches out of open picklists.\nPer combo: picklists with exactly the same products → 1 batch.\nGrouped: several combos in 1 batch (MEGAMULTI), in the order you choose.\nOptimized: the fewest different products per batch, named BELGIE / MIX / NON BELGIE.\nAuto batch: someone finishes a batch → they get the next one by themselves.',
     comboAlert: 'A picklist got a [COMBO CHANGED] comment (the products change from the one before in a grouped batch) → you get a popup so you don\'t miss it.',
@@ -4957,7 +4963,7 @@
       const map = colorMap();
       document.querySelectorAll('.picklist-product-list__item').forEach((item) => {
         const code = lineCode(item);
-        const color = (code && map.get(codeKey(code))) || ''; // exact product code only
+        const color = flagOff('cardColor') ? '' : (code && map.get(codeKey(code))) || ''; // exact product code only
         const q = item.querySelector('.pickbuttons .amount');
         const qty = q ? parseInt(q.getAttribute('data-amount'), 10) || 1 : 1;
         const want = color && C.qtyBadge && qty > 1 ? `${qty}x` : '';
@@ -4984,6 +4990,7 @@
     const later = () => { if (!t) t = setTimeout(() => { t = null; paint(); }, 200); };
     new MutationObserver(later).observe(document.body, { childList: true, subtree: true });
     window.addEventListener('pq-colors', paint);
+    window.addEventListener('pq-flags', paint);
     paint();
   }
 
@@ -5153,8 +5160,9 @@
   const SKIN_VARS = ['--th', '--ah', '--as', '--acc', '--on-acc', '--hbg'];
   const LS_SKIN_LAST = 'pqsuite_skin_last_v1'; // the skin this PC showed last: put on right away on the next page (no white flash)
   let skinNow = EARLY_SKIN, skinBuilt = false;
+  window.addEventListener('pq-flags', () => { skinBuilt = false; applySkin(ON_LOGIN ? null : (skinOf(ME.id) || {}).id); }); // skins switched off / on for everyone
   function applySkin(id) {
-    id = SKIN_LOOK[id] ? id : null;
+    id = SKIN_LOOK[id] && !flagOff('skins') ? id : null;
     // the early skin (from the last page) can be from an older version: rebuild it once per page
     if (skinNow === id && skinBuilt) { if (id && SKIN_LOOK[id].dark) skinFx(SKIN_LOOK[id].dark.fx); return; }
     skinNow = id;
@@ -5307,6 +5315,7 @@
             const j = await r.json();
             if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
             people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed); pickPeople = j.picks && j.picks.people;
+            if (j.flags && JSON.stringify(j.flags) !== JSON.stringify(lsGet(LS_FLAGS, null))) { lsSet(LS_FLAGS, j.flags); window.dispatchEvent(new Event('pq-flags')); }
           } catch (e) { console.info('[leaderboard] middle stop:', e.message, '· asking Picqer myself'); }
         }
         if (!people) {
@@ -6897,7 +6906,7 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden && (!data || Date.now() - data.at > POLL)) poll(); });
 
     // ---------- Shift+9 (only Ahmad): give / take coins, crates, items, skins, pass, XP ----------
-    let adm = { who: null, q: '', p: null, note: '', log: null };
+    let adm = { who: null, q: '', p: null, note: '', log: null, flags: null };
     async function adminPost(op, target, extra = {}) {
       const key = lsGet('pqsuite_admin_key', '');
       const r = await fetch(`${URL_}/admin`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Admin-Key': key } : {}) }, body: JSON.stringify({ by: ME_ID, op, target, ...extra }) });
@@ -6930,12 +6939,21 @@
           <div class="ad-r"><label>Pass</label><button class="buy" data-ad="pass" ${p.pass && p.pass.owned ? 'disabled' : ''}>Give pass</button><input type="number" id="ad-xp" value="1000"><button data-ad="xp">+ XP</button></div>
           <div class="ad-r"><label>Effects</label><button data-ad="clear">Unfreeze</button><input type="number" id="ad-bm" value="30"><button data-ad="boost">Boost min</button></div>
         </div>`;
-      ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
+      const fl = adm.flags || {};
+      const flagSw = (k, t) => `<label class="ad-flag"><input type="checkbox" data-adf="${k}" ${fl[k] === false ? '' : 'checked'} ${adm.flags ? '' : 'disabled'}>${t}</label>`;
+      ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><div class="ad-flags"><span>everyone</span>${flagSw('cardColor', 'Product colors')}${flagSw('skins', 'Skins')}</div><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
         ${adm.note ? `<div class="sh-note">${escHtml(adm.note)}</div>` : ''}
         ${adm.log ? `<div class="ad-log">${adm.log.map((x) => `<div><span>${new Date(x.at).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>${escHtml(x.what.replace(/→ (\d+)$/, (m, id) => '→ ' + ((ppl.find((y) => y.id === id) || {}).name || '#' + id)))}${x.id && x.id !== '32247' && !/^admin/.test(x.what) ? ` · ${escHtml((ppl.find((y) => y.id === String(x.id)) || {}).name || '#' + x.id)}` : ''}</div>`).join('') || '–'}</div>` : ''}
         <div class="ad-body"><div class="ad-left"><input class="iv-q ad-q" placeholder="Search…" value="${escHtml(adm.q)}"><div class="iv-ppl">${ppl.map((r) => `<button data-adw="${escHtml(r.id)}" data-n="${escHtml(low(r.name))}" class="${ql && !low(r.name).includes(ql) ? 'hide' : ''}${r.id === adm.who ? ' on' : ''}">${escHtml(r.name)}<small>${int(r.balance)}</small></button>`).join('') || '<div class="iv-empty">…</div>'}</div></div>
         <div class="ad-right">${right}</div></div></div>`;
       ov.querySelector('[data-adx]').onclick = () => close('pq-adm-ov');
+      ov.querySelectorAll('[data-adf]').forEach((b) => (b.onchange = async () => {
+        b.disabled = true;
+        const j = await adminPost('flags', '', { flags: { [b.dataset.adf]: b.checked } }).catch((e) => ({ err: e.message }));
+        if (j.flags) { adm.flags = j.flags; lsSet(LS_FLAGS, j.flags); window.dispatchEvent(new Event('pq-flags')); }
+        adm.note = j.err || `${b.parentNode.textContent.trim()} ${b.checked ? 'on' : 'OFF'} for everyone · every PC within ~30 s`;
+        showAdmin();
+      }));
       ov.querySelector('[data-ad-log]').onclick = async () => { if (adm.log) { adm.log = null; return showAdmin(); } const j = await adminPost('log', ''); adm.log = j.log || []; adm.note = j.err || ''; showAdmin(); };
       const q = ov.querySelector('.ad-q');
       q.oninput = () => { adm.q = q.value; const v = low(q.value); ov.querySelectorAll('[data-adw]').forEach((b) => b.classList.toggle('hide', !!v && !b.dataset.n.includes(v))); };
@@ -6963,10 +6981,14 @@
     function openAdmin() {
       if (document.getElementById('pq-adm-ov')) return close('pq-adm-ov');
       showAdmin();
+      adminPost('flags', '').then((j) => { if (j.flags) { adm.flags = j.flags; if (document.getElementById('pq-adm-ov')) showAdmin(); } }).catch(() => {});
       if (!tot || Date.now() - tot.at > 60000) loadTotals().then(() => { if (document.getElementById('pq-adm-ov')) showAdmin(); });
     }
     addStyle('pq-adm-style', `
       .ad-panel{width:min(820px,100%) !important}
+      .ad-flags{display:flex;align-items:center;gap:10px;margin-left:14px;padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:var(--soft);font:600 12px system-ui,sans-serif}
+      .ad-flags span{color:var(--mut)}
+      .ad-flag{display:flex;align-items:center;gap:5px;cursor:pointer}
       .ad-q{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:500 13px system-ui,sans-serif;margin-bottom:8px;outline:none}
       .ad-body{display:grid;grid-template-columns:240px 1fr;gap:18px;margin-top:14px}
       .ad-left .iv-ppl{max-height:420px}

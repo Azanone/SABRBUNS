@@ -62,7 +62,7 @@ export class Game extends DurableObject {
     return board;
   }
   async board() { return (await this.load()).board; }
-  async boardAll() { const b = (await this.load()).board; return b ? { ...b, picks: await this.picks() } : b; }
+  async boardAll() { const st = await this.load(), b = st.board; return b ? { ...b, picks: await this.picks(), flags: st.flags || {} } : b; }
   // picking: which completed batches are new (not counted yet)
   async newBatchIds(ids) { const st = await this.load(); const seen = new Set(st.pseen || []); return ids.filter((x) => !seen.has(String(x))); }
   async markBatches(ids) { const st = await this.load(); st.pseen = (st.pseen || []).concat(ids.map(String)).slice(-600); await this.ctx.storage.put('state', st); }
@@ -158,7 +158,7 @@ export class Game extends DurableObject {
     const st = await this.load();
     const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
     const res = adminOp(st, op, target, b, Date.now(), amsNow().slice(0, 10), rnd);
-    if (res.ok && op !== 'look' && op !== 'log') await this.ctx.storage.put('state', st);
+    if (res.ok && op !== 'look' && op !== 'log' && !(op === 'flags' && !b.flags)) await this.ctx.storage.put('state', st);
     return { ...res, ...(target && st.acct[target] ? { profile: profile(st, target, amsNow().slice(0, 10)) } : {}) };
   }
   async trades(id) { return { trades: tradesFor(await this.load(), String(id), Date.now()) }; }
