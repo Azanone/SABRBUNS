@@ -22,7 +22,6 @@ window.PQ_TEAMS = {
         36510, // Sedat Ozbasi
         39213, // Ali Al- Turaim
         32651, // Egehan Akali
-        34369, // Efe Yildrim
         22610 // Jari Bezemer
       ]
     },
