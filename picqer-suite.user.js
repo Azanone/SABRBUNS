@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.54
+// @version      3.55
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.54';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.55';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5113,14 +5113,32 @@
         if (latest) lsSet('pqsuite_update_v1', { at: Date.now(), v: latest });
       } catch (_) { return; }
     }
-    if (!latest || !newer(latest, SUITE_VERSION) || document.getElementById('pq-update')) return;
+    if (!latest || !newer(latest, SUITE_VERSION)) return;
+    updLatest = latest;
+    updIcon();
+    if (!updTimer) updTimer = setInterval(updIcon, 1500); // Picqer can redraw its header: put it back
+  }
+  // newer version: a small download icon in Picqer's header (hover = "new update", click = update like Shift+R)
+  let updLatest = null, updTimer = null;
+  function updIcon() {
+    if (!updLatest || document.getElementById('pq-upd')) return;
+    const nav = document.querySelector('.layout-header-navigation');
+    if (!nav) return;
+    addStyle('pq-upd-style', `
+      #pq-upd{position:relative;display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;opacity:.5;transition:opacity .15s;cursor:pointer;text-decoration:none !important}
+      #pq-upd:hover{opacity:1}
+      #pq-upd::after{content:"";position:absolute;top:9px;right:7px;width:6px;height:6px;border-radius:50%;background:#10b981}
+      #pq-upd .pq-upd-tip{position:absolute;top:calc(100% + 4px);right:0;white-space:nowrap;font:600 11.5px system-ui,sans-serif;background:#111827;color:#fff;padding:5px 9px;border-radius:7px;box-shadow:0 6px 18px rgba(0,0,0,.25);opacity:0;pointer-events:none;transform:translateY(-3px);transition:opacity .15s,transform .15s;z-index:2147483001}
+      #pq-upd:hover .pq-upd-tip{opacity:1;transform:none}
+    `);
     const a = document.createElement('a');
-    a.id = 'pq-update';
-    a.href = `${RAW}picqer-suite.user.js`;
-    a.target = '_blank';
-    a.textContent = `⬆ Picqer Suite ${latest} is out (you have ${SUITE_VERSION}) · click to update, then reload`;
-    a.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:2147483001;background:#4f46e5;color:#fff;font:600 13px system-ui;padding:10px 14px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);text-decoration:none';
-    document.body.appendChild(a);
+    a.id = 'pq-upd';
+    a.href = '#';
+    a.setAttribute('aria-label', `New update ${updLatest}`);
+    a.innerHTML = `<i class="far fa-download"></i><span class="pq-upd-tip">New update · ${escHtml(updLatest)} · click to update</span>`;
+    a.addEventListener('click', (e) => { e.preventDefault(); hardUpdate(); });
+    const before = document.getElementById('pq-hb') || nav.querySelector('.layout-header-account');
+    if (before && before.parentNode) before.parentNode.insertBefore(a, before); else nav.appendChild(a);
   }
 
   function leaderboard() {
@@ -7241,6 +7259,7 @@
     safe('settings', settingsPanel);
     setTimeout(() => safe('cfg-sync', syncCfg), 1500);
     setTimeout(() => safe('update-check', updateCheck), 4000);
+    setInterval(() => safe('update-check', updateCheck), 30 * 60000);
     if (use('banner')) safe('banner', bannerMain);
     if (use('shipErr')) safe('shipErr', shipErr);
     if (use('addrFix')) safe('addrFix', addrFix);
