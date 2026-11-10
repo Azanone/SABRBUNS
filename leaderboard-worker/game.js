@@ -641,3 +641,26 @@ export function passView(a) {
   return { season: { id: SEASON.id, name: SEASON.name, ends: SEASON.ends, price: SEASON.price, per: SEASON.per, levels: SEASON.levels },
     xp: p.xp, lv: Math.min(SEASON.levels.length, Math.floor(p.xp / SEASON.per)), owned: !!p.owned, got: p.got || 0 };
 }
+
+// ---------- admin (owner only): give / take coins, crates, items, skins, pass, XP ----------
+export const OWNER = '32247';
+export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
+  ensure(st);
+  target = String(target || '');
+  if (op === 'log') return { ok: true, log: (st.log || []).slice(-50).reverse() };
+  if (!st.acct[target]) return { err: 'no account for that person yet' };
+  const a = acct(st, target), n = Math.round(Number(b.n) || 0);
+  const note = (what) => { st.log = (st.log || []).concat({ at: now, id: OWNER, what: `admin: ${what} → ${target}` }).slice(-50); };
+  if (op === 'look') return { ok: true, acct: { ...a, news: undefined } };
+  if (op === 'coins') { if (!n) return { err: 'amount?' }; if (n > 0) a.coins = r3(a.coins + n); else a.spent = r3(a.spent - n); note(`${n} coins`); }
+  else if (op === 'crate') { const t = TIERS.find((x) => x.id === b.what); if (!t) return { err: 'tier?' }; for (let i = 0; i < Math.max(1, n); i++) giveCrate(st, target, t.id, now + i, rnd); note(`${Math.max(1, n)} ${t.id} crate`); }
+  else if (op === 'item') { if (!ITEMS[b.what]) return { err: 'item?' }; a.inv = a.inv || []; for (let i = 0; i < Math.max(1, n); i++) a.inv.push({ uid: `${(now + i).toString(36)}a${Math.floor(rnd() * 1e5).toString(36)}`, kind: 'item', item: b.what, at: now }); note(`${Math.max(1, n)} ${b.what}`); }
+  else if (op === 'skin') { if (!SKINS.find((x) => x.id === b.what)) return { err: 'skin?' }; if (!a.owned.includes(b.what)) a.owned.push(b.what); note(`skin ${b.what}`); }
+  else if (op === 'unskin') { a.owned = a.owned.filter((x) => x !== b.what); if (a.skin === b.what) a.skin = null; note(`took skin ${b.what}`); }
+  else if (op === 'pass') { const p = passOf(a); p.owned = true; passCatchUp(st, target, now, rnd); note('battle pass'); }
+  else if (op === 'xp') { if (!n) return { err: 'amount?' }; const p = passOf(a); p.xp = Math.max(0, r3(p.xp + n)); passCatchUp(st, target, now, rnd); note(`${n} XP`); }
+  else if (op === 'clear') { a.frozenUntil = 0; a.skinOffUntil = 0; note('cleared freeze / skin off'); }
+  else if (op === 'boost') { a.boostUntil = Math.max(a.boostUntil || 0, now) + Math.max(1, n || 30) * 60000; note(`boost ${n || 30} min`); }
+  else return { err: 'unknown' };
+  return { ok: true };
+}

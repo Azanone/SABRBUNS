@@ -10,7 +10,7 @@
 //   PROXIES      text    user ids that never count, comma separated (optional)
 //   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
-import { newState, tick, profile, buy, equip, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, buyPass, liveDue, liveTick, liveBoard, LIVE_ACTIVE_MIN } from './game.js';
+import { newState, tick, profile, buy, equip, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, buyPass, adminOp, OWNER, liveDue, liveTick, liveBoard, LIVE_ACTIVE_MIN } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
@@ -125,6 +125,13 @@ export class Game extends DurableObject {
     const res = buyPass(st, id, Date.now(), amsNow().slice(0, 10), rnd);
     if (res.ok) await this.ctx.storage.put('state', st);
     return { ...res, profile: profile(st, id, amsNow().slice(0, 10)) };
+  }
+  async admin(op, target, b) {
+    const st = await this.load();
+    const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
+    const res = adminOp(st, op, target, b, Date.now(), amsNow().slice(0, 10), rnd);
+    if (res.ok && op !== 'look' && op !== 'log') await this.ctx.storage.put('state', st);
+    return { ...res, ...(target && st.acct[target] ? { profile: profile(st, target, amsNow().slice(0, 10)) } : {}) };
   }
   async trades(id) { return { trades: tradesFor(await this.load(), String(id), Date.now()) }; }
   async seenNews(id, at) { const st = await this.load(); const a = st.acct[String(id)]; if (a && a.news) { a.news = a.news.filter((x) => x.at > at); await this.ctx.storage.put('state', st); } return { ok: true }; }
@@ -243,6 +250,13 @@ export default {
         const b = await req.json().catch(() => ({}));
         if (!/^\d+$/.test(String(b.id || ''))) return json({ err: 'id needed' }, 400);
         return json(await game(env).change(url.pathname.slice(1), String(b.id), b.skin ? String(b.skin) : null));
+      }
+      // owner panel (Shift+9 on Ahmad's account). With ADMIN_KEY set as a secret, that key is needed too.
+      if (url.pathname === '/admin' && req.method === 'POST') {
+        const b = await req.json().catch(() => ({}));
+        const key = String(env.ADMIN_KEY || '').trim();
+        if (String(b.by) !== OWNER || (key && req.headers.get('X-Admin-Key') !== key)) return json({ err: 'not allowed' }, 403);
+        return json(await game(env).admin(String(b.op || ''), String(b.target || ''), b));
       }
       if (url.pathname === '/admin/grant' && req.method === 'POST') {
         const key = String(env.ADMIN_KEY || '').trim();
