@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.60
+// @version      3.61
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.60';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.61';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -6806,7 +6806,8 @@
   function locks() {
     locksCss();
     const rules = [];
-    if (!can('pickAll') && !SINGLES_PAGE()) rules.push(/^(pick alles|pick all|ik heb ze allemaal|i have them all)$/i);
+    // "Ik heb ze allemaal" (singles) is for everyone: only Picqer's "Pick alles" on picklists is a team thing
+    if (!can('pickAll') && !SINGLES_PAGE()) rules.push(/^(pick alles|pick all)$/i);
     if (!can('bulkSingles')) rules.push(/^(verwerk in bulk|process in bulk)$/i);
     if (!rules.length) return;
     const sweep = () => {
@@ -7627,7 +7628,14 @@
     if (use('comboBatcher')) safe('comboBatcher', comboBatcher);
     if (use('autoNext')) safe('autoNext', autoNext);
     if (use('cardColor')) safe('cardColor', cardColor);
-    safe('skin', () => applySkin(ON_LOGIN ? null : (skinOf(ME.id) || {}).id));
+    // a new version: skin off, then on again after a moment (the same as doing it by hand, which fixes a bugged look)
+    safe('skin', () => {
+      const id = ON_LOGIN ? null : (skinOf(ME.id) || {}).id;
+      const fresh = lsGet('pqsuite_skin_ver_v1', '') !== SUITE_VERSION;
+      lsSet('pqsuite_skin_ver_v1', SUITE_VERSION);
+      if (id && fresh) { applySkin(null); setTimeout(() => { skinBuilt = false; applySkin(id); }, 2500); }
+      else applySkin(id);
+    });
     if (use('leaderboard')) safe('leaderboard', leaderboard);
     safe('teams', refreshTeams);
     if (use('cardColor') || can('colors') || can('settings')) safe('colors', () => refreshRemote(REMOTE.colors, onColors));
