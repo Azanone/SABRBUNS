@@ -62,6 +62,7 @@ export class Game extends DurableObject {
     return board;
   }
   async board() { return (await this.load()).board; }
+  async boardAll() { const b = (await this.load()).board; return b ? { ...b, picks: await this.picks() } : b; }
   // picking: which completed batches are new (not counted yet)
   async newBatchIds(ids) { const st = await this.load(); const seen = new Set(st.pseen || []); return ids.filter((x) => !seen.has(String(x))); }
   async markBatches(ids) { const st = await this.load(); st.pseen = (st.pseen || []).concat(ids.map(String)).slice(-600); await this.ctx.storage.put('state', st); }
@@ -220,9 +221,9 @@ export default {
     const url = new URL(req.url);
     try {
       if (url.pathname === '/leaderboard') {
-        let b = await game(env).board();
+        let b = await game(env).boardAll(); // board + pickers in 1 call (the free plan counts calls)
         if (!b || Date.now() - b.at > 3 * 60000) b = await run(env); // cron behind (or first time): do it now
-        return json({ ...b, picks: await game(env).picks() }); // pickers too: one call for the corner card
+        return json(b.picks ? b : { ...b, picks: await game(env).picks() });
       }
       if (url.pathname === '/totals') return json(await game(env).totals());
       if (url.pathname === '/picks') return json(await game(env).picks());
