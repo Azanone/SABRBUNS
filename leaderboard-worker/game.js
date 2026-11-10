@@ -30,7 +30,20 @@ export const SKINS = [
   { id: 'phantom', name: 'Phantom', price: 15000, crateOnly: true },
   { id: 'inferno', name: 'Inferno', price: 30000, crateOnly: true },
   { id: 'celestial', name: 'Celestial', price: 60000, crateOnly: true },
+  // only from the battle pass (season 1, level 25)
+  { id: 'eclipse', name: 'Eclipse', price: 40000, passOnly: true },
 ];
+// battle pass: pay once per season, XP = packing + picking points, rewards come by themselves at every level
+export const SEASON = {
+  id: 1, name: 'Season 1', ends: '2026-12-31', price: 10000, per: 1000,
+  levels: [
+    { coins: 500 }, { crate: 'common' }, { item: 'boost' }, { coins: 750 }, { crate: 'uncommon' },
+    { item: 'shield' }, { coins: 1000 }, { item: 'freeze' }, { crate: 'uncommon' }, { crate: 'rare' },
+    { coins: 1250 }, { item: 'skinoff' }, { item: 'double' }, { coins: 1500 }, { crate: 'rare' },
+    { item: 'boost' }, { coins: 1750 }, { item: 'shield' }, { crate: 'epic' }, { coins: 2000 },
+    { crate: 'rare' }, { item: 'double' }, { coins: 2500 }, { crate: 'epic' }, { skin: 'eclipse' },
+  ],
+};
 export const PICK_LOC = 3, PICK_ITEM = 0.2;
 export const PITY = 3000;          // this many rolls without a rare or better = a rare crate for sure
 export const STREAK_GOAL = 100;    // points in a day (packing + picking) to keep your streak
@@ -91,14 +104,14 @@ export function earn(st, id, amount, now) {
   return x;
 }
 // maybe a crate drops (rolls = how many tries) · pity: PITY rolls in a row without rare or better = a rare
-function giveCrate(st, id, tier, now, rnd, pity) {
+function giveCrate(st, id, tier, now, rnd, pity, quiet) {
   const a = acct(st, id), t = TIERS.find((x) => x.id === tier);
   a.inv = a.inv || [];
   const uid = `${now.toString(36)}${Math.floor(rnd() * 1e6).toString(36)}`;
   a.inv.push({ uid, kind: 'crate', tier, at: now });
-  a.news = (a.news || []).concat({ at: now, kind: 'crate', tier, one: t.one, uid, ...(pity ? { pity: true } : {}) }).slice(-20);
+  if (!quiet) a.news = (a.news || []).concat({ at: now, kind: 'crate', tier, one: t.one, uid, ...(pity ? { pity: true } : {}) }).slice(-20);
   st.log = (st.log || []).concat({ at: now, id, what: `${t.name} crate${pity ? ' (pity)' : ''}` }).slice(-50);
-  if (FEED_TIERS.includes(tier)) st.feed = (st.feed || []).concat({ at: now, id, tier }).slice(-20);
+  if (!quiet && FEED_TIERS.includes(tier)) st.feed = (st.feed || []).concat({ at: now, id, tier }).slice(-20);
   return uid;
 }
 function rollDrop(st, id, rolls, now, rnd) {
@@ -173,6 +186,7 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rn
     t.n++; t.multis += pt.multi; t.singles += pt.single; t.points = r3(t.points + pt.pts);
     const a = acct(st, id);
     earn(st, id, pt.pts, now); a.picklists++;
+    passXp(st, id, pt.pts, now, today, rnd);
     a.points = r3(a.points + pt.pts);
     rollDrop(st, id, 1, now, rnd);
     if (d === today) streakCheck(st, id, today, now, rnd);
@@ -240,6 +254,7 @@ export function profile(st, id, today, now = Date.now()) {
     inv: a.inv || [], news: a.news || [], items: ITEMS, tiers: TIERS,
     effects: { frozenUntil: a.frozenUntil || 0, skinOffUntil: a.skinOffUntil || 0, boostUntil: a.boostUntil || 0, shieldUntil: a.shieldUntil || 0 },
     event: st.event && st.event.until > now ? st.event : null,
+    pass: passView(a),
     streak: { n: a.streak || 0, day: a.streakDay || null, best: a.streakBest || 0, goal: STREAK_GOAL, today: r3(dayTotal(st, today, id)) },
     pity: { dry: a.dry || 0, at: PITY }, cooldown: HIT_COOLDOWN, trades: tradesFor(st, id, now),
     king: st.king && st.king.id === id ? { min: Math.floor((Date.now() - st.king.since) / 60000) } : null,
@@ -276,6 +291,7 @@ export function buy(st, id, skin) {
   const s = SKINS.find((x) => x.id === skin);
   if (!s) return { err: 'no such skin' };
   if (s.crateOnly && !acct(st, id).owned.includes(skin)) return { err: `${s.name} only comes out of drop crates` };
+  if (s.passOnly && !acct(st, id).owned.includes(skin)) return { err: `${s.name} only comes from the battle pass` };
   const a = acct(st, id);
   if (!a.owned.includes(skin)) {
     if (s.limit && owners(st, skin) >= s.limit) return { err: `sold out (only ${s.limit} people can have ${s.name})` };
@@ -338,6 +354,7 @@ export function pickTick(st, batches, { now, today, proxies = [], rnd = Math.ran
     a.pickPoints = r3((a.pickPoints || 0) + pt.points);
     a.batches = (a.batches || 0) + 1;
     earn(st, id, pt.points, now);
+    passXp(st, id, pt.points, now, today, rnd);
     st.precent.push({ id, at: now, points: pt.points });
     rollDrop(st, id, 3, now, rnd);
     if (d === today) streakCheck(st, id, today, now, rnd);
@@ -580,4 +597,47 @@ export function liveBoard(L, now) {
   }
   for (const r of Object.values(by)) { r.idleMin = r.last ? Math.floor((now - r.last) / 60000) : null; if (r.batch) delete r.batch.changed; }
   return by;
+}
+
+// ---------- battle pass ----------
+function passOf(a) {
+  if (!a.pass || a.pass.s !== SEASON.id) a.pass = { s: SEASON.id, xp: 0, owned: false, got: 0 };
+  return a.pass;
+}
+function passGive(st, id, lv, now, rnd) {
+  const a = acct(st, id), r = SEASON.levels[lv - 1];
+  if (!r) return;
+  if (r.coins) a.coins = r3(a.coins + r.coins);
+  if (r.crate) giveCrate(st, id, r.crate, now, rnd, false, true);
+  if (r.item) { a.inv = a.inv || []; a.inv.push({ uid: `${now.toString(36)}p${lv}${Math.floor(rnd() * 1e4).toString(36)}`, kind: 'item', item: r.item, at: now }); }
+  if (r.skin && !a.owned.includes(r.skin)) a.owned.push(r.skin);
+  a.news = (a.news || []).concat({ at: now + lv, kind: 'pass', lv, ...r }).slice(-20);
+}
+function passCatchUp(st, id, now, rnd) {
+  const p = passOf(acct(st, id));
+  if (!p.owned) return;
+  const lv = Math.min(SEASON.levels.length, Math.floor(p.xp / SEASON.per));
+  while (p.got < lv) passGive(st, id, ++p.got, now, rnd);
+}
+export function passXp(st, id, pts, now, today, rnd = Math.random) {
+  if (!(pts > 0) || String(today) > SEASON.ends) return;
+  const p = passOf(acct(st, id));
+  p.xp = r3(p.xp + pts);
+  passCatchUp(st, id, now, rnd);
+}
+export function buyPass(st, id, now, today, rnd = Math.random) {
+  id = String(id);
+  const a = acct(st, id), p = passOf(a);
+  if (String(today) > SEASON.ends) return { err: 'this season is over' };
+  if (p.owned) return { ok: true };
+  if (a.coins - a.spent < SEASON.price) return { err: `not enough coins (${Math.floor(a.coins - a.spent)} of ${SEASON.price})` };
+  a.spent = r3(a.spent + SEASON.price);
+  p.owned = true;
+  passCatchUp(st, id, now, rnd);
+  return { ok: true };
+}
+export function passView(a) {
+  const p = a.pass && a.pass.s === SEASON.id ? a.pass : { xp: 0, owned: false, got: 0 };
+  return { season: { id: SEASON.id, name: SEASON.name, ends: SEASON.ends, price: SEASON.price, per: SEASON.per, levels: SEASON.levels },
+    xp: p.xp, lv: Math.min(SEASON.levels.length, Math.floor(p.xp / SEASON.per)), owned: !!p.owned, got: p.got || 0 };
 }

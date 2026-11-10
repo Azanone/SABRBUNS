@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.57
+// @version      3.58
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.57';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.58';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -1913,6 +1913,15 @@
         skipTags: C.skipTags,
         openSettings: can('settings') ? (tab) => openToolSettings && openToolSettings(CB_TAB_SETTINGS[tab] || CB_TAB_SETTINGS.single) : null,
         autoWarehouse: CFG.pickStats ? CFG.pickStats.warehouse : '', // auto batch: same warehouse as the picker dashboard
+        // batch name, the same call Picqer's own "edit title" makes
+        setTitle: async (id, title) => {
+          try {
+            const r = await fastFetch(`${location.origin}/api/v1/picklists/batches/${id}/title`, { method: 'POST', credentials: 'same-origin',
+              headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-CSRF-TOKEN': csrf(), 'X-Requested-With': 'XMLHttpRequest' },
+              body: new URLSearchParams({ _method: 'patch', title }).toString() });
+            return r.ok;
+          } catch (_) { return false; }
+        },
       },
     });
   }
@@ -1927,6 +1936,8 @@
     const SKIP_USERS = (conf.skipAssignedTo || []).map(String).filter((s) => s && s !== '0');
     const MARKER = '[COMBO CHANGED]';
     const PAGE = 100;
+    const setTitle = conf.setTitle || (async () => false);
+    const nameBatch = async (id, title) => { if (!(await setTitle(id, title))) log(`⚠ could not name batch ${id} "${title}"`); };
     let isoStop = false; // stop button of the Isolated tab (also checked by pagesFast, which the scan uses)
     const EXACT_MAX = 15; // exact best order up to this many combos per flyer block
     const BATCH_MAX = Math.min(200, Math.max(2, +conf.batchMax || 15)); // optimized tab: max picklists per batch
@@ -2754,6 +2765,7 @@
     const taken = new Set();     // picklists this popup already put in a batch
     let users = null, usersErr = '', usersJob = null;
     let assignee = String(store.get('cb_assign', '') || '');
+    let gAssign = String(store.get('cb_gassign', '') || '');
 
     // auto batch (optimized tab): on per browser tab, 1 tab per PC does the work
     const AUTO_POLL_MS = 30000;   // look at the watched people every 30 s
@@ -3169,10 +3181,11 @@
       html += `<div class="cb-bar">
         <div class="cb-strip"></div>
         <div class="cb-barrow"><div class="cb-sum"></div>
-          <div class="cb-acts"><button class="cb-btn" data-act="opt">Optimize order</button><button class="cb-go" data-act="create">Create grouped batch</button></div></div>
+          <div class="cb-acts"><select class="cb-sel cb-gassign" title="Who picks this MEGAMULTI">${assignOptions(gAssign)}</select><button class="cb-btn" data-act="opt">Optimize order</button><button class="cb-go" data-act="create">Create MEGAMULTI</button></div></div>
       </div>`;
       $grouped.innerHTML = html;
       $grouped.querySelectorAll('[data-ind="1"]').forEach((el) => (el.indeterminate = true));
+      if (!users && !usersErr && !usersJob) loadUsers().then(() => { const sel = $grouped.querySelector('.cb-gassign'); if (sel) sel.innerHTML = assignOptions(gAssign); });
       refreshFooter();
     }
 
@@ -3235,6 +3248,9 @@
       }
     }
 
+    $grouped.addEventListener('change', (e) => {
+      if (e.target.matches('.cb-gassign')) { gAssign = e.target.value; store.set('cb_gassign', gAssign); }
+    });
     $grouped.addEventListener('click', (e) => {
       if (busy) return;
       const el = e.target.closest('[data-act]');
@@ -3296,6 +3312,11 @@
         const batch = await apiRetry('POST', '/picklists/batches', { idpicklists: plan.slice(0, first).map((p) => p.idpicklist), type: 'normal' });
         batchId = batch.idpicklist_batch;
         batchNr = batch.picklist_batchid;
+        await nameBatch(batchId, 'MEGAMULTI');
+        if (gAssign) {
+          try { await apiRetry('POST', `/picklists/batches/${batchId}/assign`, { iduser: Number(gAssign) }); log(`→ assigned to ${userName(gAssign)}`); }
+          catch (e) { log(`⚠ assign failed: ${String(e.message).slice(0, 100)}`); }
+        }
         let added = first;
         log(`Batch ${batchNr} created · ${added} picklists`);
 
@@ -3393,6 +3414,8 @@
     // same combo together and the most alike combo next
     // BE pick-up picklists always last
     const isBeM = (m) => hasHlTag(m.pl);
+    // optimizer batches get a name: BELGIE (only BE pick-up), NON BELGIE (none), MIX
+    const beTitle = (ms) => { const n = ms.filter(isBeM).length; return n === 0 ? 'NON BELGIE' : n === ms.length ? 'BELGIE' : 'MIX'; };
     function orderPicks(list) {
       return orderRun(list.filter((m) => !isBeM(m))).concat(orderRun(list.filter(isBeM)));
     }
@@ -3540,10 +3563,10 @@
       return u ? u.name : `user #${id}`;
     }
 
-    function assignOptions() {
+    function assignOptions(cur = assignee) {
       let o = `<option value="">${users ? 'Assign to nobody' : usersErr ? 'Assign to nobody (users not loaded)' : 'Loading users…'}</option>`;
-      if (assignee && !(users || []).some((u) => u.id === assignee)) o += `<option value="${esc(assignee)}" selected>${esc(userName(assignee))}</option>`;
-      for (const u of users || []) o += `<option value="${esc(u.id)}" ${u.id === assignee ? 'selected' : ''}>${esc(u.name)}</option>`;
+      if (cur && !(users || []).some((u) => u.id === cur)) o += `<option value="${esc(cur)}" selected>${esc(userName(cur))}</option>`;
+      for (const u of users || []) o += `<option value="${esc(u.id)}" ${u.id === cur ? 'selected' : ''}>${esc(u.name)}</option>`;
       return o;
     }
 
@@ -3728,6 +3751,7 @@
         go.textContent = 'Creating…';
         const { batch, failed } = await createBatchBeLast(ids, beSetOf(plan.keep));
         const nr = batch.picklist_batchid || batch.idpicklist_batch;
+        await nameBatch(batch.idpicklist_batch, beTitle(plan.keep));
         let to = '';
         if (assignee) {
           try {
@@ -3866,6 +3890,7 @@
           go.textContent = `Batch ${k + 1}/${list.length}…`;
           const { batch, failed } = await createBatchBeLast(ids, beSetOf(b.ms));
           const nr = batch.picklist_batchid || batch.idpicklist_batch;
+          await nameBatch(batch.idpicklist_batch, beTitle(b.ms));
           let to = '';
           if (assignee) {
             try {
@@ -4064,6 +4089,7 @@
       const used = new Set(seq.map((m) => m.pl.idpicklist));
       const res = await createBatch(seq.slice(0, cut).map((m) => m.pl.idpicklist));
       const id = res.batch.idpicklist_batch;
+      nameBatch(id, beTitle(seq));
       const failed = new Set(res.failed);
       const inB = seq.slice(0, cut).filter((m) => !failed.has(m.pl.idpicklist));
       let swapped = 0;
@@ -4927,6 +4953,7 @@
     // only from drop crates
     phantom: { bg: 'radial-gradient(circle at 30% 30%,rgba(203,213,225,.32),transparent 50%),linear-gradient(90deg,#06080b,#151c26)', accent: '#94a3b8', line: '#e2e8f0', dark: { th: 215, ah: 205, as: '28%', fx: 'none' } },
     inferno: { bg: 'radial-gradient(circle at 20% 85%,rgba(239,68,68,.6),transparent 50%),radial-gradient(circle at 70% 25%,rgba(251,146,60,.38),transparent 45%),linear-gradient(90deg,#0f0302,#2b0703)', accent: '#ef4444', line: '#fb923c', dark: { th: 5, ah: 10, as: '92%', fx: 'full', onAcc: '#1a0402' } },
+    eclipse: { bg: 'radial-gradient(circle at 50% 50%,transparent 18%,rgba(251,191,36,.55) 21%,transparent 30%),radial-gradient(circle at 50% 50%,#000 20%,transparent 21%),linear-gradient(90deg,#05040a,#14101f)', accent: '#fbbf24', line: '#fde68a', dark: { th: 260, ah: 45, as: '95%', fx: 'full', stars: true, onAcc: '#1a1200' } },
     celestial: { bg: 'radial-gradient(circle at 25% 30%,rgba(250,204,21,.38),transparent 45%),radial-gradient(circle at 75% 65%,rgba(99,102,241,.42),transparent 50%),linear-gradient(90deg,#03051a,#0d1240)', accent: '#facc15', line: '#fde68a', dark: { th: 232, ah: 48, as: '96%', fx: 'full', stars: true, onAcc: '#1a1400' } },
   };
   // skins belong to a Picqer account: saved per user id on this PC
@@ -5099,7 +5126,7 @@
   // crate colors, like CS:GO: blue common → purple → pink → red covert → gold ★
   const RARITY = { midnight: '#4b69ff', forest: '#4b69ff', ocean: '#4b69ff', sakura: '#4b69ff', arctic: '#4b69ff', sunset: '#8847ff', gold: '#8847ff', emerald: '#8847ff',
     aurora: '#d32ce6', lava: '#d32ce6', nebula: '#eb4b4b', neon: '#eb4b4b', crown: '#eb4b4b', carbon: '#eb4b4b', voidescent: '#e4ae39',
-    phantom: '#d32ce6', inferno: '#eb4b4b', celestial: '#e4ae39' };
+    phantom: '#d32ce6', inferno: '#eb4b4b', celestial: '#e4ae39', eclipse: '#e4ae39' };
   // ---------- newer version on GitHub? Tampermonkey only checks about once a day, so tell the person ----------
   const verNum = (v) => String(v || '0').split('.').map((x) => +x || 0);
   const newer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
@@ -5572,28 +5599,26 @@
     let pfTab = 'inv', spinning = false;
     const nameOfSkin = (id) => ((prof && prof.skins) || []).find((x) => x.id === id)?.name || id;
     function skinCard(p, s) {
-      if (!SKIN_LOOK[s.id]) return `<div class="sh-skin"><div class="sh-sw" style="background:repeating-linear-gradient(135deg,#334155 0 8px,#3f4b5f 8px 16px)"></div><div class="sh-in"><b>${escHtml(s.name)}</b><small>new · update the script (Tampermonkey → check for updates) to see it</small></div></div>`;
+      if (!SKIN_LOOK[s.id]) return `<div class="sh-skin"><div class="sh-sw" style="background:repeating-linear-gradient(135deg,#334155 0 8px,#3f4b5f 8px 16px)"></div><div class="sh-in"><b>${escHtml(s.name)}</b><small>update the script</small></div></div>`;
       const worn = 'mySkin' in p ? p.mySkin : p.skin;
       const own = (p.owned || []).includes(s.id), on = worn === s.id, look = SKIN_LOOK[s.id];
       const btn = on ? '<button data-pf="off">Take off</button>' : own ? `<button class="wear" data-pf="wear" data-s="${s.id}">Wear</button>`
-        : s.crateOnly ? '<button disabled>📦 drop crates only</button>'
+        : s.passOnly ? '<button disabled>🎟 Pass</button>'
+        : s.crateOnly ? '<button disabled>📦 Drops</button>'
         : s.limit && !s.left ? '<button disabled>Sold out</button>'
         : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>${int(s.price)}</button>`;
-      const tags = [look.dark ? 'dark' : 'light', look.dark && look.dark.fx !== 'none' ? 'moves' : ''].filter(Boolean).join(' · ');
       return `<div class="sh-skin${on ? ' on' : ''}${own ? ' own' : ''}" style="--r:${RARITY[s.id] || '#94a3b8'}">
-        ${s.limit ? `<em class="sh-ltd">★ LIMITED · ${s.left || 0}/${s.limit} left</em>` : s.crateOnly ? '<em class="sh-only">CRATE ONLY</em>' : ''}
-        <div class="sh-sw" style="background:${look.bg}">${on ? '<span>✓ wearing</span>' : own ? '<span>yours</span>' : ''}</div>
-        <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b><small>${tags}</small></div>${btn}</div>`;
+        ${s.limit ? `<em class="sh-ltd">★ ${s.left || 0}/${s.limit}</em>` : s.passOnly ? '<em class="sh-only pass">PASS</em>' : s.crateOnly ? '<em class="sh-only">DROP</em>' : ''}
+        <div class="sh-sw" style="background:${look.bg}">${on ? '<span>✓</span>' : ''}</div>
+        <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b></div>${btn}</div>`;
     }
     function crateHtml(p) {
       if (!p.crate) return '';
       return `<div class="sh-crate">
-        <div class="sh-ct"><div class="sh-box">🎁</div><div><b>Skin crate</b><small>${int(p.crate.price)} coins · ${int(p.crates || 0)} opened</small></div></div>
+        <div class="sh-ct"><div class="sh-box">🎁</div><div><b>Skin crate</b></div>${ii('crate')}</div>
         <div class="cr-win"><div class="cr-strip">${p.crate.odds.slice().reverse().concat(p.crate.odds).map((o) => reelCard(o.id)).join('')}</div><div class="cr-mark"></div></div>
-        <div class="cr-res">Spin for a random skin</div>
-        <div class="cr-btns"><button class="buy" data-crate ${p.balance < p.crate.price ? 'disabled' : ''}>Open crate · ${int(p.crate.price)}</button></div>
-        <div class="sh-odds">${p.crate.odds.map((o) => `<div style="--r:${RARITY[o.id] || '#94a3b8'}"><i></i>${escHtml(nameOfSkin(o.id))}<span>${String(o.pct).replace('.', ',')}%</span></div>`).join('')}</div>
-        <small class="sh-fine">already have it? you get ¼ of its shop price back</small>
+        <div class="cr-res"></div>
+        <div class="cr-btns"><button class="buy" data-crate ${p.balance < p.crate.price ? 'disabled' : ''}>🪙 ${int(p.crate.price)}</button></div>
       </div>`;
     }
     const reelCard = (id) => { const look = SKIN_LOOK[id] || { bg: '#334155' }; return `<div class="cr-it" style="--r:${RARITY[id] || '#94a3b8'}"><div class="cr-sw" style="background:${look.bg}"></div><b>${escHtml(nameOfSkin(id))}</b></div>`; };
@@ -5607,9 +5632,8 @@
           ${tile((p.kingTotal || 0) + ' min', 'king in total')}${tile((p.kingBest || 0) + ' min', 'longest king streak')}${tile(int(p.coins), 'coins earned in total')}${tile(int(p.crates || 0), 'skin crates opened')}
           ${tile('🔥 ' + ((p.streak || {}).n || 0), 'day streak')}${tile((p.streak || {}).best || 0, 'best streak')}${tile(`${fmt((p.streak || {}).today)} / ${(p.streak || {}).goal || 100}`, 'streak goal today')}${tile(`${int((p.pity || {}).dry)} / ${int((p.pity || {}).at || 3000)}`, 'rolls to a sure rare crate')}
         </div>
-        <h3>Last days</h3>
-        <div class="pf-week">${(p.week || []).map((w) => `<div title="${escHtml(w.day)} · ${fmt(w.points)} pts · ${w.n} closed"><i style="height:${Math.round(((w.points || 0) / maxW) * 48)}px"></i>${escHtml(w.day.slice(8, 10))}</div>`).join('')}</div>
-        <div class="pf-note">coins: 1 per packing point, 1 per picking point, +20 every minute as king</div>`;
+        <h3>Last days ${ii('coins')}</h3>
+        <div class="pf-week">${(p.week || []).map((w) => `<div title="${escHtml(w.day)} · ${fmt(w.points)} pts · ${w.n} closed"><i style="height:${Math.round(((w.points || 0) / maxW) * 48)}px"></i>${escHtml(w.day.slice(8, 10))}</div>`).join('')}</div>`;
     }
     function showProfile(note) {
       if (spinning) return;
@@ -5621,18 +5645,17 @@
       if (!URL_) { ov.innerHTML = `<div class="lb-panel"><h2>${nm}</h2><div class="lb-meta">The shop needs the middle stop (Shift+8 → Leaderboard)</div></div>`; return; }
       if (!prof) { ov.innerHTML = `<div class="lb-panel"><h2>Shop</h2><div class="lb-meta">${note ? escHtml(note) : 'Loading…'}</div></div>`; return; }
       const p = prof;
-      const status = p.king ? `👑 king right now · ${p.king.min} min` : p.rankToday ? `#${p.rankToday} today of ${p.ofToday}` : 'nothing closed yet today';
+      const T = (k, t) => `<button data-pt="${k}" class="${pfTab === k ? 'on' : ''}">${t}</button>`;
+      const nInv = (p.inv || []).length;
       ov.innerHTML = `<div class="lb-panel sh-panel">
         <div class="sh-top">
-          <div><h2>${pfTab === 'shop' ? 'Shop' : pfTab === 'inv' ? 'Inventory' : pfTab === 'set' ? 'Settings' : nm}</h2><div class="lb-meta" style="margin:2px 0 0">${nm} · ${status}</div></div>
-          <div class="lb-tabs"><button data-pt="inv" class="${pfTab === 'inv' ? 'on' : ''}">🎒 Inventory${(p.inv || []).length ? ` · ${(p.inv || []).length}` : ''}</button><button data-pt="stats" class="${pfTab === 'stats' ? 'on' : ''}">📊 Stats</button><button data-pt="shop" class="${pfTab === 'shop' ? 'on' : ''}">🛒 Shop</button><button data-pt="set" class="${pfTab === 'set' ? 'on' : ''}" title="Settings">⚙</button></div>
-          <div class="sh-coins"><b>${int(p.balance)}</b><span>coins</span></div>
+          <div class="lb-tabs">${T('inv', `Inventory${nInv ? ` <i class="sh-n">${nInv}</i>` : ''}`)}${T('pass', 'Pass')}${T('stats', 'Stats')}${T('shop', 'Shop')}${T('set', '⚙')}</div>
+          <div class="sh-coins">🪙 <b>${int(p.balance)}</b></div>
           <button class="sh-x" data-pf-close title="Esc">✕</button>
         </div>
         ${note ? `<div class="sh-note">${escHtml(note)}</div>` : ''}
-        ${pfTab === 'inv' ? invHtml(p) : pfTab === 'stats' ? statsHtml(p) : pfTab === 'set' ? setHtml() : `<div class="sh-body">
-          <div class="sh-left"><h3>Skins</h3><div class="sh-grid">${(p.skins || []).map((s) => skinCard(p, s)).join('')}</div>
-            <small class="sh-fine">skins change Picqer for your account · dark skins make all of Picqer dark</small></div>
+        ${pfTab === 'inv' ? invHtml(p) : pfTab === 'pass' ? passHtml(p) : pfTab === 'stats' ? statsHtml(p) : pfTab === 'set' ? setHtml() : `<div class="sh-body">
+          <div class="sh-left"><h3>Skins ${ii('skins')}</h3><div class="sh-grid">${(p.skins || []).map((s) => skinCard(p, s)).join('')}</div></div>
           <div class="sh-right"><h3>Crate</h3>${crateHtml(p)}</div>
         </div>`}
       </div>`;
@@ -5640,6 +5663,8 @@
       ov.querySelectorAll('[data-pt]').forEach((b) => (b.onclick = () => { pfTab = b.dataset.pt; aimUid = null; showProfile(); }));
       if (pfTab === 'inv') wireInv(ov);
       if (pfTab === 'set') wireSet(ov);
+      if (pfTab === 'pass') wirePass(ov);
+      wireInfo(ov);
       ov.querySelector('[data-crate]')?.addEventListener('click', (e) => openCrate(e.currentTarget));
       // park the idle reel somewhere in the middle
       const idle = ov.querySelector('.cr-strip');
@@ -5683,7 +5708,7 @@
       strip.className = 'cr-strip go';
       strip.innerHTML = items.map(reelCard).join('');
       old.replaceWith(strip);
-      box.querySelector('.cr-res').textContent = 'Spinning…';
+      box.querySelector('.cr-res').textContent = '';
       box.querySelector('.cr-btns').innerHTML = '';
       box.classList.add('spin');
       const stop = WIN * W + W / 2 - winEl.clientWidth / 2 + (Math.random() * 0.7 - 0.35) * (W - 14);
@@ -5696,15 +5721,13 @@
         strip.style.transform = `translate3d(${-stop}px,0,0)`;
         strip.children[WIN].classList.add('won');
         if (coins && prof) coins.textContent = int(prof.balance);
-        const ct = box.querySelector('.sh-ct small');
-        if (ct && prof && prof.crate) ct.textContent = `${int(prof.crate.price)} coins · ${int(prof.crates || 0)} opened`;
         const nm = escHtml(nameOfSkin(j.won)), rare = ['voidescent', 'carbon', 'crown'].includes(j.won);
         if (rare) box.classList.add('jackpot');
         box.querySelector('.cr-res').innerHTML = (rare ? '<b class="cr-jp">🔥 JACKPOT 🔥</b><br>' : '') + (j.dup
           ? `<b style="color:${RARITY[j.won]}">${nm}</b> · you already had it · <b>+${int(j.back)} coins</b>`
           : `You got <b style="color:${RARITY[j.won]}">${nm}</b>!`);
         const can = prof && prof.crate && prof.balance >= prof.crate.price;
-        box.querySelector('.cr-btns').innerHTML = `${!j.dup ? '<button class="wear" data-cr="wear">Wear it</button>' : ''}<button class="buy" data-cr="again" ${can ? '' : 'disabled'}>Open another · ${int((prof && prof.crate && prof.crate.price) || 0)}</button>`;
+        box.querySelector('.cr-btns').innerHTML = `${!j.dup ? '<button class="wear" data-cr="wear">Wear it</button>' : ''}<button class="buy" data-cr="again" ${can ? '' : 'disabled'}>Again · 🪙 ${int((prof && prof.crate && prof.crate.price) || 0)}</button>`;
         box.querySelectorAll('[data-cr]').forEach((b) => (b.onclick = async () => {
           if (b.dataset.cr === 'wear') { const r = await change('equip', j.won).catch(() => ({})); showProfile(r.err || `wearing ${nameOfSkin(j.won)} ✓`); }
           else { box.classList.remove('jackpot'); b.disabled = true; openCrate(null); }
@@ -5858,6 +5881,63 @@
       #pq-trade .tr-foot button:disabled{opacity:.6;cursor:default}
       #pq-trade #tr-st{font:600 13px system-ui,sans-serif}
       @media (max-width:640px){#pq-trade .tr-cols,#pq-trade .tr-done{grid-template-columns:1fr}}
+      .sh .lb-tabs .sh-n{font-style:normal;font-size:10.5px;background:#6366f1;color:#fff;border-radius:999px;padding:0 6px;margin-left:3px}
+      .sh .sh-top{gap:12px}
+      .sh .sh-top .lb-tabs{flex:1;width:auto;max-width:max-content}
+      .sh .sh-coins{display:flex;align-items:center;gap:6px;padding:6px 12px;margin-left:auto}
+      .sh .sh-coins b{display:inline;font:800 17px system-ui,sans-serif}
+      .sh h3{display:flex;align-items:center;gap:6px}
+      .pq-lbx .ii{width:16px;height:16px;border-radius:50%;border:1px solid var(--line);background:var(--soft);color:var(--mut);font:700 10px/14px Georgia,serif;font-style:italic;padding:0;cursor:pointer;flex:none;display:inline-grid;place-items:center}
+      .pq-lbx .ii:hover{color:var(--fg);border-color:var(--mut)}
+      .ii-pop{position:fixed;z-index:2147483005;width:260px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.22);padding:12px 14px;font:500 12.5px/1.45 system-ui,sans-serif}
+      .ii-pop b{display:block;font:700 13px system-ui,sans-serif;margin-bottom:6px}
+      .ii-pop p{margin:6px 0 0;color:var(--mut)}
+      .ii-pop .ii-r{display:flex;align-items:center;gap:7px;padding:2px 0}
+      .ii-pop .ii-r i{width:8px;height:8px;border-radius:2px;flex:none}
+      .ii-pop .ii-r span{margin-left:auto;color:var(--mut);text-align:right;font-variant-numeric:tabular-nums;padding-left:10px}
+      .sh .iv-top{display:flex;align-items:center;gap:8px;margin-top:14px}
+      .sh .iv-top .iv-streak{flex:1;margin:0;flex-direction:row;align-items:center;gap:10px;padding:9px 12px}
+      .sh .iv-streak b{font:800 14px system-ui,sans-serif;white-space:nowrap}
+      .sh .iv-streak .iv-bar{flex:1}
+      .sh .iv-streak small{white-space:nowrap;font-variant-numeric:tabular-nums}
+      .sh .iv-tr{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--soft);font-size:18px;cursor:pointer}
+      .sh .iv-tr:hover{background:var(--hi)}
+      .sh .iv-c{padding:12px 10px 10px}
+      .sh .iv-c b{font-size:13px}
+      .sh .iv-empty{color:var(--mut)}
+      .sh .iv-sets{display:flex;flex-direction:column;gap:6px;margin-top:14px;max-width:360px}
+      .sh .iv-set{justify-content:space-between;align-items:center;margin:0;font:600 13.5px system-ui,sans-serif}
+      .sh .iv-set input{margin:0}
+      .sh .sh-only.pass{background:linear-gradient(90deg,#e4ae39,#f59e0b);color:#1c1400}
+      .sh .sh-ct{justify-content:space-between}
+      .sh .sh-ct > div:nth-child(2){flex:1}
+      .sh .sh-crate .ii{border-color:#2a2a38;background:#16161f;color:#94a3b8}
+      .sh .bp-head{display:flex;align-items:center;justify-content:space-between;margin-top:16px}
+      .sh .bp-name{display:flex;align-items:center;gap:8px}
+      .sh .bp-name b{font:800 18px system-ui,sans-serif}
+      .sh .bp-name small{color:var(--mut);font-size:12px}
+      .sh .bp-own{color:#10b981;font:800 15px system-ui,sans-serif}
+      .sh .bp-buy{padding:8px 16px;border-radius:9px;border:0;font:800 13px system-ui,sans-serif;cursor:pointer}
+      .sh .bp-lv{display:flex;align-items:center;gap:12px;margin:14px 0 12px}
+      .sh .bp-n{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font:800 17px system-ui,sans-serif;background:linear-gradient(135deg,#e4ae39,#f59e0b);color:#1c1400}
+      .sh .bp-bar{flex:1;height:8px;border-radius:999px;background:var(--line);overflow:hidden}
+      .sh .bp-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#e4ae39,#f59e0b)}
+      .sh .bp-x{color:var(--mut);font:600 12px system-ui,sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
+      .sh .bp-track{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 10px;scroll-behavior:smooth}
+      .sh .bp-t{position:relative;flex:none;width:72px;height:88px;border-radius:12px;border:1px solid var(--line);background:var(--soft);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;overflow:hidden}
+      .sh .bp-t::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--r);opacity:.5}
+      .sh .bp-t small{position:absolute;top:5px;left:7px;color:var(--mut);font:700 10.5px system-ui,sans-serif}
+      .sh .bp-t .bp-ic{font-size:24px;line-height:1}
+      .sh .bp-t em{font:700 10.5px system-ui,sans-serif;font-style:normal;color:var(--mut);min-height:12px}
+      .sh .bp-t.big{width:96px;background:radial-gradient(circle at 50% 30%,color-mix(in srgb,var(--r) 25%,transparent),var(--soft) 70%)}
+      .sh .bp-sw{display:block;width:44px;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,.2)}
+      .sh .bp-t.reach{border-color:var(--r)}
+      .sh .bp-t.got{border-color:var(--r);background:color-mix(in srgb,var(--r) 12%,var(--bg))}
+      .sh .bp-t.got::before{content:"✓";position:absolute;top:4px;right:7px;color:#10b981;font:800 11px system-ui,sans-serif}
+      .sh .bp-t.got::after{opacity:1}
+      .sh .bp-t.next{outline:2px solid #e4ae39;outline-offset:1px}
+      .sh .bp-track.locked .bp-t:not(.reach){opacity:.55}
+      .pq-drop .dp-box .bp-sw{width:38px;height:24px;border-radius:6px;display:block}
       .sh .sh-only{position:absolute;top:6px;left:6px;z-index:1;font-style:normal;font:800 9.5px system-ui,sans-serif;letter-spacing:.05em;color:#fff;background:linear-gradient(90deg,#d32ce6,#eb4b4b);padding:2px 7px;border-radius:999px}
       .pq-lbx .pk-idle{color:#f97316;font-weight:700} .pq-lbx .pk-idle.bad{color:#ef4444}
       .pq-lb-ov .lb-row .nm small b{font-weight:600}
@@ -5979,6 +6059,10 @@
       } else if (x.kind === 'streak') {
         el.style.setProperty('--r', '#f97316');
         el.innerHTML = `<div class="dp-box">🔥</div><div class="dp-t"><small>streak goal hit</small><b>Day ${int(x.n)} streak</b><span>+${int(x.coins)} coins${x.tier ? ` · ${escHtml(tierName(x.tier))} crate` : ''}</span></div>`;
+      } else if (x.kind === 'pass') {
+        el.style.setProperty('--r', '#e4ae39');
+        el.innerHTML = `<div class="dp-box">${rewardIc(x)}</div><div class="dp-t"><small>pass level</small><b>${int(x.lv)}</b><span>${escHtml(rewardTxt(x))}</span></div>`;
+        open = 'pass';
       } else if (x.kind === 'toast') {
         el.style.setProperty('--r', '#6366f1');
         el.innerHTML = `<div class="dp-t"><span>${escHtml(x.msg)}</span></div>`;
@@ -6007,8 +6091,8 @@
       if (e.skinOffUntil > now) eff.push(['🧥 Skin off', e.skinOffUntil, 'bad']);
       const crates = (p.inv || []).filter((x) => x.kind === 'crate').sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier) || a.at - b.at);
       const items = (p.inv || []).filter((x) => x.kind === 'item');
-      const crateCard = (x) => `<div class="iv-c" style="--r:${TIER_COL[x.tier] || '#94a3b8'}"><div class="iv-ic">${TIER_ICON[x.tier] || '📦'}</div><b>${escHtml(tierName(x.tier))} crate</b><small>1/${int(tierOne(x.tier))} · ${agoTxt(x.at)}</small><button class="buy" data-open="${escHtml(x.uid)}">Open</button></div>`;
-      const itemCard = (x) => { const d = itemDef(x.item); return `<div class="iv-c" style="--r:${ITEM_COL[x.item] || '#94a3b8'}"><div class="iv-ic">${ITEM_ICON[x.item] || '❔'}</div><b>${escHtml(d.name)}</b><small>${escHtml(d.desc)}</small><button class="${d.target ? 'buy' : 'wear'}" data-use="${escHtml(x.uid)}">${d.target ? 'Use on someone…' : 'Use'}</button></div>`; };
+      const crateCard = (x) => `<div class="iv-c" style="--r:${TIER_COL[x.tier] || '#94a3b8'}" title="${agoTxt(x.at)}"><div class="iv-ic">${TIER_ICON[x.tier] || '📦'}</div><b>${escHtml(tierName(x.tier))}</b><button class="buy" data-open="${escHtml(x.uid)}">Open</button></div>`;
+      const itemCard = (x) => { const d = itemDef(x.item); return `<div class="iv-c" style="--r:${ITEM_COL[x.item] || '#94a3b8'}" title="${escHtml(d.desc)}"><div class="iv-ic">${ITEM_ICON[x.item] || '❔'}</div><b>${escHtml(d.name)}</b><button class="${d.target ? 'buy' : 'wear'}" data-use="${escHtml(x.uid)}">${d.target ? 'Use on…' : 'Use'}</button></div>`; };
       let aim = '';
       if (aimUid) {
         const x = aimUid === 'TRADE' ? { item: '' } : items.find((i) => i.uid === aimUid);
@@ -6021,15 +6105,14 @@
             <div class="iv-ppl">${tot ? ppl.map((r) => `<button data-tg="${escHtml(r.id)}" data-n="${escHtml(low(r.name))}" class="${ql && !low(r.name).includes(ql) ? 'hide' : ''}">${escHtml(r.name)}<small>${int(r.balance)} coins</small></button>`).join('') || '<div class="iv-empty">nobody yet</div>' : '<div class="iv-empty">Loading…</div>'}</div></div>`;
         }
       }
-      return `${streakHtml(p)}${p.event && p.event.until > now ? `<div class="iv-ev">✨ Double points event · x2 coins for everyone · ${leftTxt(p.event.until)} left</div>` : ''}
+      return `<div class="iv-top">${streakHtml(p)}<button class="iv-tr" data-trade title="Trade">🤝</button>${ii('trade')}</div>
+        ${p.event && p.event.until > now ? `<div class="iv-ev">✨ x2 coins · ${leftTxt(p.event.until)}</div>` : ''}
         ${eff.length ? `<div class="iv-eff">${eff.map(([t, u, k]) => `<span class="${k}">${t} · ${leftTxt(u)}</span>`).join('')}</div>` : ''}
         ${aim}
-        <div class="iv-trade"><button class="wear" data-trade>🤝 Trade with someone</button><small>you both put things in, both have to agree</small></div>
-        <h3>Crates <small>${crates.length}</small></h3>
-        ${crates.length ? `<div class="iv-grid">${crates.map(crateCard).join('')}</div>` : '<div class="iv-empty">No crates yet · every packed picklist has a small chance to drop one, a picked batch 3 chances</div>'}
-        <h3>Items <small>${items.length}</small></h3>
-        ${items.length ? `<div class="iv-grid">${items.map(itemCard).join('')}</div>` : '<div class="iv-empty">No items · they come out of crates</div>'}
-        <div class="iv-odds">${(p.tiers || []).slice().reverse().map((t) => `<span style="--r:${TIER_COL[t.id]}"><i></i>${escHtml(t.name)} 1/${int(t.one)}</span>`).join('')}</div>`;
+        <h3>Crates <small>${crates.length || ''}</small> ${ii('drops')}</h3>
+        ${crates.length ? `<div class="iv-grid">${crates.map(crateCard).join('')}</div>` : '<div class="iv-empty">–</div>'}
+        <h3>Items <small>${items.length || ''}</small> ${ii('items')}</h3>
+        ${items.length ? `<div class="iv-grid">${items.map(itemCard).join('')}</div>` : '<div class="iv-empty">–</div>'}`;
     }
     function wireInv(ov) {
       ov.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => openDropCrate(b.dataset.open, b)));
@@ -6140,21 +6223,84 @@
     // ---------- streak + pity (inventory top, stats tab) ----------
     function streakHtml(p) {
       const s = p.streak;
-      if (!s) return '';
+      if (!s) return '<span></span>';
       const done = s.day === todayStr(), pct = Math.min(100, Math.round(((s.today || 0) / (s.goal || 100)) * 100));
-      return `<div class="iv-streak"><div><b>🔥 ${s.n || 0} day streak</b><small>${done ? `goal hit today ✓ · tomorrow day ${(s.n || 0) + 1}` : `${fmt(s.today)} / ${s.goal} points today (packing + picking)`} · best ${s.best || 0}</small></div>
-        <div class="iv-bar"><i style="width:${done ? 100 : pct}%"></i></div>
-        <small class="iv-fine">${done ? '' : `hit ${s.goal} to get +${int(Math.min(500, 50 * ((s.n || 0) + 1)))} coins · every 5th day a crate · days off don't break it`}</small></div>`;
+      return `<div class="iv-streak" title="best ${s.best || 0}"><b>🔥 ${s.n || 0}</b><div class="iv-bar"><i style="width:${done ? 100 : pct}%"></i></div><small>${done ? '✓' : `${fmt(s.today)} / ${s.goal}`}</small>${ii('streak')}</div>`;
     }
+
+
+    // ---------- 🎟 battle pass ----------
+    const rewardIc = (r) => (r.coins ? '🪙' : r.crate ? TIER_ICON[r.crate] || '📦' : r.item ? ITEM_ICON[r.item] || '❔' : r.skin ? `<i class="bp-sw" style="background:${(SKIN_LOOK[r.skin] || {}).bg || '#334155'}"></i>` : '');
+    const rewardTxt = (r) => (r.coins ? `${int(r.coins)} coins` : r.crate ? `${tierName(r.crate)} crate` : r.item ? itemDef(r.item).name : r.skin ? `${nameOfSkin(r.skin)} skin` : '');
+    const rewardCol = (r) => (r.coins ? '#e4ae39' : r.crate ? TIER_COL[r.crate] : r.item ? ITEM_COL[r.item] : r.skin ? RARITY[r.skin] || '#e4ae39' : '#94a3b8');
+    function passHtml(p) {
+      const P = p.pass;
+      if (!P) return '<div class="iv-empty">update the middle stop</div>';
+      const S = P.season, n = S.levels.length, lv = P.lv, into = P.xp - lv * S.per;
+      const days = Math.max(0, Math.ceil((new Date(S.ends + 'T23:59:59') - Date.now()) / 864e5));
+      return `<div class="bp-head"><div class="bp-name"><b>${escHtml(S.name)}</b>${ii('pass')}<small>${days}d</small></div>
+          ${P.owned ? '<span class="bp-own">✓</span>' : `<button class="buy bp-buy" data-bp ${p.balance < S.price ? 'disabled' : ''}>🪙 ${int(S.price)}</button>`}</div>
+        <div class="bp-lv"><span class="bp-n">${lv}</span><div class="bp-bar"><i style="width:${lv >= n ? 100 : Math.round((into / S.per) * 100)}%"></i></div><span class="bp-x">${lv >= n ? 'max' : `${int(into)} / ${int(S.per)}`}</span></div>
+        <div class="bp-track${P.owned ? '' : ' locked'}">${S.levels.map((r, i) => {
+          const L = i + 1, got = P.owned && L <= P.got, reached = L <= lv;
+          return `<div class="bp-t${got ? ' got' : ''}${reached && !got ? ' reach' : ''}${L === lv + 1 ? ' next' : ''}${r.skin ? ' big' : ''}" title="${L} · ${escHtml(rewardTxt(r))}" style="--r:${rewardCol(r)}"><small>${L}</small><div class="bp-ic">${rewardIc(r)}</div><em>${r.coins ? int(r.coins) : ''}</em></div>`;
+        }).join('')}</div>`;
+    }
+    function wirePass(ov) {
+      ov.querySelector('[data-bp]')?.addEventListener('click', async (e) => {
+        const S = prof.pass.season;
+        if (!confirm(`${S.name} · ${int(S.price)} coins?`)) return;
+        e.currentTarget.disabled = true;
+        let j;
+        try { j = await post('pass', { id: ME_ID }); } catch (_) { j = { err: 'could not reach the middle stop' }; }
+        if (j.profile) setProf(j.profile);
+        showProfile(j.err || '');
+      });
+      const cur = ov.querySelector('.bp-t.next') || ov.querySelector('.bp-t:last-child');
+      if (cur) cur.parentNode.scrollLeft = cur.offsetLeft - 80;
+    }
+
+    // ---------- ⓘ: explanations only when you ask for them ----------
+    const ii = (k) => `<button class="ii" data-ii="${k}" title="info">i</button>`;
+    function infoHtml(k) {
+      const p = prof || {};
+      const tiers = (p.tiers || []).slice().reverse();
+      const odds = tiers.map((t) => `<div class="ii-r"><i style="background:${TIER_COL[t.id]}"></i>${escHtml(t.name)}<span>1/${int(t.one)}</span></div>`).join('');
+      const S = p.pass && p.pass.season;
+      const T = {
+        drops: `<b>Drop crates</b>${odds}<p>1 roll per packed picklist · 3 per picked batch</p><p>${int((p.pity || {}).at || 3000)} rolls without rare = sure rare · you're at ${int((p.pity || {}).dry)}</p>`,
+        items: `<b>Items</b>${Object.entries(p.items || {}).map(([k, d]) => `<div class="ii-r">${ITEM_ICON[k] || ''} ${escHtml(d.name)}<span>${escHtml(d.desc)}</span></div>`).join('')}<p>freeze / skin off: same person again after ${int(p.cooldown || 120)} min · a shield blocks 1</p>`,
+        streak: `<b>Streak</b><p>${(p.streak || {}).goal || 100} points in a day (pack + pick)</p><p>+50 coins × day, max 500 · day 5 uncommon crate · day 10 rare</p><p>days off don't break it, a worked day under the goal does</p><p>best: ${(p.streak || {}).best || 0}</p>`,
+        trade: '<b>Trade</b><p>pick someone · they accept · both put things in · both agree</p><p>changing anything = agree again</p>',
+        pass: S ? `<b>${escHtml(S.name)}</b><p>XP = packing + picking points · ${int(S.per)} XP per level</p><p>rewards come in by themselves · bought later? you get every level you already reached</p><p>ends ${escHtml(S.ends.split('-').reverse().join('-'))} · level 25 = ${escHtml(nameOfSkin('eclipse'))}, only from the pass</p>` : '',
+        crate: `<b>Skin crate</b>${((p.crate || {}).odds || []).map((o) => `<div class="ii-r"><i style="background:${RARITY[o.id] || '#94a3b8'}"></i>${escHtml(nameOfSkin(o.id))}<span>${String(o.pct).replace('.', ',')}%</span></div>`).join('')}<p>already have it: ¼ of its price back</p>`,
+        skins: '<b>Skins</b><p>change Picqer for your account · dark skins make all of it dark</p><p>★ limited · DROP = only from drop crates · PASS = only from the pass</p>',
+        coins: '<b>Coins</b><p>1 per packing point · 1 per picking point · +20 a minute as king</p><p>boost and double event: x2 each · frozen: 0</p>',
+      };
+      return T[k] || '';
+    }
+    function wireInfo(ov) {
+      ov.querySelectorAll('[data-ii]').forEach((b) => (b.onclick = (e) => {
+        e.stopPropagation();
+        const was = document.querySelector('.ii-pop');
+        was?.remove();
+        if (was && was.dataset.k === b.dataset.ii) return;
+        const pop = document.createElement('div');
+        pop.className = 'ii-pop pq-lbx' + (theme() === 'dark' ? ' dark' : '');
+        pop.dataset.k = b.dataset.ii;
+        pop.innerHTML = infoHtml(b.dataset.ii);
+        document.body.appendChild(pop);
+        const r = b.getBoundingClientRect();
+        pop.style.left = Math.max(8, Math.min(innerWidth - pop.offsetWidth - 8, r.left - 12)) + 'px';
+        pop.style.top = (r.bottom + pop.offsetHeight + 8 > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
+      }));
+    }
+    document.addEventListener('click', (e) => { if (!e.target.closest('.ii-pop')) document.querySelector('.ii-pop')?.remove(); }, true);
 
     // ---------- ⚙ settings tab in the panel (per account, synced like Shift+8) ----------
     function setHtml() {
-      const row = (k, t, d) => `<label class="iv-set"><input type="checkbox" data-set="${k}" ${C[k] !== false ? 'checked' : ''}><span><b>${t}</b><small>${d}</small></span></label>`;
-      return `<h3>Settings</h3>
-        ${row('feed', 'Live feed', 'pop up when someone gets an epic or legendary crate')}
-        ${row('trades', 'Trade requests', 'others can send you trade requests (off = they get declined right away)')}
-        ${row('widget', 'My rank bottom right', 'the little card with your rank (after a reload)')}
-        <small class="sh-fine">saved for your account, also on other PCs</small>`;
+      const row = (k, t) => `<label class="iv-set"><span>${t}</span><input type="checkbox" data-set="${k}" ${C[k] !== false ? 'checked' : ''}></label>`;
+      return `<div class="iv-sets">${row('feed', 'Live drops')}${row('trades', 'Trade requests')}${row('widget', 'Rank card')}</div>`;
     }
     function wireSet(ov) {
       ov.querySelectorAll('[data-set]').forEach((b) => (b.onchange = () => { C[b.dataset.set] = b.checked; saveCfg(CFG); }));
