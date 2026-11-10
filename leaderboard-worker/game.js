@@ -32,6 +32,11 @@ export const SKINS = [
   { id: 'celestial', name: 'Celestial', price: 60000, crateOnly: true },
 ];
 export const PICK_LOC = 3, PICK_ITEM = 0.2;
+export const PITY = 3000;          // this many rolls without a rare or better = a rare crate for sure
+export const STREAK_GOAL = 100;    // points in a day (packing + picking) to keep your streak
+export const HIT_COOLDOWN = 120;   // min: the same person can't be frozen (or skin off'd) again for this long
+export const FEED_TIERS = ['epic', 'legendary'];
+const TRADE_TTL = { pending: 10 * 60000, open: 20 * 60000, done: 3 * 60000, closed: 3 * 60000 };
 // drop chance per packed picklist (a picked batch counts as 3 rolls). 1 in N.
 export const TIERS = [
   { id: 'legendary', name: 'Legendary', one: 30000 },
@@ -85,24 +90,44 @@ export function earn(st, id, amount, now) {
   a.coins = r3(a.coins + x);
   return x;
 }
-// maybe a crate drops (rolls = how many tries)
+// maybe a crate drops (rolls = how many tries) · pity: PITY rolls in a row without rare or better = a rare
+function giveCrate(st, id, tier, now, rnd, pity) {
+  const a = acct(st, id), t = TIERS.find((x) => x.id === tier);
+  a.inv = a.inv || [];
+  const uid = `${now.toString(36)}${Math.floor(rnd() * 1e6).toString(36)}`;
+  a.inv.push({ uid, kind: 'crate', tier, at: now });
+  a.news = (a.news || []).concat({ at: now, kind: 'crate', tier, one: t.one, uid, ...(pity ? { pity: true } : {}) }).slice(-20);
+  st.log = (st.log || []).concat({ at: now, id, what: `${t.name} crate${pity ? ' (pity)' : ''}` }).slice(-50);
+  if (FEED_TIERS.includes(tier)) st.feed = (st.feed || []).concat({ at: now, id, tier }).slice(-20);
+  return uid;
+}
 function rollDrop(st, id, rolls, now, rnd) {
   const a = acct(st, id);
   for (let i = 0; i < rolls; i++) {
     const x = rnd();
-    let acc = 0;
-    for (const t of TIERS) {
-      acc += 1 / t.one;
-      if (x < acc) {
-        a.inv = a.inv || [];
-        const uid = `${now.toString(36)}${Math.floor(rnd() * 1e6).toString(36)}`;
-        a.inv.push({ uid, kind: 'crate', tier: t.id, at: now });
-        a.news = (a.news || []).concat({ at: now, kind: 'crate', tier: t.id, one: t.one, uid }).slice(-20);
-        st.log = (st.log || []).concat({ at: now, id, what: `${t.name} crate` }).slice(-50);
-        break;
-      }
-    }
+    let acc = 0, got = null;
+    for (const t of TIERS) { acc += 1 / t.one; if (x < acc) { got = t.id; break; } }
+    a.dry = (a.dry || 0) + 1;
+    if (got) { giveCrate(st, id, got, now, rnd); if (['rare', 'epic', 'legendary'].includes(got)) a.dry = 0; }
+    else if (a.dry >= PITY) { giveCrate(st, id, 'rare', now, rnd, true); a.dry = 0; }
   }
+}
+// streak: hit STREAK_GOAL points in a day. Days you didn't work at all don't break it, a worked day under the goal does.
+const dayTotal = (st, d, id) => (((st.days[d] || {})[id] || {}).points || 0) + ((((st.pdays || {})[d] || {})[id] || {}).points || 0);
+export function streakCheck(st, id, today, now, rnd = Math.random) {
+  const a = acct(st, id);
+  if (a.streakDay === today || dayTotal(st, today, id) < STREAK_GOAL) return null;
+  const worked = [...new Set([...Object.keys(st.days), ...Object.keys(st.pdays || {})])].filter((d) => d < today && dayTotal(st, d, id) > 0).sort();
+  const prev = worked[worked.length - 1];
+  a.streak = (prev ? prev === a.streakDay : !!a.streakDay) ? (a.streak || 0) + 1 : 1;
+  a.streakDay = today;
+  a.streakBest = Math.max(a.streakBest || 0, a.streak);
+  const coins = Math.min(500, 50 * a.streak);
+  a.coins = r3(a.coins + coins);
+  const tier = a.streak % 10 === 0 ? 'rare' : a.streak % 5 === 0 ? 'uncommon' : null;
+  if (tier) giveCrate(st, id, tier, now, rnd);
+  a.news = (a.news || []).concat({ at: now + 1, kind: 'streak', n: a.streak, coins, tier }).slice(-20);
+  return a.streak;
 }
 const acct = (st, id) => (st.acct[id] = st.acct[id] || { coins: 0, spent: 0, owned: [], skin: null, kingTotal: 0, kingBest: 0, picklists: 0 });
 const dayRow = (st, d, id) => { st.days[d] = st.days[d] || {}; return (st.days[d][id] = st.days[d][id] || { n: 0, multis: 0, singles: 0, points: 0, kingMin: 0 }); };
@@ -150,6 +175,7 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rn
     earn(st, id, pt.pts, now); a.picklists++;
     a.points = r3(a.points + pt.pts);
     rollDrop(st, id, 1, now, rnd);
+    if (d === today) streakCheck(st, id, today, now, rnd);
   }
   const people = [...by.values()].sort((a, b) => b.points - a.points || b.picklists - a.picklists);
   // king of the hill
@@ -177,7 +203,8 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rn
   for (const d of Object.keys(st.hours).sort().slice(0, -120)) delete st.hours[d];
   for (const d of Object.keys(st.pdays).sort().slice(0, -8)) delete st.pdays[d];
   if (st.event && st.event.until <= now) st.event = null;
-  st.board = { at: now, min, wh, people, event: st.event ? { until: st.event.until, by: st.event.by } : null, king: st.king ? { id: st.king.id, since: st.king.since, min: Math.floor((now - st.king.since) / 60000) } : null };
+  st.feed = (st.feed || []).filter((x) => now - x.at < 6 * 3600000);
+  st.board = { at: now, min, wh, people, feed: st.feed, event: st.event ? { until: st.event.until, by: st.event.by } : null, king: st.king ? { id: st.king.id, since: st.king.since, min: Math.floor((now - st.king.since) / 60000) } : null };
   return st.board;
 }
 
@@ -213,6 +240,8 @@ export function profile(st, id, today, now = Date.now()) {
     inv: a.inv || [], news: a.news || [], items: ITEMS, tiers: TIERS,
     effects: { frozenUntil: a.frozenUntil || 0, skinOffUntil: a.skinOffUntil || 0, boostUntil: a.boostUntil || 0, shieldUntil: a.shieldUntil || 0 },
     event: st.event && st.event.until > now ? st.event : null,
+    streak: { n: a.streak || 0, day: a.streakDay || null, best: a.streakBest || 0, goal: STREAK_GOAL, today: r3(dayTotal(st, today, id)) },
+    pity: { dry: a.dry || 0, at: PITY }, cooldown: HIT_COOLDOWN, trades: tradesFor(st, id, now),
     king: st.king && st.king.id === id ? { min: Math.floor((Date.now() - st.king.since) / 60000) } : null,
     week, skins: shop(st), crate: crateInfo(st, a), crates: a.crates || 0,
   };
@@ -311,6 +340,7 @@ export function pickTick(st, batches, { now, today, proxies = [], rnd = Math.ran
     earn(st, id, pt.points, now);
     st.precent.push({ id, at: now, points: pt.points });
     rollDrop(st, id, 3, now, rnd);
+    if (d === today) streakCheck(st, id, today, now, rnd);
   }
   st.pseen = st.pseen.slice(-600);
   st.precent = st.precent.filter((x) => now - x.at < 2 * 3600000);
@@ -377,8 +407,11 @@ export function useItem(st, id, uid, target, now) {
     if (!target || target === id) return { err: 'pick someone else' };
     if (!st.acct[target]) return { err: 'that person has no account here yet' };
     const t = acct(st, target);
+    const last = (t.hitAt || {})[item] || 0;
+    if (now - last < HIT_COOLDOWN * 60000) return { err: `they already got a ${def.name} ${Math.floor((now - last) / 60000)} min ago · again in ${Math.ceil((last + HIT_COOLDOWN * 60000 - now) / 60000)} min` };
     a.inv.splice(i, 1);
     if (t.shieldUntil > now) { t.shieldUntil = 0; t.news = (t.news || []).concat({ at: now, kind: 'blocked', item, from: id }).slice(-20); return { ok: true, blocked: true }; }
+    t.hitAt = { ...(t.hitAt || {}), [item]: now };
     if (item === 'freeze') t.frozenUntil = Math.max(t.frozenUntil || 0, until);
     if (item === 'skinoff') t.skinOffUntil = Math.max(t.skinOffUntil || 0, until);
     t.news = (t.news || []).concat({ at: now, kind: 'hit', item, from: id, until }).slice(-20);
@@ -391,4 +424,88 @@ export function useItem(st, id, uid, target, now) {
   if (item === 'double') st.event = { kind: 'double', until: Math.max((st.event && st.event.until) || 0, now) + def.min * 60000, by: id };
   st.log = (st.log || []).concat({ at: now, id, what: def.name }).slice(-50);
   return { ok: true, until };
+}
+
+// ---------- trading: request → the other accepts → both put things in → both agree → swap ----------
+const side = () => ({ coins: 0, uids: [], skins: [] });
+function tradeClean(st, now) {
+  st.trades = st.trades || {};
+  for (const t of Object.values(st.trades)) if (now - t.touched > (TRADE_TTL[t.status] || 60000)) delete st.trades[t.id];
+}
+function sideView(st, owner, o) {
+  const a = st.acct[owner] || { inv: [] };
+  return { coins: o.coins, skins: o.skins, items: o.uids.map((u) => (a.inv || []).find((x) => x.uid === u)).filter(Boolean) };
+}
+export function tradesFor(st, id, now) {
+  tradeClean(st, now);
+  return Object.values(st.trades).filter((t) => t.from === id || t.to === id).map((t) => ({
+    id: t.id, from: t.from, to: t.to, status: t.status, why: t.why || '', at: t.at, ok: t.ok,
+    offer: { [t.from]: sideView(st, t.from, t.offer[t.from]), [t.to]: sideView(st, t.to, t.offer[t.to]) },
+  }));
+}
+function checkSide(st, owner, other, o) {
+  const a = acct(st, owner), b = acct(st, other);
+  if (!(o.coins >= 0) || o.coins > r3(a.coins - a.spent)) return 'not enough coins';
+  for (const u of o.uids) if (!(a.inv || []).some((x) => x.uid === u)) return 'an item is not there anymore';
+  for (const s of o.skins) {
+    if (!(a.owned || []).includes(s)) return 'a skin is not there anymore';
+    if ((b.owned || []).includes(s)) return `they already have ${(SKINS.find((x) => x.id === s) || {}).name || s}`;
+  }
+  return '';
+}
+export function tradeOp(st, id, op, b, now) {
+  ensure(st);
+  tradeClean(st, now);
+  id = String(id);
+  if (op === 'request') {
+    const to = String(b.to || '');
+    if (!to || to === id) return { err: 'pick someone else' };
+    if (!st.acct[to]) return { err: 'that person has no account here yet' };
+    const busy = Object.values(st.trades).find((t) => ['pending', 'open'].includes(t.status) && [t.from, t.to].includes(id) && [t.from, t.to].includes(to));
+    if (busy) return { ok: true, trade: busy.id };
+    if (Object.values(st.trades).filter((t) => t.from === id && t.status === 'pending').length >= 3) return { err: 'you already have 3 requests waiting' };
+    const tid = `t${now.toString(36)}${Math.floor(Math.random() * 1e5).toString(36)}`;
+    st.trades[tid] = { id: tid, from: id, to, status: 'pending', at: now, touched: now, offer: { [id]: side(), [to]: side() }, ok: {} };
+    return { ok: true, trade: tid };
+  }
+  const t = st.trades[String(b.trade || '')];
+  if (!t || (t.from !== id && t.to !== id)) return { err: 'that trade is gone' };
+  const other = t.from === id ? t.to : t.from;
+  t.touched = now;
+  if (op === 'accept') {
+    if (t.to !== id || t.status !== 'pending') return { err: 'cannot accept that' };
+    t.status = 'open';
+    return { ok: true };
+  }
+  if (op === 'decline' || op === 'cancel') {
+    if (!['pending', 'open'].includes(t.status)) return { ok: true };
+    t.status = 'closed';
+    t.why = `${op === 'decline' ? 'declined' : 'cancelled'}:${id}`;
+    return { ok: true };
+  }
+  if (t.status !== 'open') return { err: 'the trade is not open' };
+  if (op === 'offer') {
+    const o = { coins: Math.max(0, Math.round(Number(b.coins) || 0)), uids: [...new Set((b.uids || []).map(String))].slice(0, 30), skins: [...new Set((b.skins || []).map(String))].slice(0, 20) };
+    const e = checkSide(st, id, other, o);
+    if (e) return { err: e };
+    t.offer[id] = o;
+    t.ok = {};
+    return { ok: true };
+  }
+  if (op === 'ok') {
+    t.ok[id] = true;
+    if (!t.ok[other]) return { ok: true };
+    const e = checkSide(st, t.from, t.to, t.offer[t.from]) || checkSide(st, t.to, t.from, t.offer[t.to]);
+    if (e) { t.ok = {}; return { err: e }; }
+    for (const [g, r] of [[t.from, t.to], [t.to, t.from]]) {
+      const o = t.offer[g], A = acct(st, g), B = acct(st, r);
+      if (o.coins) { A.spent = r3(A.spent + o.coins); B.coins = r3(B.coins + o.coins); }
+      for (const u of o.uids) { const i = A.inv.findIndex((x) => x.uid === u); if (i >= 0) { B.inv = B.inv || []; B.inv.push({ ...A.inv[i], at: now }); A.inv.splice(i, 1); } }
+      for (const s of o.skins) { A.owned = A.owned.filter((x) => x !== s); if (A.skin === s) A.skin = null; if (!B.owned.includes(s)) B.owned.push(s); }
+    }
+    t.status = 'done';
+    st.log = (st.log || []).concat({ at: now, id: t.from, what: `traded with ${t.to}` }).slice(-50);
+    return { ok: true, done: true };
+  }
+  return { err: 'unknown' };
 }

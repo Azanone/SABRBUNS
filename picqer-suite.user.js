@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.53
+// @version      3.54
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.53';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.54';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -280,6 +280,8 @@
       { k: 'warehouse', label: 'Only this warehouse (name or id, empty = all)', type: 'text', def: 'Bunsenstraat' },
       { k: 'widget', label: 'Show my rank bottom right', type: 'bool', def: true },
       { k: 'theme', label: 'Look: auto, light or dark', type: 'text', def: 'auto' },
+      { k: 'feed', label: 'Live feed: pop up when someone gets an epic or legendary crate', type: 'bool', def: true },
+      { k: 'trades', label: 'Others can send me trade requests', type: 'bool', def: true },
     ]},
     { id: 'cardColor', title: 'Product colors', hint: 'colored bar per exact product code · colors in Shift+8 → Colors', fields: [
       { k: 'qtyBadge', label: 'Show "2x" badge when more than 1', type: 'bool', def: true },
@@ -5194,7 +5196,7 @@
             const r = await fetch(`${URL_}/leaderboard`, { credentials: 'omit', cache: 'no-store' });
             const j = await r.json();
             if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
-            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop';
+            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed);
           } catch (e) { console.info('[leaderboard] middle stop:', e.message, '· asking Picqer myself'); }
         }
         if (!people) {
@@ -5557,7 +5559,8 @@
           ${tile(t.n || 0, 'closed today')}${tile(fmt(t.points), 'points today')}${tile(`${t.multis || 0} / ${t.singles || 0}`, 'multi / single')}${tile((t.kingMin || 0) + ' min', 'king today')}
           ${tile(fmt((p.pickToday || {}).points), 'pick points today')}${tile(int((p.pickToday || {}).batches), 'batches today')}${tile(int((p.pickToday || {}).locations), 'locations today')}${tile(int((p.pickToday || {}).items), 'products picked today')}
           ${tile(int(p.picklists), 'closed in total')}${tile(fmt(p.pickPoints), 'pick points in total')}${tile(int(p.batches), 'batches in total')}${tile(int(p.spent), 'coins spent')}
-          ${tile((p.kingTotal || 0) + ' min', 'king in total')}${tile((p.kingBest || 0) + ' min', 'longest streak')}${tile(int(p.coins), 'coins earned in total')}${tile(int(p.crates || 0), 'skin crates opened')}
+          ${tile((p.kingTotal || 0) + ' min', 'king in total')}${tile((p.kingBest || 0) + ' min', 'longest king streak')}${tile(int(p.coins), 'coins earned in total')}${tile(int(p.crates || 0), 'skin crates opened')}
+          ${tile('🔥 ' + ((p.streak || {}).n || 0), 'day streak')}${tile((p.streak || {}).best || 0, 'best streak')}${tile(`${fmt((p.streak || {}).today)} / ${(p.streak || {}).goal || 100}`, 'streak goal today')}${tile(`${int((p.pity || {}).dry)} / ${int((p.pity || {}).at || 3000)}`, 'rolls to a sure rare crate')}
         </div>
         <h3>Last days</h3>
         <div class="pf-week">${(p.week || []).map((w) => `<div title="${escHtml(w.day)} · ${fmt(w.points)} pts · ${w.n} closed"><i style="height:${Math.round(((w.points || 0) / maxW) * 48)}px"></i>${escHtml(w.day.slice(8, 10))}</div>`).join('')}</div>
@@ -5576,13 +5579,13 @@
       const status = p.king ? `👑 king right now · ${p.king.min} min` : p.rankToday ? `#${p.rankToday} today of ${p.ofToday}` : 'nothing closed yet today';
       ov.innerHTML = `<div class="lb-panel sh-panel">
         <div class="sh-top">
-          <div><h2>${pfTab === 'shop' ? 'Shop' : pfTab === 'inv' ? 'Inventory' : nm}</h2><div class="lb-meta" style="margin:2px 0 0">${nm} · ${status}</div></div>
-          <div class="lb-tabs"><button data-pt="inv" class="${pfTab === 'inv' ? 'on' : ''}">🎒 Inventory${(p.inv || []).length ? ` · ${(p.inv || []).length}` : ''}</button><button data-pt="stats" class="${pfTab === 'stats' ? 'on' : ''}">📊 Stats</button><button data-pt="shop" class="${pfTab === 'shop' ? 'on' : ''}">🛒 Shop</button></div>
+          <div><h2>${pfTab === 'shop' ? 'Shop' : pfTab === 'inv' ? 'Inventory' : pfTab === 'set' ? 'Settings' : nm}</h2><div class="lb-meta" style="margin:2px 0 0">${nm} · ${status}</div></div>
+          <div class="lb-tabs"><button data-pt="inv" class="${pfTab === 'inv' ? 'on' : ''}">🎒 Inventory${(p.inv || []).length ? ` · ${(p.inv || []).length}` : ''}</button><button data-pt="stats" class="${pfTab === 'stats' ? 'on' : ''}">📊 Stats</button><button data-pt="shop" class="${pfTab === 'shop' ? 'on' : ''}">🛒 Shop</button><button data-pt="set" class="${pfTab === 'set' ? 'on' : ''}" title="Settings">⚙</button></div>
           <div class="sh-coins"><b>${int(p.balance)}</b><span>coins</span></div>
           <button class="sh-x" data-pf-close title="Esc">✕</button>
         </div>
         ${note ? `<div class="sh-note">${escHtml(note)}</div>` : ''}
-        ${pfTab === 'inv' ? invHtml(p) : pfTab === 'stats' ? statsHtml(p) : `<div class="sh-body">
+        ${pfTab === 'inv' ? invHtml(p) : pfTab === 'stats' ? statsHtml(p) : pfTab === 'set' ? setHtml() : `<div class="sh-body">
           <div class="sh-left"><h3>Skins</h3><div class="sh-grid">${(p.skins || []).map((s) => skinCard(p, s)).join('')}</div>
             <small class="sh-fine">skins change Picqer for your account · dark skins make all of Picqer dark</small></div>
           <div class="sh-right"><h3>Crate</h3>${crateHtml(p)}</div>
@@ -5591,6 +5594,7 @@
       ov.querySelector('[data-pf-close]').onclick = () => close('pq-pf-ov');
       ov.querySelectorAll('[data-pt]').forEach((b) => (b.onclick = () => { pfTab = b.dataset.pt; aimUid = null; showProfile(); }));
       if (pfTab === 'inv') wireInv(ov);
+      if (pfTab === 'set') wireSet(ov);
       ov.querySelector('[data-crate]')?.addEventListener('click', (e) => openCrate(e.currentTarget));
       // park the idle reel somewhere in the middle
       const idle = ov.querySelector('.cr-strip');
@@ -5696,7 +5700,7 @@
     const LS_PROF = 'pqsuite_prof_v1', LS_NEWS = 'pqsuite_news_seen_v1';
     const fmt3 = (x) => (Math.round((+x || 0) * 1000) / 1000).toLocaleString('nl-NL');
     const tierName = (t) => (((prof && prof.tiers) || []).find((x) => x.id === t) || {}).name || (t ? t[0].toUpperCase() + t.slice(1) : '');
-    const tierOne = (t) => (((prof && prof.tiers) || []).find((x) => x.id === t) || {}).one || 0;
+    const tierOne = (t) => (((prof && prof.tiers) || []).find((x) => x.id === t) || {}).one || ({ common: 150, uncommon: 500, rare: 2000, epic: 8000, legendary: 30000 })[t] || 0;
     const itemDef = (k) => ((prof && prof.items) || {})[k] || { name: k || '?', desc: '' };
     const leftTxt = (until) => { const m = Math.max(1, Math.ceil((until - Date.now()) / 60000)); return m >= 90 ? `${Math.round(m / 60)} h` : `${m} min`; };
     const agoTxt = (t) => { const m = Math.floor((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`; };
@@ -5765,6 +5769,50 @@
       .sh .iv-ppl button:hover{background:var(--hi)}
       .sh .iv-ppl button small{color:var(--mut);font-weight:500}
       .sh .iv-ppl .hide{display:none}
+      .sh .iv-streak{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--soft);display:flex;flex-direction:column;gap:7px}
+      .sh .iv-streak b{display:block;font:800 15px system-ui,sans-serif}
+      .sh .iv-streak small{color:var(--mut);font-size:11.5px}
+      .sh .iv-bar{height:7px;border-radius:999px;background:var(--line);overflow:hidden}
+      .sh .iv-bar i{display:block;height:100%;background:linear-gradient(90deg,#f97316,#facc15);border-radius:999px}
+      .sh .iv-trade{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}
+      .sh .iv-trade button{padding:7px 14px;border-radius:9px;border:1px solid var(--line);font:700 12.5px system-ui,sans-serif;cursor:pointer}
+      .sh .iv-trade small{color:var(--mut);font-size:11.5px}
+      .sh .iv-set{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--soft);cursor:pointer;margin-bottom:8px}
+      .sh .iv-set input{margin-top:3px;width:16px;height:16px;accent-color:#6366f1}
+      .sh .iv-set b{display:block;font:700 13.5px system-ui,sans-serif}
+      .sh .iv-set small{color:var(--mut);font-size:12px}
+      .pq-drop.feed{top:auto;bottom:90px;left:auto;right:16px;transform:none;animation:dpInR .6s cubic-bezier(.2,1.3,.4,1) both;padding:10px 18px 10px 12px}
+      .pq-drop.feed.out{animation:dpOutR .4s ease forwards}
+      .pq-drop.feed .dp-box{font-size:22px;width:38px;height:38px}
+      .pq-drop.feed .dp-t b{font-size:14.5px}
+      @keyframes dpInR{0%{opacity:0;transform:translateX(40px)}100%{opacity:1;transform:none}}
+      @keyframes dpOutR{to{opacity:0;transform:translateX(30px)}}
+      .pq-drop.tr-ask{cursor:default}
+      .pq-drop .tr-ab{display:flex;gap:6px;margin-left:8px}
+      .pq-drop .tr-ab button{padding:7px 12px;border-radius:8px;border:1px solid #2a2a38;background:#16161f;color:#fff;font:700 12.5px system-ui,sans-serif;cursor:pointer}
+      .pq-drop .tr-ab button.yes{background:#6366f1;border-color:#6366f1}
+      #pq-trade{z-index:2147483003}
+      #pq-trade .tr-panel{width:min(760px,100%)}
+      #pq-trade h2 span{font:700 18px system-ui,sans-serif}
+      #pq-trade .tr-cols,#pq-trade .tr-done{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px}
+      #pq-trade .tr-col{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--soft);min-width:0}
+      #pq-trade h3{font:700 13px system-ui,sans-serif;margin:0 0 8px}
+      #pq-trade h3.tr-sub{margin:12px 0 8px}
+      #pq-trade .tr-coins{display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:13px}
+      #pq-trade .tr-coins input{width:110px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:600 13px system-ui,sans-serif}
+      #pq-trade .tr-coins small{color:var(--mut)}
+      #pq-trade .tr-chips{display:flex;flex-wrap:wrap;gap:6px}
+      #pq-trade .tr-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:600 12px system-ui,sans-serif;cursor:pointer}
+      #pq-trade span.tr-chip{cursor:default}
+      #pq-trade .tr-chip.on{border-color:var(--r);box-shadow:0 0 0 1px var(--r) inset;background:color-mix(in srgb,var(--r) 14%,var(--bg))}
+      #pq-trade .tr-chip i{width:14px;height:14px;border-radius:4px;display:inline-block}
+      #pq-trade .tr-none{color:var(--mut);font-size:12px}
+      #pq-trade .tr-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px}
+      #pq-trade .tr-foot button{padding:9px 20px;border-radius:9px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:800 13px system-ui,sans-serif;cursor:pointer}
+      #pq-trade .tr-foot button.buy{background:#6366f1;border-color:#6366f1;color:#fff}
+      #pq-trade .tr-foot button:disabled{opacity:.6;cursor:default}
+      #pq-trade #tr-st{font:600 13px system-ui,sans-serif}
+      @media (max-width:640px){#pq-trade .tr-cols,#pq-trade .tr-done{grid-template-columns:1fr}}
       .sh .sh-only{position:absolute;top:6px;left:6px;z-index:1;font-style:normal;font:800 9.5px system-ui,sans-serif;letter-spacing:.05em;color:#fff;background:linear-gradient(90deg,#d32ce6,#eb4b4b);padding:2px 7px;border-radius:999px}
       .pq-lb-ov .lb-q{width:100%;box-sizing:border-box;margin:0 0 10px;padding:8px 11px;border-radius:9px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:500 13px system-ui,sans-serif;outline:none}
       .pq-lb-ov .lb-q:focus{border-color:#6366f1}
@@ -5834,6 +5882,7 @@
       lastBal = p.balance;
       headerBtn();
       newsCheck(p);
+      if (p.trades) handleTrades(p.trades);
       return p;
     }
     async function pollProf() {
@@ -5866,20 +5915,34 @@
       const who = escHtml(map[x.from] || 'someone');
       const el = document.createElement('div');
       el.className = 'pq-drop';
+      let open = 'inv';
       if (x.kind === 'crate') {
         el.classList.add('t-' + x.tier);
         el.style.setProperty('--r', TIER_COL[x.tier] || '#94a3b8');
-        el.innerHTML = `<div class="dp-box">${TIER_ICON[x.tier] || '📦'}</div><div class="dp-t"><small>crate dropped</small><b>${escHtml(tierName(x.tier))} crate</b><span>1/${int(x.one || tierOne(x.tier))}</span></div>`;
+        el.innerHTML = `<div class="dp-box">${TIER_ICON[x.tier] || '📦'}</div><div class="dp-t"><small>${x.pity ? 'pity crate · no rare in a long time' : 'crate dropped'}</small><b>${escHtml(tierName(x.tier))} crate</b><span>1/${int(x.one || tierOne(x.tier))}</span></div>`;
+      } else if (x.kind === 'feed') {
+        const fm = await names().catch(() => ({}));
+        el.classList.add('t-' + x.tier, 'feed');
+        el.style.setProperty('--r', TIER_COL[x.tier] || '#94a3b8');
+        el.innerHTML = `<div class="dp-box">${TIER_ICON[x.tier] || '🎁'}</div><div class="dp-t"><small>live drop</small><b>${escHtml(fm[x.id] || 'someone')} · ${escHtml(tierName(x.tier) || x.tier)} crate</b><span>1/${int(tierOne(x.tier))}</span></div>`;
+        open = null;
+      } else if (x.kind === 'streak') {
+        el.style.setProperty('--r', '#f97316');
+        el.innerHTML = `<div class="dp-box">🔥</div><div class="dp-t"><small>streak goal hit</small><b>Day ${int(x.n)} streak</b><span>+${int(x.coins)} coins${x.tier ? ` · ${escHtml(tierName(x.tier))} crate` : ''}</span></div>`;
+      } else if (x.kind === 'toast') {
+        el.style.setProperty('--r', '#6366f1');
+        el.innerHTML = `<div class="dp-t"><span>${escHtml(x.msg)}</span></div>`;
+        open = null;
       } else {
         const d = itemDef(x.item), blocked = x.kind === 'blocked';
         el.style.setProperty('--r', blocked ? '#10b981' : '#ef4444');
         const what = blocked ? 'your shield is used up' : x.item === 'freeze' ? `no coins for ${x.until ? leftTxt(x.until) : '20 min'}` : x.item === 'skinoff' ? `your skin is off for ${x.until ? leftTxt(x.until) : '30 min'}` : '';
         el.innerHTML = `<div class="dp-box">${blocked ? '🛡️' : ITEM_ICON[x.item] || '⚠️'}</div><div class="dp-t"><small>${blocked ? 'blocked' : 'you got hit'}</small><b>${who} · ${escHtml(d.name)}</b><span>${what}</span></div>`;
       }
-      el.title = 'click to open your inventory';
-      el.addEventListener('click', () => { el.remove(); openProfile('inv'); });
+      el.title = open ? 'click to open your inventory' : '';
+      el.addEventListener('click', () => { el.remove(); if (open) openProfile(open); });
       document.body.appendChild(el);
-      setTimeout(() => { el.classList.add('out'); setTimeout(() => { el.remove(); newsBusy = false; showNews(); }, 420); }, x.kind === 'crate' ? 5200 : 7000);
+      setTimeout(() => { el.classList.add('out'); setTimeout(() => { el.remove(); newsBusy = false; showNews(); }, 420); }, x.kind === 'toast' ? 4000 : x.kind === 'crate' || x.kind === 'feed' ? 5200 : 7000);
     }
 
     // ---------- Inventory tab: crates (open) and items (use) ----------
@@ -5898,19 +5961,20 @@
       const itemCard = (x) => { const d = itemDef(x.item); return `<div class="iv-c" style="--r:${ITEM_COL[x.item] || '#94a3b8'}"><div class="iv-ic">${ITEM_ICON[x.item] || '❔'}</div><b>${escHtml(d.name)}</b><small>${escHtml(d.desc)}</small><button class="${d.target ? 'buy' : 'wear'}" data-use="${escHtml(x.uid)}">${d.target ? 'Use on someone…' : 'Use'}</button></div>`; };
       let aim = '';
       if (aimUid) {
-        const x = items.find((i) => i.uid === aimUid);
+        const x = aimUid === 'TRADE' ? { item: '' } : items.find((i) => i.uid === aimUid);
         if (!x) aimUid = null;
         else {
-          const d = itemDef(x.item), ql = low(aimQ);
+          const d = aimUid === 'TRADE' ? { name: '🤝 Trade' } : itemDef(x.item), ql = low(aimQ);
           const ppl = ((tot && tot.list) || []).filter((r) => r.id !== ME_ID).slice().sort((a, b) => a.name.localeCompare(b.name));
-          aim = `<div class="iv-aim"><div class="iv-aim-h"><span>${ITEM_ICON[x.item] || ''} ${escHtml(d.name)} on who?</span><button class="sh-x" data-aim-x title="cancel">✕</button></div>
+          aim = `<div class="iv-aim"><div class="iv-aim-h"><span>${ITEM_ICON[x.item] || ''} ${escHtml(d.name)} ${aimUid === 'TRADE' ? 'with' : 'on'} who?</span><button class="sh-x" data-aim-x title="cancel">✕</button></div>
             <input class="iv-q" placeholder="Search a name…" value="${escHtml(aimQ)}">
             <div class="iv-ppl">${tot ? ppl.map((r) => `<button data-tg="${escHtml(r.id)}" data-n="${escHtml(low(r.name))}" class="${ql && !low(r.name).includes(ql) ? 'hide' : ''}">${escHtml(r.name)}<small>${int(r.balance)} coins</small></button>`).join('') || '<div class="iv-empty">nobody yet</div>' : '<div class="iv-empty">Loading…</div>'}</div></div>`;
         }
       }
-      return `${p.event && p.event.until > now ? `<div class="iv-ev">✨ Double points event · x2 coins for everyone · ${leftTxt(p.event.until)} left</div>` : ''}
+      return `${streakHtml(p)}${p.event && p.event.until > now ? `<div class="iv-ev">✨ Double points event · x2 coins for everyone · ${leftTxt(p.event.until)} left</div>` : ''}
         ${eff.length ? `<div class="iv-eff">${eff.map(([t, u, k]) => `<span class="${k}">${t} · ${leftTxt(u)}</span>`).join('')}</div>` : ''}
         ${aim}
+        <div class="iv-trade"><button class="wear" data-trade>🤝 Trade with someone</button><small>you both put things in, both have to agree</small></div>
         <h3>Crates <small>${crates.length}</small></h3>
         ${crates.length ? `<div class="iv-grid">${crates.map(crateCard).join('')}</div>` : '<div class="iv-empty">No crates yet · every packed picklist has a small chance to drop one, a picked batch 3 chances</div>'}
         <h3>Items <small>${items.length}</small></h3>
@@ -5934,6 +5998,12 @@
         useIt(x.uid, null, b);
       }));
       ov.querySelector('[data-aim-x]')?.addEventListener('click', () => { aimUid = null; showProfile(); });
+      ov.querySelector('[data-trade]')?.addEventListener('click', () => {
+        aimUid = 'TRADE'; aimQ = '';
+        showProfile();
+        if (!tot || Date.now() - tot.at > 60000) loadTotals().then(() => { if (aimUid) showProfile(); });
+        setTimeout(() => document.querySelector('#pq-pf-ov .iv-q')?.focus(), 30);
+      });
       const q = ov.querySelector('.iv-q');
       if (q) q.addEventListener('input', () => {
         aimQ = q.value;
@@ -5941,9 +6011,10 @@
         ov.querySelectorAll('.iv-ppl [data-n]').forEach((r) => r.classList.toggle('hide', !!ql && !r.dataset.n.includes(ql)));
       });
       ov.querySelectorAll('[data-tg]').forEach((b) => (b.onclick = () => {
+        const nm = b.firstChild ? b.firstChild.textContent : b.dataset.tg;
+        if (aimUid === 'TRADE') { tradeRequest(b.dataset.tg, nm); return; }
         const x = ((prof && prof.inv) || []).find((i) => i.uid === aimUid);
         if (!x) return;
-        const nm = b.firstChild ? b.firstChild.textContent : b.dataset.tg;
         if (!confirm(`Use ${itemDef(x.item).name} on ${nm}?`)) return;
         useIt(x.uid, b.dataset.tg, b, nm);
       }));
@@ -6000,6 +6071,190 @@
       rv.querySelectorAll('[data-rv]').forEach((b) => (b.onclick = () => done(b.dataset.rv === 'wear')));
       rv.addEventListener('click', (e) => { if (e.target === rv) done(false); });
     }
+
+
+    // ---------- live feed: everyone sees epic + legendary drops (turn off in 🪙 → ⚙) ----------
+    const LS_FEED = 'pqsuite_feed_seen_v1';
+    function feedCheck(feed) {
+      if (!Array.isArray(feed) || !feed.length) return;
+      const seen = +lsGet(LS_FEED, 0) || 0;
+      const max = Math.max(...feed.map((x) => x.at));
+      if (max <= seen) return;
+      lsSet(LS_FEED, max); // other tabs: already shown
+      if (C.feed === false) return;
+      feed.filter((x) => x.at > seen && Date.now() - x.at < 15 * 60000 && String(x.id) !== ME_ID && !proxies.has(String(x.id)))
+        .sort((a, b) => a.at - b.at).slice(-3).forEach((x) => newsQ.push({ ...x, kind: 'feed' }));
+      showNews();
+    }
+
+    // ---------- streak + pity (inventory top, stats tab) ----------
+    function streakHtml(p) {
+      const s = p.streak;
+      if (!s) return '';
+      const done = s.day === todayStr(), pct = Math.min(100, Math.round(((s.today || 0) / (s.goal || 100)) * 100));
+      return `<div class="iv-streak"><div><b>🔥 ${s.n || 0} day streak</b><small>${done ? `goal hit today ✓ · tomorrow day ${(s.n || 0) + 1}` : `${fmt(s.today)} / ${s.goal} points today (packing + picking)`} · best ${s.best || 0}</small></div>
+        <div class="iv-bar"><i style="width:${done ? 100 : pct}%"></i></div>
+        <small class="iv-fine">${done ? '' : `hit ${s.goal} to get +${int(Math.min(500, 50 * ((s.n || 0) + 1)))} coins · every 5th day a crate · days off don't break it`}</small></div>`;
+    }
+
+    // ---------- ⚙ settings tab in the panel (per account, synced like Shift+8) ----------
+    function setHtml() {
+      const row = (k, t, d) => `<label class="iv-set"><input type="checkbox" data-set="${k}" ${C[k] !== false ? 'checked' : ''}><span><b>${t}</b><small>${d}</small></span></label>`;
+      return `<h3>Settings</h3>
+        ${row('feed', 'Live feed', 'pop up when someone gets an epic or legendary crate')}
+        ${row('trades', 'Trade requests', 'others can send you trade requests (off = they get declined right away)')}
+        ${row('widget', 'My rank bottom right', 'the little card with your rank (after a reload)')}
+        <small class="sh-fine">saved for your account, also on other PCs</small>`;
+    }
+    function wireSet(ov) {
+      ov.querySelectorAll('[data-set]').forEach((b) => (b.onchange = () => { C[b.dataset.set] = b.checked; saveCfg(CFG); }));
+    }
+
+    // ---------- trading: request → they accept → both put things in → both agree → swap ----------
+    let trades = [], trWatch = null, trOpen = null, trMine = null, trSendT = null, trBusy = false, trDirty = false;
+    const trPrompted = new Set(), trSeenEnd = new Set();
+    const trOther = (t) => (t.from === ME_ID ? t.to : t.from);
+    async function tradePost(op, b) {
+      let j;
+      try { j = await post('trade', { id: ME_ID, op, ...b }); } catch (e) { j = { err: 'could not reach the middle stop' }; }
+      if (j.trades) handleTrades(j.trades);
+      return j;
+    }
+    async function tradeRequest(to, nm) {
+      const j = await tradePost('request', { to });
+      aimUid = null;
+      showProfile(j.err || `🤝 trade request sent to ${nm} · waiting for them to accept`);
+      watchTrades();
+    }
+    function watchTrades() {
+      if (trWatch) return;
+      trWatch = setInterval(async () => {
+        if (document.hidden && !trOpen) return;
+        try {
+          const j = await (await fetch(`${URL_}/trades?id=${ME_ID}`, { credentials: 'omit', cache: 'no-store' })).json();
+          if (j.trades) handleTrades(j.trades);
+        } catch (_) {}
+      }, 3000);
+    }
+    async function handleTrades(list) {
+      trades = list || [];
+      const live = trades.filter((t) => t.status === 'pending' || t.status === 'open');
+      if (!live.length && !trOpen && trWatch) { clearInterval(trWatch); trWatch = null; }
+      if (live.length) watchTrades();
+      const map = await names().catch(() => ({}));
+      for (const t of trades) {
+        const nm = map[trOther(t)] || `#${trOther(t)}`;
+        if (t.status === 'pending' && t.to === ME_ID && !trPrompted.has(t.id)) {
+          trPrompted.add(t.id);
+          if (C.trades === false) { tradePost('decline', { trade: t.id }); continue; }
+          tradeAsk(t, nm);
+        }
+        if (t.status === 'open' && (!trOpen || trOpen === t.id) && !trSeenEnd.has(t.id)) tradeWin(t, nm);
+        if ((t.status === 'closed' || t.status === 'done') && !trSeenEnd.has(t.id)) {
+          trSeenEnd.add(t.id);
+          document.querySelector(`.pq-drop[data-tr="${t.id}"]`)?.remove();
+          if (trOpen === t.id) tradeWin(t, nm);
+          else if (t.status === 'closed' && t.why && !t.why.endsWith(':' + ME_ID) && t.at > Date.now() - 20 * 60000) toast(`🤝 ${nm} ${t.why.startsWith('declined') ? 'declined' : 'cancelled'} the trade`);
+          else if (t.status === 'done' && t.at > Date.now() - 20 * 60000) toast(`🤝 trade with ${nm} done ✓`);
+        }
+      }
+    }
+    function toast(msg) {
+      newsQ.push({ kind: 'toast', msg, at: Date.now() });
+      showNews();
+    }
+    function tradeAsk(t, nm) {
+      const el = document.createElement('div');
+      el.className = 'pq-drop tr-ask';
+      el.dataset.tr = t.id;
+      el.style.setProperty('--r', '#6366f1');
+      el.innerHTML = `<div class="dp-box">🤝</div><div class="dp-t"><small>trade request</small><b>${escHtml(nm)}</b><span>wants to trade with you</span></div><div class="tr-ab"><button data-ta="no">Decline</button><button class="yes" data-ta="yes">Accept</button></div>`;
+      el.querySelectorAll('[data-ta]').forEach((b) => (b.onclick = async (e) => {
+        e.stopPropagation();
+        el.remove();
+        if (b.dataset.ta === 'yes') { const j = await tradePost('accept', { trade: t.id }); if (j.err) toast('🤝 ' + j.err); }
+        else tradePost('decline', { trade: t.id });
+      }));
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 5 * 60000);
+    }
+    const trItemTxt = (x) => (x.kind === 'crate' ? `${TIER_ICON[x.tier] || '📦'} ${tierName(x.tier)} crate` : `${ITEM_ICON[x.item] || '❔'} ${itemDef(x.item).name}`);
+    const trItemCol = (x) => (x.kind === 'crate' ? TIER_COL[x.tier] : ITEM_COL[x.item]) || '#94a3b8';
+    function trSideHtml(o) {
+      const bits = [];
+      if (o.coins) bits.push(`<span class="tr-chip on" style="--r:#e4ae39">🪙 ${int(o.coins)} coins</span>`);
+      (o.items || []).forEach((x) => bits.push(`<span class="tr-chip on" style="--r:${trItemCol(x)}">${escHtml(trItemTxt(x))}</span>`));
+      (o.skins || []).forEach((s) => bits.push(`<span class="tr-chip on" style="--r:${RARITY[s] || '#94a3b8'}"><i style="background:${(SKIN_LOOK[s] || {}).bg || '#334155'}"></i>${escHtml(nameOfSkin(s))}</span>`));
+      return bits.join('') || '<span class="tr-none">nothing yet</span>';
+    }
+    async function tradeWin(t, nm) {
+      let ov = document.getElementById('pq-trade');
+      const first = !ov || trOpen !== t.id;
+      if (first) {
+        if (!ov) {
+          ov = document.createElement('div');
+          ov.id = 'pq-trade';
+          ov.className = 'pq-lb-ov pq-lbx';
+          document.body.appendChild(ov);
+        }
+        ov.classList.toggle('dark', theme() === 'dark');
+        trOpen = t.id;
+        const mine = t.offer[ME_ID] || { coins: 0, items: [], skins: [] };
+        trMine = { coins: mine.coins || 0, uids: new Set((mine.items || []).map((x) => x.uid)), skins: new Set(mine.skins || []) };
+        try { await loadProfile(); } catch (_) {}
+        ov.innerHTML = `<div class="lb-panel tr-panel"><h2><span>🤝 Trade with ${escHtml(nm)}</span><button class="lb-gear" data-tw="x" title="cancel the trade">✕</button></h2>
+          <div class="lb-meta">put in what you give · both press Agree · changing anything resets Agree</div>
+          <div class="tr-cols"><div class="tr-col"><h3>You give</h3><label class="tr-coins">🪙 <input type="number" min="0" step="1" id="tr-c" value="${trMine.coins}"> <small>of ${int(prof ? prof.balance : 0)} coins</small></label><div id="tr-mine"></div></div>
+          <div class="tr-col"><h3>${escHtml(nm)} gives</h3><div id="tr-them" class="tr-chips"></div></div></div>
+          <div class="tr-foot"><div id="tr-st"></div><button class="buy" id="tr-ok">Agree</button></div></div>`;
+        ov.querySelector('[data-tw="x"]').onclick = () => { tradePost('cancel', { trade: t.id }); trClose(); };
+        ov.querySelector('#tr-ok').onclick = async (e) => { e.currentTarget.disabled = true; clearTimeout(trSendT); if (trDirty) await trSend(true); const j = await tradePost('ok', { trade: t.id }); if (j.err) trStatus(j.err); };
+        ov.querySelector('#tr-c').oninput = (e) => { trMine.coins = Math.max(0, Math.round(+e.target.value || 0)); trQueue(); };
+        trMineRender();
+      }
+      ov.querySelector('#tr-them').innerHTML = trSideHtml(t.offer[trOther(t)] || {});
+      const okMe = !!(t.ok || {})[ME_ID], okThem = !!(t.ok || {})[trOther(t)];
+      const btn = ov.querySelector('#tr-ok');
+      if (t.status === 'done') {
+        trSeenEnd.add(t.id);
+        ov.querySelector('.tr-panel').innerHTML = `<h2>🤝 Trade done ✓</h2><div class="tr-done"><div><h3>You got</h3><div class="tr-chips">${trSideHtml(t.offer[trOther(t)] || {})}</div></div><div><h3>You gave</h3><div class="tr-chips">${trSideHtml(t.offer[ME_ID] || {})}</div></div></div><div class="tr-foot"><span></span><button class="buy" data-tw="close">Nice</button></div>`;
+        ov.querySelector('[data-tw="close"]').onclick = trClose;
+        loadProfile().then(() => { if (document.getElementById('pq-pf-ov')) showProfile(); }).catch(() => {});
+        return;
+      }
+      if (t.status === 'closed') {
+        trSeenEnd.add(t.id);
+        const byMe = (t.why || '').endsWith(':' + ME_ID);
+        ov.querySelector('.tr-panel').innerHTML = `<h2>🤝 Trade stopped</h2><div class="lb-meta">${byMe ? 'you cancelled it' : `${escHtml(nm)} ${(t.why || '').startsWith('declined') ? 'declined' : 'cancelled'} it`}</div><div class="tr-foot"><span></span><button data-tw="close">Close</button></div>`;
+        ov.querySelector('[data-tw="close"]').onclick = trClose;
+        return;
+      }
+      if (btn && !trBusy) { btn.disabled = okMe; btn.textContent = okMe ? (okThem ? 'Swapping…' : 'Agreed ✓') : 'Agree'; }
+      trStatus(`${okMe ? '✅' : '⬜'} you · ${okThem ? '✅' : '⬜'} ${escHtml(nm)}`);
+    }
+    function trStatus(h) { const s = document.getElementById('tr-st'); if (s) s.innerHTML = h; }
+    function trMineRender() {
+      const box = document.getElementById('tr-mine');
+      if (!box || !prof) return;
+      const inv = prof.inv || [];
+      const owned = (prof.owned || []);
+      box.innerHTML = `<div class="tr-chips">${inv.map((x) => `<button class="tr-chip${trMine.uids.has(x.uid) ? ' on' : ''}" data-tu="${escHtml(x.uid)}" style="--r:${trItemCol(x)}">${escHtml(trItemTxt(x))}</button>`).join('') || '<span class="tr-none">no crates or items</span>'}</div>
+        <h3 class="tr-sub">Skins</h3><div class="tr-chips">${owned.map((s) => `<button class="tr-chip${trMine.skins.has(s) ? ' on' : ''}" data-ts="${escHtml(s)}" style="--r:${RARITY[s] || '#94a3b8'}"><i style="background:${(SKIN_LOOK[s] || {}).bg || '#334155'}"></i>${escHtml(nameOfSkin(s))}</button>`).join('') || '<span class="tr-none">no skins</span>'}</div>`;
+      box.querySelectorAll('[data-tu]').forEach((b) => (b.onclick = () => { const u = b.dataset.tu; trMine.uids.has(u) ? trMine.uids.delete(u) : trMine.uids.add(u); trMineRender(); trQueue(); }));
+      box.querySelectorAll('[data-ts]').forEach((b) => (b.onclick = () => { const s = b.dataset.ts; trMine.skins.has(s) ? trMine.skins.delete(s) : trMine.skins.add(s); trMineRender(); trQueue(); }));
+    }
+    function trQueue() { trDirty = true; clearTimeout(trSendT); trSendT = setTimeout(() => trSend(), 450); }
+    async function trSend(quiet) {
+      if (!trOpen || !trMine) return;
+      trBusy = true;
+      trDirty = false;
+      const j = await tradePost('offer', { trade: trOpen, coins: trMine.coins, uids: [...trMine.uids], skins: [...trMine.skins] });
+      trBusy = false;
+      if (j.err && !quiet) trStatus('⚠ ' + escHtml(j.err));
+      const btn = document.getElementById('tr-ok');
+      if (btn && !quiet) { btn.disabled = false; btn.textContent = 'Agree'; }
+    }
+    function trClose() { document.getElementById('pq-trade')?.remove(); trOpen = null; trMine = null; }
 
     // ---------- Ctrl+Alt+P: pick · pack · charts (TV: any Picqer link with #pickers) ----------
     let pkTab = 'pick', picks = null, picksErr = '', chDate = null, chData = null, chBusy = '', chErr = '', chAt = 0, pkTv = false, pkTimer = null;

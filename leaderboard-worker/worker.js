@@ -10,7 +10,7 @@
 //   PROXIES      text    user ids that never count, comma separated (optional)
 //   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
-import { newState, tick, profile, buy, equip, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem } from './game.js';
+import { newState, tick, profile, buy, equip, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
@@ -80,6 +80,13 @@ export class Game extends DurableObject {
     if (res.ok) await this.ctx.storage.put('state', st);
     return { ...res, profile: profile(st, id, amsNow().slice(0, 10)) };
   }
+  async trade(id, op, b) {
+    const st = await this.load();
+    const res = tradeOp(st, id, op, b, Date.now());
+    await this.ctx.storage.put('state', st);
+    return { ...res, trades: tradesFor(st, String(id), Date.now()) };
+  }
+  async trades(id) { return { trades: tradesFor(await this.load(), String(id), Date.now()) }; }
   async seenNews(id, at) { const st = await this.load(); const a = st.acct[String(id)]; if (a && a.news) { a.news = a.news.filter((x) => x.at > at); await this.ctx.storage.put('state', st); } return { ok: true }; }
   // Suite settings per Picqer account (own key each, so the game state stays small)
   async getSettings(id) { return (await this.ctx.storage.get('set:' + id)) || null; }
@@ -149,6 +156,16 @@ export default {
         const b = await req.json().catch(() => ({}));
         if (!/^\d+$/.test(String(b.id || '')) || !b.uid) return json({ err: 'id and uid needed' }, 400);
         return json(await game(env).inv(url.pathname.slice(1), String(b.id), String(b.uid), b.target ? String(b.target) : null));
+      }
+      if (url.pathname === '/trade' && req.method === 'POST') {
+        const b = await req.json().catch(() => ({}));
+        if (!/^\d+$/.test(String(b.id || '')) || !b.op) return json({ err: 'id and op needed' }, 400);
+        return json(await game(env).trade(String(b.id), String(b.op), b));
+      }
+      if (url.pathname === '/trades') {
+        const id = String(url.searchParams.get('id') || '');
+        if (!/^\d+$/.test(id)) return json({ err: 'id needed' }, 400);
+        return json(await game(env).trades(id));
       }
       if (url.pathname === '/seen' && req.method === 'POST') {
         const b = await req.json().catch(() => ({}));
