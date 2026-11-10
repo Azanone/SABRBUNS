@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.61
+// @version      3.62
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.61';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.62';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5009,7 +5009,7 @@
     sunset: { bg: 'linear-gradient(90deg,#7c2d12,#be185d)', accent: '#f97316' },
     carbon: { bg: 'repeating-linear-gradient(135deg,#141416 0 6px,#1c1c20 6px 12px)', accent: '#a1a1aa', dark: { th: 240, ah: 240, as: '6%', fx: 'full' } },
     aurora: { bg: 'radial-gradient(circle at 25% 20%,rgba(139,92,246,.45),transparent 50%),linear-gradient(90deg,#120f2e,#0b2a33 55%,#062a22)', accent: '#8b5cf6', dark: { th: 252, ah: 258, as: '90%', fx: 'full' } },
-    voidescent: { bg: 'radial-gradient(circle at 20% 30%,rgba(255,0,52,.35),transparent 45%),linear-gradient(90deg,#08080b,#1d040b)', accent: '#ff0034', dark: { th: 345, ah: 348, as: '100%', fx: 'full', stars: true } },
+    voidescent: { bg: 'radial-gradient(circle at 50% 50%,transparent 18%,rgba(255,0,52,.6) 21%,transparent 30%),radial-gradient(circle at 50% 50%,#000 20%,transparent 21%),linear-gradient(90deg,#08080b,#1d040b)', accent: '#ff0034', dark: { th: 345, ah: 348, as: '100%', fx: 'full', stars: true } },
     sakura: { bg: 'linear-gradient(90deg,#831843,#db2777)', accent: '#ec4899' },
     arctic: { bg: 'linear-gradient(90deg,#1e3a5f,#3b82f6)', accent: '#38bdf8' },
     emerald: { bg: 'linear-gradient(90deg,#03140e,#06281c)', accent: '#10b981', dark: { th: 160, ah: 160, as: '84%', fx: 'none' } },
@@ -5683,13 +5683,15 @@
         <div class="sh-sw" style="background:${look.bg}">${on ? '<span>✓</span>' : ''}</div>
         <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b></div>${btn}</div>`;
     }
-    function crateHtml(p) {
+    function spinHtml(p) {
       if (!p.crate) return '';
-      return `<div class="sh-crate">
-        <div class="sh-ct"><div class="sh-box">🎁</div><div><b>Skin crate</b></div>${ii('crate')}</div>
-        <div class="cr-win"><div class="cr-strip">${p.crate.odds.slice().reverse().concat(p.crate.odds).map((o) => reelCard(o.id)).join('')}</div><div class="cr-mark"></div></div>
-        <div class="cr-res"></div>
-        <div class="cr-btns"><button class="buy" data-crate ${p.balance < p.crate.price ? 'disabled' : ''}>🪙 ${int(p.crate.price)}</button></div>
+      const odds = p.crate.odds || [];
+      return `<div class="sp-card">
+        <div class="sp-box">🎁</div>
+        <div class="sp-name"><b>Skin crate</b>${ii('crate')}</div>
+        <div class="sp-row">${odds.slice().reverse().map((o) => `<i title="${escHtml(nameOfSkin(o.id))} · ${String(o.pct).replace('.', ',')}%" style="background:${(SKIN_LOOK[o.id] || {}).bg || '#334155'};--r:${RARITY[o.id] || '#94a3b8'}"></i>`).join('')}</div>
+        <button class="buy sp-go" data-crate ${p.balance < p.crate.price ? 'disabled' : ''}>🪙 ${int(p.crate.price)}</button>
+        <small>${int(p.crates || 0)} opened</small>
       </div>`;
     }
     const reelCard = (id) => { const look = SKIN_LOOK[id] || { bg: '#334155' }; return `<div class="cr-it" style="--r:${RARITY[id] || '#94a3b8'}"><div class="cr-sw" style="background:${look.bg}"></div><b>${escHtml(nameOfSkin(id))}</b></div>`; };
@@ -5720,15 +5722,15 @@
       const nInv = (p.inv || []).length;
       ov.innerHTML = `<div class="lb-panel sh-panel">
         <div class="sh-top">
-          <div class="lb-tabs">${T('inv', `Inventory${nInv ? ` <i class="sh-n">${nInv}</i>` : ''}`)}${T('pass', 'Pass')}${T('stats', 'Stats')}${T('shop', 'Shop')}${T('set', '⚙')}</div>
+          <div class="lb-tabs">${T('inv', `Inventory${nInv ? ` <i class="sh-n">${nInv}</i>` : ''}`)}${T('pass', 'Pass')}${T('spin', 'Spin')}${T('stats', 'Stats')}${T('shop', 'Shop')}${T('set', '⚙')}</div>
           <div class="sh-coins">🪙 <b>${int(p.balance)}</b></div>
           <button class="sh-x" data-pf-close title="Esc">✕</button>
         </div>
         ${note ? `<div class="sh-note">${escHtml(note)}</div>` : ''}
-        ${pfTab === 'inv' ? invHtml(p) : pfTab === 'pass' ? passHtml(p) : pfTab === 'stats' ? statsHtml(p) : pfTab === 'set' ? setHtml() : `<div class="sh-body">
-          <div class="sh-left"><h3>Skins ${ii('skins')}</h3><div class="sh-grid">${(p.skins || []).map((s) => skinCard(p, s)).join('')}</div></div>
-          <div class="sh-right"><h3>Crate</h3>${crateHtml(p)}</div>
-        </div>`}
+        ${pfTab === 'inv' ? invHtml(p) : pfTab === 'pass' ? passHtml(p) : pfTab === 'spin' ? spinHtml(p) : pfTab === 'stats' ? statsHtml(p) : pfTab === 'set' ? setHtml() : (() => {
+          const notMine = (p.skins || []).filter((s) => !(p.owned || []).includes(s.id));
+          return `<h3>Skins ${ii('skins')}</h3>${notMine.length ? `<div class="sh-grid">${notMine.map((s) => skinCard(p, s)).join('')}</div>` : '<div class="iv-empty">you own every skin</div>'}`;
+        })()}
       </div>`;
       ov.querySelector('[data-pf-close]').onclick = () => close('pq-pf-ov');
       ov.querySelectorAll('[data-pt]').forEach((b) => (b.onclick = () => { pfTab = b.dataset.pt; aimUid = null; showProfile(); }));
@@ -5750,76 +5752,40 @@
     }
     // ---------- crate: the middle stop picks the skin, then the reel spins to it (right side of the shop) ----------
     async function openCrate(btn) {
-      if (spinning) return;
+      if (spinning || invBusy) return;
       if (btn) btn.disabled = true;
+      spinning = true;
+      const rv = openStage('#a855f7', '🎁', 'Skin crate', '');
+      const t0 = Date.now();
       let j;
       try {
         const r = await fetch(`${URL_}/crate`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ME_ID }) });
         j = await r.json();
       } catch (e) { j = { err: 'could not reach the middle stop' }; }
-      if (!j.ok) { showProfile(j.err || 'crate failed'); return; }
-      const before = prof;
-      if (j.profile) setProf(j.profile);
-      spin(j, before);
-    }
-    function spin(j, before) {
-      const box = document.querySelector('#pq-pf-ov .sh-crate');
-      if (!box) { showProfile(); return; }
-      spinning = true;
-      const coins = document.querySelector('#pq-pf-ov .sh-coins b');
-      if (coins && prof) coins.textContent = int(prof.balance - (j.dup ? j.back : 0));
+      await new Promise((ok) => setTimeout(ok, Math.max(0, 900 - (Date.now() - t0))));
+      if (!j.ok) { rv.remove(); spinning = false; showProfile(j.err || 'crate failed'); return; }
+      // weighted like the real odds, so common ones flash by more often
       const odds = (prof && prof.crate && prof.crate.odds) || [];
-      const tot = odds.reduce((n, o) => n + o.pct, 0) || 1;
-      const pick = () => { let x = Math.random() * tot; for (const o of odds) { if (x < o.pct) return o.id; x -= o.pct; } return odds[0] ? odds[0].id : j.won; };
-      const N = 60, WIN = 52, W = 112;
-      const items = Array.from({ length: N }, (_, i) => (i === WIN ? j.won : i === WIN - 1 || i === WIN + 2 ? ['voidescent', 'carbon', 'crown'][Math.floor(Math.random() * 3)] : pick()));
-      const winEl = box.querySelector('.cr-win');
-      const old = box.querySelector('.cr-strip');
-      const strip = document.createElement('div');
-      strip.className = 'cr-strip go';
-      strip.innerHTML = items.map(reelCard).join('');
-      old.replaceWith(strip);
-      box.querySelector('.cr-res').textContent = '';
-      box.querySelector('.cr-btns').innerHTML = '';
-      box.classList.add('spin');
-      const stop = WIN * W + W / 2 - winEl.clientWidth / 2 + (Math.random() * 0.7 - 0.35) * (W - 14);
-      let done = false;
-      const finish = () => {
-        if (done) return; done = true;
-        spinning = false;
-        box.classList.remove('spin');
-        strip.style.transition = 'none';
-        strip.style.transform = `translate3d(${-stop}px,0,0)`;
-        strip.children[WIN].classList.add('won');
-        if (coins && prof) coins.textContent = int(prof.balance);
-        const nm = escHtml(nameOfSkin(j.won)), rare = ['voidescent', 'carbon', 'crown'].includes(j.won);
-        if (rare) box.classList.add('jackpot');
-        box.querySelector('.cr-res').innerHTML = (rare ? '<b class="cr-jp">🔥 JACKPOT 🔥</b><br>' : '') + (j.dup
-          ? `<b style="color:${RARITY[j.won]}">${nm}</b> · you already had it · <b>+${int(j.back)} coins</b>`
-          : `You got <b style="color:${RARITY[j.won]}">${nm}</b>!`);
+      const pool = [];
+      odds.forEach((o) => { for (let k = 0; k < Math.max(1, Math.round(o.pct / 4)); k++) pool.push(sfSkin(o.id)); });
+      const rare = ['voidescent', 'carbon', 'crown', 'neon', 'nebula'].includes(j.won);
+      rv.classList.add('sf');
+      shuffleTo(rv.querySelector('.rv-sf'), pool.length ? pool : [sfSkin(j.won)], sfSkin(j.won), () => {
+        if (j.profile) setProf(j.profile);
         const can = prof && prof.crate && prof.balance >= prof.crate.price;
-        box.querySelector('.cr-btns').innerHTML = `${!j.dup ? '<button class="wear" data-cr="wear">Wear it</button>' : ''}<button class="buy" data-cr="again" ${can ? '' : 'disabled'}>Again · 🪙 ${int((prof && prof.crate && prof.crate.price) || 0)}</button>`;
-        box.querySelectorAll('[data-cr]').forEach((b) => (b.onclick = async () => {
-          if (b.dataset.cr === 'wear') { const r = await change('equip', j.won).catch(() => ({})); showProfile(r.err || `wearing ${nameOfSkin(j.won)} ✓`); }
-          else { box.classList.remove('jackpot'); b.disabled = true; openCrate(null); }
-        }));
-        // the skins on the left (owned / balance) follow, without touching the reel
-        const left = document.querySelector('#pq-pf-ov .sh-grid');
-        if (left && prof) left.innerHTML = (prof.skins || []).map((s) => skinCard(prof, s)).join('');
-        document.querySelectorAll('#pq-pf-ov .sh-grid [data-pf]').forEach((b) => b.addEventListener('click', async () => {
-          const kind = b.dataset.pf === 'buy' ? 'buy' : 'equip';
-          const skin = b.dataset.pf === 'off' ? null : b.dataset.s;
-          if (b.dataset.pf === 'buy' && !confirm(`Buy ${nameOfSkin(skin)}?`)) return;
-          b.disabled = true;
-          const r = await change(kind, skin).catch(() => ({ err: 'could not reach the middle stop' }));
-          showProfile(r.err || '');
-        }));
-      };
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        strip.style.transform = `translate3d(${-stop}px,0,0)`;
-        strip.addEventListener('transitionend', finish, { once: true });
-        setTimeout(finish, 7500); // tab in the background: still finish
-      }));
+        if (rare) rv.classList.add('jackpot');
+        rv.querySelector('.rv-res').innerHTML = `<span>${j.dup ? `already yours · +${int(j.back)} coins` : 'yours now'}</span>
+          <div class="rv-btns">${!j.dup ? '<button class="go" data-rv="wear">Wear</button>' : ''}<button data-rv="again" ${can ? '' : 'disabled'}>Again · 🪙 ${int((prof && prof.crate && prof.crate.price) || 0)}</button><button data-rv="ok">Nice</button></div>`;
+        rv.classList.add('open');
+        const done = async (what) => {
+          rv.remove();
+          spinning = false;
+          if (what === 'wear') { const r = await change('equip', j.won).catch(() => ({})); showProfile(r.err || ''); }
+          else if (what === 'again') { showProfile(); openCrate(null); }
+          else showProfile();
+        };
+        rv.querySelectorAll('[data-rv]').forEach((b) => (b.onclick = () => done(b.dataset.rv)));
+      });
     }
     async function openProfile(tab) {
       if (document.getElementById('pq-pf-ov') && !tab) return close('pq-pf-ov');
@@ -5870,6 +5836,23 @@
       .iv-rev .rv-box{font-size:86px;filter:drop-shadow(0 0 34px var(--r));animation:rvShake .42s ease-in-out infinite}
       .iv-rev .rv-tier{font:800 22px system-ui,sans-serif;color:var(--r);letter-spacing:.08em;text-transform:uppercase}
       .iv-rev .rv-odds{color:#94a3b8;font:600 13px system-ui,sans-serif}
+      .iv-rev .rv-sf{display:none;width:200px;height:200px;border-radius:20px;background:#0b0b12;border:1px solid color-mix(in srgb,var(--r) 70%,transparent);box-shadow:0 0 60px color-mix(in srgb,var(--r) 40%,transparent);align-items:center;justify-content:center;transition:border-color .15s,box-shadow .15s}
+      .iv-rev.sf .rv-sf{display:flex}
+      .iv-rev.sf .rv-box,.iv-rev.sf .rv-odds{display:none}
+      .iv-rev.sf .rv-tier{display:block !important}
+      .iv-rev .sf-it{display:flex;flex-direction:column;align-items:center;gap:10px;animation:sfPop .16s cubic-bezier(.2,1.6,.4,1)}
+      .iv-rev .sf-it b{font:800 15px system-ui,sans-serif;color:#fff;text-align:center;max-width:180px}
+      .iv-rev .sf-ic{font-size:64px;line-height:1}
+      .iv-rev .sf-sw{width:130px;height:70px;border-radius:12px;border:1px solid rgba(255,255,255,.15)}
+      .iv-rev .sf-it.win{animation:sfWin .6s cubic-bezier(.2,1.6,.4,1)}
+      .iv-rev .sf-it.win b{color:var(--r);font-size:18px}
+      .iv-rev.open .rv-sf{transform:scale(1.06);box-shadow:0 0 90px color-mix(in srgb,var(--r) 60%,transparent);transition:transform .4s}
+      .iv-rev.jackpot .rv-sf{border-color:#fbbf24;box-shadow:0 0 0 2px #fbbf24,0 0 120px rgba(251,191,36,.55)}
+      .iv-rev .rv-res{display:none;flex-direction:column;align-items:center;gap:8px;min-height:70px}
+      .iv-rev.open .rv-res{display:flex;animation:rvIn .4s ease both}
+      .iv-rev .rv-res span{color:#cbd5e1;font-size:13px}
+      @keyframes sfPop{0%{transform:scale(.55);opacity:.2}100%{transform:scale(1);opacity:1}}
+      @keyframes sfWin{0%{transform:scale(.4)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
       .iv-rev .rv-got{display:none;flex-direction:column;align-items:center;gap:8px;min-width:240px;padding:24px 32px;border-radius:16px;background:#0b0b12;border:1px solid var(--r);box-shadow:0 0 70px color-mix(in srgb,var(--r) 45%,transparent);animation:rvIn .55s cubic-bezier(.2,1.4,.4,1) both;text-align:center}
       .iv-rev.open .rv-got{display:flex}
       .iv-rev.open .rv-box,.iv-rev.open .rv-tier,.iv-rev.open .rv-odds{display:none}
@@ -5881,6 +5864,7 @@
       .iv-rev .rv-btns{display:flex;gap:8px;margin-top:8px}
       .iv-rev button{padding:9px 18px;border-radius:9px;border:1px solid #2a2a38;background:#16161f;color:#fff;font:800 13px system-ui,sans-serif;cursor:pointer}
       .iv-rev button.go{background:linear-gradient(90deg,#6366f1,#a855f7);border:0}
+      .iv-rev button:disabled{opacity:.45;cursor:default}
       @keyframes rvShake{0%,100%{transform:rotate(0) scale(1)}25%{transform:rotate(-9deg) scale(1.07)}75%{transform:rotate(9deg) scale(1.07)}}
       @keyframes rvIn{0%{opacity:0;transform:scale(.55)}100%{opacity:1;transform:scale(1)}}
       .sh .iv-ev{margin:12px 0 0;padding:10px 14px;border-radius:10px;background:linear-gradient(90deg,#f59e0b,#ec4899);color:#fff;font:700 13px system-ui,sans-serif;box-shadow:0 6px 20px rgba(236,72,153,.3)}
@@ -6009,6 +5993,17 @@
       .sh .bp-t.next{outline:2px solid #e4ae39;outline-offset:1px}
       .sh .bp-track.locked .bp-t:not(.reach){opacity:.55}
       .pq-drop .dp-box .bp-sw{width:38px;height:24px;border-radius:6px;display:block}
+      .sh .sp-card{margin:28px auto 8px;max-width:360px;padding:28px 24px 20px;border-radius:18px;background:#0b0b12;color:#e2e8f0;border:1px solid #20202c;display:flex;flex-direction:column;align-items:center;gap:12px;box-shadow:inset 0 0 60px rgba(168,85,247,.12)}
+      .sh .sp-box{font-size:64px;line-height:1;filter:drop-shadow(0 0 24px rgba(168,85,247,.6));animation:spFloat 3s ease-in-out infinite}
+      .sh .sp-name{display:flex;align-items:center;gap:8px}
+      .sh .sp-name b{font:800 18px system-ui,sans-serif;color:#fff}
+      .sh .sp-card .ii{border-color:#2a2a38;background:#16161f;color:#94a3b8}
+      .sh .sp-row{display:flex;flex-wrap:wrap;justify-content:center;gap:5px;max-width:300px}
+      .sh .sp-row i{width:26px;height:16px;border-radius:4px;border-bottom:2px solid var(--r)}
+      .sh .sp-go{padding:11px 28px;border-radius:11px;border:0;font:800 14px system-ui,sans-serif;cursor:pointer;background:linear-gradient(90deg,#6366f1,#a855f7) !important;color:#fff;box-shadow:0 8px 24px rgba(139,92,246,.35)}
+      .sh .sp-go:disabled{opacity:.45;cursor:default}
+      .sh .sp-card small{color:#64748b;font-size:11.5px}
+      @keyframes spFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
       .sh .sh-only{position:absolute;top:6px;left:6px;z-index:1;font-style:normal;font:800 9.5px system-ui,sans-serif;letter-spacing:.05em;color:#fff;background:linear-gradient(90deg,#d32ce6,#eb4b4b);padding:2px 7px;border-radius:999px}
       .pq-lbx .pk-idle{color:#f97316;font-weight:700} .pq-lbx .pk-idle.bad{color:#ef4444}
       .pq-lb-ov .lb-row .nm small b{font-weight:600}
@@ -6184,7 +6179,9 @@
         <h3>Crates <small>${crates.length || ''}</small> ${ii('drops')}</h3>
         ${crates.length ? `<div class="iv-grid">${crates.map(crateCard).join('')}</div>` : '<div class="iv-empty">–</div>'}
         <h3>Items <small>${items.length || ''}</small> ${ii('items')}</h3>
-        ${items.length ? `<div class="iv-grid">${items.map(itemCard).join('')}</div>` : '<div class="iv-empty">–</div>'}`;
+        ${items.length ? `<div class="iv-grid">${items.map(itemCard).join('')}</div>` : '<div class="iv-empty">–</div>'}
+        <h3>Themes <small>${(p.owned || []).length || ''}</small></h3>
+        ${(p.owned || []).length ? `<div class="sh-grid">${(p.skins || []).filter((s) => (p.owned || []).includes(s.id)).map((s) => skinCard(p, s)).join('')}</div>` : '<div class="iv-empty">–</div>'}`;
     }
     function wireInv(ov) {
       ov.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => openDropCrate(b.dataset.open, b)));
@@ -6238,43 +6235,67 @@
       showProfile(j.err || (j.blocked ? `🛡️ ${nm || 'they'} had a shield · your ${d.name} got blocked` : target ? `${ITEM_ICON[x.item] || ''} ${d.name} used on ${nm} ✓` : `${ITEM_ICON[x.item] || ''} ${d.name} is on ✓`));
     }
     async function openDropCrate(uid, btn) {
-      if (invBusy) return;
+      if (invBusy || spinning) return;
       const x = ((prof && prof.inv) || []).find((i) => i.uid === uid);
       if (!x) return;
       invBusy = true;
       if (btn) btn.disabled = true;
-      const col = TIER_COL[x.tier] || '#94a3b8';
-      const rv = document.createElement('div');
-      rv.className = 'iv-rev';
-      rv.style.setProperty('--r', col);
-      rv.innerHTML = `<div class="rv-box">${TIER_ICON[x.tier] || '📦'}</div><div class="rv-tier">${escHtml(tierName(x.tier))} crate</div><div class="rv-odds">1/${int(tierOne(x.tier))}</div><div class="rv-got"></div>`;
-      document.body.appendChild(rv);
+      const rv = openStage(TIER_COL[x.tier] || '#94a3b8', TIER_ICON[x.tier] || '📦', `${tierName(x.tier)} crate`, `1/${int(tierOne(x.tier))}`);
       const t0 = Date.now();
       let j;
       try { j = await post('open', { id: ME_ID, uid }); } catch (e) { j = { err: 'could not reach the middle stop' }; }
-      await new Promise((ok) => setTimeout(ok, Math.max(0, 1600 - (Date.now() - t0))));
+      await new Promise((ok) => setTimeout(ok, Math.max(0, 1100 - (Date.now() - t0))));
       if (!j.ok) { rv.remove(); invBusy = false; showProfile(j.err || 'could not open it'); return; }
       const g = j.got || {};
-      let inner;
-      if (g.kind === 'coins') inner = `<div class="rv-ic">🪙</div><small>${escHtml(tierName(j.tier))} crate</small><b>+${int(g.coins)} coins</b>`;
-      else if (g.kind === 'skin') {
-        const look = SKIN_LOOK[g.skin] || { bg: '#334155' };
-        inner = `<div class="rv-sw" style="background:${look.bg}"></div><small>${escHtml(tierName(j.tier))} crate · skin</small><b>${escHtml(nameOfSkin(g.skin))}</b><span>${g.dup ? `you already had it · +${int(g.coins)} coins` : 'crate only skin · yours now'}</span>`;
-      } else {
-        const d = itemDef(g.item);
-        inner = `<div class="rv-ic">${ITEM_ICON[g.item] || '❔'}</div><small>${escHtml(tierName(j.tier))} crate · item</small><b>${escHtml(d.name)}</b><span>${escHtml(d.desc)}</span>`;
-      }
-      rv.querySelector('.rv-got').innerHTML = `${inner}<div class="rv-btns">${g.kind === 'skin' && !g.dup ? '<button class="go" data-rv="wear">Wear it</button>' : ''}<button data-rv="ok">Nice</button></div>`;
-      rv.classList.add('open');
-      if (j.profile) setProf(j.profile);
-      const done = async (wear) => {
-        rv.remove();
-        invBusy = false;
-        if (wear) { const r = await change('equip', g.skin).catch(() => ({ err: 'could not reach the middle stop' })); showProfile(r.err || `wearing ${nameOfSkin(g.skin)} ✓`); }
-        else showProfile();
+      const fin = g.kind === 'coins' ? sfCoins(g.coins) : g.kind === 'skin' ? sfSkin(g.skin) : sfItem(g.item);
+      const pool = (TIER_LOOT[x.tier] || TIER_LOOT.common).map((k) => (k.startsWith('c:') ? sfCoins(+k.slice(2)) : k.startsWith('s:') ? sfSkin(k.slice(2)) : sfItem(k)));
+      rv.classList.add('sf');
+      shuffleTo(rv.querySelector('.rv-sf'), pool, fin, () => {
+        if (j.profile) setProf(j.profile);
+        if (x.tier === 'legendary' || x.tier === 'epic' || g.kind === 'skin') rv.classList.add('jackpot');
+        const sub = g.kind === 'skin' ? (g.dup ? `already yours · +${int(g.coins)} coins` : 'drop only skin · yours now') : g.kind === 'item' ? escHtml(itemDef(g.item).desc) : '';
+        rv.querySelector('.rv-res').innerHTML = `${sub ? `<span>${sub}</span>` : ''}<div class="rv-btns">${g.kind === 'skin' && !g.dup ? '<button class="go" data-rv="wear">Wear</button>' : ''}<button data-rv="ok">Nice</button></div>`;
+        rv.classList.add('open');
+        const done = async (wear) => {
+          rv.remove();
+          invBusy = false;
+          if (wear) { const r = await change('equip', g.skin).catch(() => ({ err: 'could not reach the middle stop' })); showProfile(r.err || ''); }
+          else showProfile();
+        };
+        rv.querySelectorAll('[data-rv]').forEach((b) => (b.onclick = () => done(b.dataset.rv === 'wear')));
+      });
+    }
+    // ---------- opening: things pop up one after another, slower and slower, until it lands on what you get ----------
+    const TIER_LOOT = {
+      common: ['c:80', 'boost', 'shield', 'c:140'], uncommon: ['c:300', 'boost', 'shield', 'freeze', 'skinoff', 'c:450'],
+      rare: ['c:1200', 'freeze', 'skinoff', 'double', 's:phantom', 'c:1800'], epic: ['c:4000', 'double', 's:phantom', 's:inferno', 'c:5500'],
+      legendary: ['c:12000', 'double', 's:inferno', 's:celestial', 'c:18000'],
+    };
+    const sfCoins = (n) => ({ col: '#e4ae39', html: `<div class="sf-ic">🪙</div><b>${int(n)}</b>` });
+    const sfItem = (k) => ({ col: ITEM_COL[k] || '#94a3b8', html: `<div class="sf-ic">${ITEM_ICON[k] || '❔'}</div><b>${escHtml(itemDef(k).name)}</b>` });
+    const sfSkin = (id) => ({ col: RARITY[id] || '#94a3b8', html: `<div class="sf-sw" style="background:${(SKIN_LOOK[id] || {}).bg || '#334155'}"></div><b>${escHtml(nameOfSkin(id))}</b>` });
+    function openStage(col, icon, title, odds) {
+      const rv = document.createElement('div');
+      rv.className = 'iv-rev';
+      rv.style.setProperty('--r', col);
+      rv.innerHTML = `<div class="rv-box">${icon}</div><div class="rv-tier">${escHtml(title)}</div><div class="rv-odds">${escHtml(odds)}</div><div class="rv-sf"></div><div class="rv-res"></div>`;
+      document.body.appendChild(rv);
+      return rv;
+    }
+    function shuffleTo(box, pool, fin, done) {
+      let delay = 55, last = -1;
+      const show = (it, win) => { box.style.setProperty('--r', it.col); box.innerHTML = `<div class="sf-it${win ? ' win' : ''}">${it.html}</div>`; };
+      const step = () => {
+        if (!box.isConnected) return;
+        if (delay > 560) { show(fin, true); setTimeout(done, 700); return; }
+        let k;
+        do { k = Math.floor(Math.random() * pool.length); } while (pool.length > 1 && k === last);
+        last = k;
+        show(pool[k], false);
+        delay *= 1.16;
+        setTimeout(step, delay);
       };
-      rv.querySelectorAll('[data-rv]').forEach((b) => (b.onclick = () => done(b.dataset.rv === 'wear')));
-      rv.addEventListener('click', (e) => { if (e.target === rv) done(false); });
+      step();
     }
 
 
