@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.66
+// @version      3.67
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.66';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.67';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5552,7 +5552,7 @@
     function close(id) {
       document.getElementById(id)?.remove();
       if (id === 'pq-lb-ov') listOpen = false;
-      if (id === 'pq-pf-ov') aimUid = null;
+      if (id === 'pq-pf-ov') { aimUid = null; chatWatch(false); }
       if (id === 'pq-pk-ov') { clearInterval(pkTimer); pkTimer = null; pkTv = false; if (/^#pickers/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); }
     }
 
@@ -5706,6 +5706,7 @@
     function showProfile(note) {
       if (spinning) return;
       if (aimUid && document.activeElement && document.activeElement.classList.contains('iv-q') && !note) return; // typing a name: leave it
+      if (pfTab === 'chat' && !note && document.activeElement && document.activeElement.classList.contains('ch-q')) return;
       close('pq-lb-ov');
       const ov = overlay('pq-pf-ov');
       ov.classList.add('sh');
@@ -5717,12 +5718,12 @@
       const nInv = (p.inv || []).length;
       ov.innerHTML = `<div class="lb-panel sh-panel">
         <div class="sh-top">
-          <div class="lb-tabs">${T('inv', `Inventory${nInv ? ` <i class="sh-n">${nInv}</i>` : ''}`)}${T('pass', 'Pass')}${T('spin', 'Spin')}${T('stats', 'Stats')}${T('shop', 'Shop')}${T('set', '⚙')}</div>
+          <div class="lb-tabs">${T('inv', `Inventory${nInv ? ` <i class="sh-n">${nInv}</i>` : ''}`)}${T('chat', `Chat${unreadOf(p) ? ` <i class="sh-n">${unreadOf(p)}</i>` : ''}`)}${T('pass', 'Pass')}${T('spin', 'Spin')}${T('stats', 'Stats')}${T('shop', 'Shop')}${T('set', '⚙')}</div>
           <div class="sh-coins">🪙 <b>${int(p.balance)}</b></div>
           <button class="sh-x" data-pf-close title="Esc">✕</button>
         </div>
         ${note ? `<div class="sh-note">${escHtml(note)}</div>` : ''}
-        ${pfTab === 'inv' ? invHtml(p) : pfTab === 'pass' ? passHtml(p) : pfTab === 'spin' ? spinHtml(p) : pfTab === 'stats' ? statsHtml(p) : pfTab === 'set' ? setHtml() : (() => {
+        ${pfTab === 'inv' ? invHtml(p) : pfTab === 'chat' ? chatHtml(p) : pfTab === 'pass' ? passHtml(p) : pfTab === 'spin' ? spinHtml(p) : pfTab === 'stats' ? statsHtml(p) : pfTab === 'set' ? setHtml() : (() => {
           const notMine = (p.skins || []).filter((s) => !(p.owned || []).includes(s.id));
           return `<h3>Skins ${ii('skins')}</h3>${notMine.length ? `<div class="sh-grid">${notMine.map((s) => skinCard(p, s)).join('')}</div>` : '<div class="iv-empty">you own every skin</div>'}`;
         })()}
@@ -5732,6 +5733,7 @@
       if (pfTab === 'inv') wireInv(ov);
       if (pfTab === 'set') wireSet(ov);
       if (pfTab === 'pass') wirePass(ov);
+      if (pfTab === 'chat') wireChat(ov); else chatWatch(false);
       wireInfo(ov);
       ov.querySelector('[data-crate]')?.addEventListener('click', (e) => openCrate(e.currentTarget));
       // park the idle reel somewhere in the middle
@@ -6037,6 +6039,38 @@
       .sh .sp-go:disabled{opacity:.45;cursor:default}
       .sh .sp-card small{color:#64748b;font-size:11.5px}
       @keyframes spFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+      .sh .ch-wrap{display:grid;grid-template-columns:240px 1fr;gap:14px;margin-top:14px;height:min(460px,60vh)}
+      .sh .ch-left{display:flex;flex-direction:column;gap:4px;overflow:auto;min-width:0}
+      .sh .ch-add{align-self:flex-start;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:700 12px system-ui,sans-serif;cursor:pointer;margin-bottom:4px}
+      .sh .ch-find .iv-ppl{max-height:200px}
+      .sh .ch-q{width:100%;box-sizing:border-box;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:500 12.5px system-ui,sans-serif;margin-bottom:6px;outline:none}
+      .sh .ch-req{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:9px;background:var(--hi);font:600 12.5px system-ui,sans-serif}
+      .sh .ch-req span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .sh .ch-req button{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer;font-weight:800}
+      .sh .ch-req button.buy{background:#6366f1;border-color:#6366f1;color:#fff}
+      .sh .ch-f{position:relative;text-align:left;border:0;background:none;border-radius:9px;padding:8px 10px;cursor:pointer;color:var(--fg);display:grid;grid-template-columns:1fr auto;gap:2px 8px}
+      .sh .ch-f:hover,.sh .ch-f.on{background:var(--hi)}
+      .sh .ch-f b{font:700 13px system-ui,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .sh .ch-f i{font-style:normal;background:#6366f1;color:#fff;border-radius:999px;padding:0 7px;font:700 11px/18px system-ui,sans-serif}
+      .sh .ch-f small{grid-column:1/-1;color:var(--mut);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .sh .ch-out{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+      .sh .ch-out span{font-size:11px;color:var(--mut);background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:2px 4px 2px 9px}
+      .sh .ch-out button{border:0;background:none;color:var(--mut);cursor:pointer;font-size:11px}
+      .sh .ch-right{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;background:var(--soft);min-width:0;overflow:hidden}
+      .sh .ch-none{margin:auto;font-size:40px;opacity:.25}
+      .sh .ch-hd{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--bg)}
+      .sh .ch-hd b{font:800 14px system-ui,sans-serif}
+      .sh .ch-rm{border:0;background:none;color:var(--mut);cursor:pointer;font-size:16px}
+      .sh .ch-msgs{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+      .sh .ch-m{max-width:75%;align-self:flex-start;background:var(--bg);border:1px solid var(--line);padding:7px 11px;border-radius:14px 14px 14px 4px;font:500 13px/1.4 system-ui,sans-serif;overflow-wrap:anywhere}
+      .sh .ch-m.me{align-self:flex-end;background:#6366f1;border-color:#6366f1;color:#fff;border-radius:14px 14px 4px 14px}
+      .sh .ch-day{align-self:center;color:var(--mut);font-size:11px;margin:6px 0}
+      .sh .ch-in{display:flex;gap:6px;padding:10px;border-top:1px solid var(--line);background:var(--bg)}
+      .sh .ch-in input{flex:1;min-width:0;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:500 13px system-ui,sans-serif;outline:none}
+      .sh .ch-in input:focus{border-color:#6366f1}
+      .sh .ch-in button{width:40px;border-radius:10px;border:0;background:#6366f1;color:#fff;font:800 15px system-ui,sans-serif;cursor:pointer}
+      .pq-drop.feed .dp-t span{display:block;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      @media (max-width:640px){.sh .ch-wrap{grid-template-columns:1fr;height:auto}.sh .ch-right{height:380px}}
       .sh .sh-only{position:absolute;top:6px;left:6px;z-index:1;font-style:normal;font:800 9.5px system-ui,sans-serif;letter-spacing:.05em;color:#fff;background:linear-gradient(90deg,#d32ce6,#eb4b4b);padding:2px 7px;border-radius:999px}
       .pq-lbx .pk-idle{color:#f97316;font-weight:700} .pq-lbx .pk-idle.bad{color:#ef4444}
       .pq-lb-ov .lb-row .nm small b{font-weight:600}
@@ -6086,7 +6120,7 @@
       const crates = p ? (p.inv || []).filter((x) => x.kind === 'crate').length : 0;
       const ev = p && ((p.event && p.event.until > now) || (p.effects && p.effects.boostUntil > now)), frozen = p && p.effects && p.effects.frozenUntil > now;
       const boost = p && p.effects && p.effects.boostUntil > now;
-      a.classList.toggle('pq-hb-new', crates > 0);
+      a.classList.toggle('pq-hb-new', crates > 0 || unreadOf(p) > 0 || !!(p && p.social && p.social.reqIn && p.social.reqIn.length));
       a.classList.toggle('pq-hb-x2', !!ev);
       a.classList.toggle('pq-hb-frozen', !!frozen);
       a.title = ['Inventory · stats · shop', crates ? `${crates} crate${crates > 1 ? 's' : ''} to open` : '', p && p.event && p.event.until > now ? 'double points event: x2 coins' : '', boost ? `coin boost x2 · ${leftTxt(p.effects.boostUntil)} left` : '', frozen ? `your coins are frozen (${leftTxt(p.effects.frozenUntil)})` : ''].filter(Boolean).join(' · ');
@@ -6113,6 +6147,7 @@
       headerBtn();
       newsCheck(p);
       if (p.trades) handleTrades(p.trades);
+      chatNotify(p);
       return p;
     }
     async function pollProf() {
@@ -6159,6 +6194,12 @@
       } else if (x.kind === 'streak') {
         el.style.setProperty('--r', '#f97316');
         el.innerHTML = `<div class="dp-box">🔥</div><div class="dp-t"><small>streak goal hit</small><b>Day ${int(x.n)} streak</b><span>+${int(x.coins)} coins${x.tier ? ` · ${escHtml(tierName(x.tier))} crate` : ''}</span></div>`;
+      } else if (x.kind === 'chat' || x.kind === 'freq') {
+        el.style.setProperty('--r', '#6366f1');
+        el.classList.add('feed');
+        el.innerHTML = x.kind === 'chat' ? `<div class="dp-box">💬</div><div class="dp-t"><small>${escHtml(nameOf(x.from))}</small><span>${escHtml(x.text)}</span></div>` : `<div class="dp-box">🤝</div><div class="dp-t"><small>friend request</small><b>${escHtml(nameOf(x.from))}</b></div>`;
+        open = 'chat';
+        if (x.kind === 'chat') el.dataset.chat = x.from;
       } else if (x.kind === 'pass') {
         el.style.setProperty('--r', '#e4ae39');
         el.innerHTML = `<div class="dp-box">${rewardIc(x)}</div><div class="dp-t"><small>pass level</small><b>${int(x.lv)}</b><span>${escHtml(rewardTxt(x))}</span></div>`;
@@ -6174,7 +6215,7 @@
         el.innerHTML = `<div class="dp-box">${blocked ? '🛡️' : ITEM_ICON[x.item] || '⚠️'}</div><div class="dp-t"><small>${blocked ? 'blocked' : 'you got hit'}</small><b>${who} · ${escHtml(d.name)}</b><span>${what}</span></div>`;
       }
       el.title = open ? 'click to open your inventory' : '';
-      el.addEventListener('click', () => { el.remove(); if (open) openProfile(open); });
+      el.addEventListener('click', () => { el.remove(); if (el.dataset.chat) { chWith = el.dataset.chat; chMsgs = []; } if (open) openProfile(open); });
       document.body.appendChild(el);
       setTimeout(() => { el.classList.add('out'); setTimeout(() => { el.remove(); newsBusy = false; showNews(); }, 420); }, x.kind === 'toast' ? 4000 : x.kind === 'crate' || x.kind === 'feed' ? 5200 : 7000);
     }
@@ -6427,10 +6468,123 @@
     }
     document.addEventListener('click', (e) => { if (!e.target.closest('.ii-pop')) document.querySelector('.ii-pop')?.remove(); }, true);
 
+
+    // ---------- 💬 chat with friends (friend request → accept → chat). New messages pop up, even with the panel closed ----------
+    let chWith = null, chMsgs = [], chTimer = null, chDraft = '', chAdd = false, chQ = '';
+    const LS_CHAT = 'pqsuite_chat_seen_v1';
+    const nameOf = (id) => (((tot && tot.list) || []).find((r) => r.id === String(id)) || {}).name || (namesMap[id]) || `#${id}`;
+    let namesMap = {};
+    names().then((m) => { namesMap = m || {}; }).catch(() => {});
+    const unreadOf = (p) => Object.values(((p && p.social) || {}).unread || {}).reduce((n, x) => n + x, 0);
+    function chatNotify(p) {
+      const so = p.social;
+      if (!so) return;
+      const seen = lsGet(LS_CHAT, null) || {};
+      const mine = seen[ME_ID] || { msg: 0, req: [] };
+      let maxAt = mine.msg;
+      for (const [fid, m] of Object.entries(so.last || {})) {
+        if (m.from === ME_ID || m.at <= mine.msg || !(so.unread || {})[fid]) continue;
+        maxAt = Math.max(maxAt, m.at);
+        if (C.chatPop === false || (chWith === fid && document.getElementById('pq-pf-ov') && pfTab === 'chat')) continue;
+        newsQ.push({ kind: 'chat', from: fid, text: m.text, at: m.at });
+      }
+      for (const fid of so.reqIn || []) if (!mine.req.includes(fid) && C.chatPop !== false) newsQ.push({ kind: 'freq', from: fid, at: Date.now() });
+      seen[ME_ID] = { msg: maxAt, req: (so.reqIn || []).slice() };
+      lsSet(LS_CHAT, seen);
+      showNews();
+    }
+    async function friendDo(op, to) {
+      let j;
+      try { j = await post('friend', { id: ME_ID, op, to }); } catch (_) { j = { err: 'could not reach the middle stop' }; }
+      if (j.profile) setProf(j.profile);
+      chAdd = false;
+      showProfile(j.err || '');
+    }
+    function chatHtml(p) {
+      const so = p.social || { friends: [], reqIn: [], reqOut: [], unread: {}, last: {} };
+      const fr = so.friends.slice().sort((a, b) => ((so.last[b] || {}).at || 0) - ((so.last[a] || {}).at || 0));
+      const left = `
+        <button class="ch-add" data-chadd>＋ friend</button>
+        ${chAdd ? `<div class="ch-find"><input class="iv-q ch-q" placeholder="Search…" value="${escHtml(chQ)}"><div class="iv-ppl">${((tot && tot.list) || []).filter((r) => r.id !== ME_ID && !so.friends.includes(r.id)).sort((a, b) => a.name.localeCompare(b.name)).map((r) => `<button data-chreq="${escHtml(r.id)}" data-n="${escHtml(low(r.name))}" class="${chQ && !low(r.name).includes(low(chQ)) ? 'hide' : ''}">${escHtml(r.name)}${so.reqOut.includes(r.id) ? '<small>asked</small>' : ''}</button>`).join('')}</div></div>` : ''}
+        ${so.reqIn.map((id) => `<div class="ch-req"><span>${escHtml(nameOf(id))}</span><button class="buy" data-chacc="${escHtml(id)}">✓</button><button data-chdec="${escHtml(id)}">✕</button></div>`).join('')}
+        ${fr.map((id) => { const l = so.last[id], u = so.unread[id]; return `<button class="ch-f${chWith === id ? ' on' : ''}" data-chw="${escHtml(id)}"><b>${escHtml(nameOf(id))}</b>${u ? `<i>${u}</i>` : ''}<small>${l ? escHtml((l.from === ME_ID ? 'you: ' : '') + l.text) : ''}</small></button>`; }).join('') || (so.reqIn.length || chAdd ? '' : '<div class="iv-empty">add a friend to chat</div>')}
+        ${so.reqOut.length ? `<div class="ch-out">${so.reqOut.map((id) => `<span>${escHtml(nameOf(id))} <button data-chcan="${escHtml(id)}" title="cancel">✕</button></span>`).join('')}</div>` : ''}`;
+      const right = !chWith ? '<div class="ch-none">💬</div>' : `
+        <div class="ch-hd"><b>${escHtml(nameOf(chWith))}</b><button class="ch-rm" data-chrm="${escHtml(chWith)}" title="remove friend">⋯</button></div>
+        <div class="ch-msgs" id="ch-msgs"></div>
+        <form class="ch-in"><input id="ch-text" maxlength="300" autocomplete="off" placeholder="Message…" value="${escHtml(chDraft)}"><button class="buy">↑</button></form>`;
+      return `<div class="ch-wrap"><div class="ch-left">${left}</div><div class="ch-right">${right}</div></div>`;
+    }
+    function chatDraw() {
+      const box = document.getElementById('ch-msgs');
+      if (!box) return;
+      const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+      let lastDay = '';
+      box.innerHTML = chMsgs.map((m) => {
+        const d = new Date(m.at), day = d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+        const sep = day !== lastDay ? `<div class="ch-day">${day}</div>` : '';
+        lastDay = day;
+        return `${sep}<div class="ch-m${m.from === ME_ID ? ' me' : ''}" title="${d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}">${escHtml(m.text)}</div>`;
+      }).join('') || '<div class="ch-day">say hi 👋</div>';
+      if (atEnd || box.dataset.first !== '1') { box.scrollTop = box.scrollHeight; box.dataset.first = '1'; }
+    }
+    async function chatLoad(full) {
+      if (!chWith) return;
+      const w = chWith, since = full || !chMsgs.length ? 0 : chMsgs[chMsgs.length - 1].at;
+      try {
+        const j = await (await fetch(`${URL_}/chat?id=${ME_ID}&with=${w}&since=${since}`, { credentials: 'omit', cache: 'no-store' })).json();
+        if (w !== chWith) return;
+        if (j.msgs && j.msgs.length) { chMsgs = since ? chMsgs.concat(j.msgs) : j.msgs; chatDraw(); }
+        else if (!since) { chMsgs = []; chatDraw(); }
+        if (prof && prof.social && prof.social.unread && prof.social.unread[w]) { const u = { ...prof.social.unread }; delete u[w]; prof.social.unread = u; headerBtn(); }
+      } catch (_) {}
+    }
+    function chatWatch(on) {
+      clearInterval(chTimer); chTimer = null;
+      if (on) chTimer = setInterval(() => { if (!document.getElementById('ch-msgs') || document.hidden) return; chatLoad(false); }, 4000);
+    }
+    function wireChat(ov) {
+      ov.querySelector('[data-chadd]')?.addEventListener('click', () => {
+        chAdd = !chAdd; chQ = ''; showProfile();
+        if (chAdd && (!tot || Date.now() - tot.at > 60000)) loadTotals().then(() => { if (pfTab === 'chat') showProfile(); });
+        setTimeout(() => document.querySelector('#pq-pf-ov .ch-q')?.focus(), 30);
+      });
+      const q = ov.querySelector('.ch-q');
+      if (q) q.oninput = () => { chQ = q.value; const v = low(chQ); ov.querySelectorAll('[data-chreq]').forEach((b) => b.classList.toggle('hide', !!v && !b.dataset.n.includes(v))); };
+      ov.querySelectorAll('[data-chreq]').forEach((b) => (b.onclick = () => friendDo('request', b.dataset.chreq)));
+      ov.querySelectorAll('[data-chacc]').forEach((b) => (b.onclick = () => friendDo('accept', b.dataset.chacc)));
+      ov.querySelectorAll('[data-chdec]').forEach((b) => (b.onclick = () => friendDo('decline', b.dataset.chdec)));
+      ov.querySelectorAll('[data-chcan]').forEach((b) => (b.onclick = () => friendDo('cancel', b.dataset.chcan)));
+      ov.querySelector('[data-chrm]')?.addEventListener('click', (e) => { if (confirm(`Remove ${nameOf(e.currentTarget.dataset.chrm)} as friend?`)) { const id = e.currentTarget.dataset.chrm; chWith = null; friendDo('remove', id); } });
+      ov.querySelectorAll('[data-chw]').forEach((b) => (b.onclick = () => { if (chWith !== b.dataset.chw) { chWith = b.dataset.chw; chMsgs = []; chDraft = ''; } showProfile(); }));
+      const f = ov.querySelector('.ch-in');
+      if (f) {
+        const inp = f.querySelector('#ch-text');
+        inp.oninput = () => { chDraft = inp.value; };
+        f.onsubmit = async (e) => {
+          e.preventDefault();
+          const text = inp.value.trim();
+          if (!text) return;
+          inp.value = ''; chDraft = '';
+          chMsgs = chMsgs.concat({ at: Date.now(), from: ME_ID, text, temp: true });
+          chatDraw();
+          let j;
+          try { j = await post('chat', { id: ME_ID, to: chWith, text }); } catch (_) { j = { err: 'not sent' }; }
+          chMsgs = chMsgs.filter((m) => !m.temp);
+          if (j.err) { inp.value = text; chDraft = text; toast('💬 ' + j.err); }
+          chatLoad(false);
+        };
+        setTimeout(() => { inp.focus(); const n = inp.value.length; inp.setSelectionRange(n, n); }, 20);
+        chatDraw();
+        chatLoad(!chMsgs.length);
+      }
+      chatWatch(!!chWith);
+    }
+
     // ---------- ⚙ settings tab in the panel (per account, synced like Shift+8) ----------
     function setHtml() {
       const row = (k, t) => `<label class="iv-set"><span>${t}</span><input type="checkbox" data-set="${k}" ${C[k] !== false ? 'checked' : ''}></label>`;
-      return `<div class="iv-sets">${row('feed', 'Live drops')}${row('trades', 'Trade requests')}${row('widget', 'Rank card')}</div>`;
+      return `<div class="iv-sets">${row('feed', 'Live drops')}${row('trades', 'Trade requests')}${row('widget', 'Rank card')}${row('chatPop', 'Chat popups')}</div>`;
     }
     function wireSet(ov) {
       ov.querySelectorAll('[data-set]').forEach((b) => (b.onchange = () => { C[b.dataset.set] = b.checked; saveCfg(CFG); }));

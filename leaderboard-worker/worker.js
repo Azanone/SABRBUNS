@@ -10,7 +10,7 @@
 //   PROXIES      text    user ids that never count, comma separated (optional)
 //   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
-import { newState, tick, profile, buy, equip, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, buyPass, adminOp, OWNER, liveDue, liveTick, liveBoard, LIVE_ACTIVE_MIN } from './game.js';
+import { newState, tick, profile, buy, equip, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, buyPass, adminOp, OWNER, friendOp, chatSend, chatRead, pairKey, liveDue, liveTick, liveBoard, LIVE_ACTIVE_MIN } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
@@ -180,6 +180,26 @@ export class Game extends DurableObject {
   }
   async totals() { return { at: Date.now(), people: totals(await this.load()) }; }
   async profile(id) { return profile(await this.load(), id, amsNow().slice(0, 10)); }
+  async friend(id, op, to) {
+    const st = await this.load();
+    const res = friendOp(st, id, op, to);
+    if (res.ok) await this.ctx.storage.put('state', st);
+    return { ...res, profile: profile(st, id, amsNow().slice(0, 10)) };
+  }
+  async chatGet(id, other, since) {
+    const st = await this.load();
+    if (!((st.acct[id] || {}).friends || []).includes(other)) return { err: 'only with friends', msgs: [] };
+    const msgs = (await this.ctx.storage.get('chat:' + pairKey(id, other))) || [];
+    if (chatRead(st, id, other)) await this.ctx.storage.put('state', st);
+    return { msgs: msgs.filter((m) => m.at > since) };
+  }
+  async chatPost(id, to, text) {
+    const st = await this.load(), k = 'chat:' + pairKey(id, to);
+    const msgs = (await this.ctx.storage.get(k)) || [];
+    const res = chatSend(st, msgs, id, to, text, Date.now());
+    if (res.ok) { await this.ctx.storage.put(k, msgs); await this.ctx.storage.put('state', st); }
+    return res;
+  }
   async change(kind, id, skin) {
     const st = await this.load();
     const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
@@ -247,6 +267,21 @@ export default {
         const b = await req.json().catch(() => ({}));
         if (!/^\d+$/.test(String(b.id || '')) || !b.op) return json({ err: 'id and op needed' }, 400);
         return json(await game(env).trade(String(b.id), String(b.op), b));
+      }
+      if (url.pathname === '/friend' && req.method === 'POST') {
+        const b = await req.json().catch(() => ({}));
+        if (!/^\d+$/.test(String(b.id || '')) || !b.op) return json({ err: 'id and op needed' }, 400);
+        return json(await game(env).friend(String(b.id), String(b.op), String(b.to || '')));
+      }
+      if (url.pathname === '/chat') {
+        if (req.method === 'POST') {
+          const b = await req.json().catch(() => ({}));
+          if (!/^\d+$/.test(String(b.id || '')) || !/^\d+$/.test(String(b.to || ''))) return json({ err: 'id and to needed' }, 400);
+          return json(await game(env).chatPost(String(b.id), String(b.to), String(b.text || '')));
+        }
+        const id = String(url.searchParams.get('id') || ''), w = String(url.searchParams.get('with') || '');
+        if (!/^\d+$/.test(id) || !/^\d+$/.test(w)) return json({ err: 'id and with needed' }, 400);
+        return json(await game(env).chatGet(id, w, +url.searchParams.get('since') || 0));
       }
       if (url.pathname === '/trades') {
         const id = String(url.searchParams.get('id') || '');

@@ -255,6 +255,7 @@ export function profile(st, id, today, now = Date.now()) {
     effects: { frozenUntil: a.frozenUntil || 0, skinOffUntil: a.skinOffUntil || 0, boostUntil: a.boostUntil || 0, shieldUntil: a.shieldUntil || 0 },
     event: st.event && st.event.until > now ? st.event : null,
     pass: passView(a),
+    social: socialView(a),
     streak: { n: a.streak || 0, day: a.streakDay || null, best: a.streakBest || 0, goal: STREAK_GOAL, today: r3(dayTotal(st, today, id)) },
     pity: { dry: a.dry || 0, at: PITY }, cooldown: HIT_COOLDOWN, trades: tradesFor(st, id, now),
     king: st.king && st.king.id === id ? { min: Math.floor((Date.now() - st.king.since) / 60000) } : null,
@@ -663,4 +664,55 @@ export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
   else if (op === 'boost') { a.boostUntil = Math.max(a.boostUntil || 0, now) + Math.max(1, n || 30) * 60000; note(`boost ${n || 30} min`); }
   else return { err: 'unknown' };
   return { ok: true };
+}
+
+// ---------- friends + chat (messages themselves live in their own storage key per pair, see worker.js) ----------
+export const pairKey = (x, y) => (String(x) < String(y) ? `${x}-${y}` : `${y}-${x}`);
+export function socialView(a) {
+  return { friends: a.friends || [], reqIn: a.reqIn || [], reqOut: a.reqOut || [], unread: a.unread || {}, last: a.lastMsg || {} };
+}
+export function friendOp(st, id, op, to) {
+  id = String(id); to = String(to || '');
+  if (!to || to === id) return { err: 'pick someone else' };
+  if (!st.acct[to]) return { err: 'that person has no account here yet' };
+  const a = acct(st, id), b = acct(st, to);
+  for (const x of [a, b]) { x.friends = x.friends || []; x.reqIn = x.reqIn || []; x.reqOut = x.reqOut || []; }
+  const drop = (arr, v) => arr.filter((x) => x !== v);
+  if (op === 'request') {
+    if (a.friends.includes(to)) return { ok: true };
+    if (a.reqIn.includes(to)) op = 'accept'; // they already asked you
+    else { if (!a.reqOut.includes(to)) a.reqOut.push(to); if (!b.reqIn.includes(id)) b.reqIn.push(id); return { ok: true }; }
+  }
+  if (op === 'accept') {
+    if (!a.reqIn.includes(to)) return { err: 'no request from them' };
+    a.reqIn = drop(a.reqIn, to); b.reqOut = drop(b.reqOut, id);
+    if (!a.friends.includes(to)) a.friends.push(to);
+    if (!b.friends.includes(id)) b.friends.push(id);
+    return { ok: true };
+  }
+  if (op === 'decline' || op === 'cancel') { a.reqIn = drop(a.reqIn, to); a.reqOut = drop(a.reqOut, to); b.reqIn = drop(b.reqIn, id); b.reqOut = drop(b.reqOut, id); return { ok: true }; }
+  if (op === 'remove') { a.friends = drop(a.friends, to); b.friends = drop(b.friends, id); return { ok: true }; }
+  return { err: 'unknown' };
+}
+// a message: only between friends. msgs = the pair's list (changed in place). Max 300 characters, 1 per second.
+export function chatSend(st, msgs, id, to, text, now) {
+  id = String(id); to = String(to);
+  const a = acct(st, id), b = st.acct[to];
+  if (!b || !(a.friends || []).includes(to)) return { err: 'only with friends' };
+  text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (!text) return { err: 'empty' };
+  if (now - (a.lastSend || 0) < 1000) return { err: 'slow down' };
+  a.lastSend = now;
+  msgs.push({ at: now, from: id, text });
+  if (msgs.length > 150) msgs.splice(0, msgs.length - 150);
+  b.unread = { ...(b.unread || {}), [id]: ((b.unread || {})[id] || 0) + 1 };
+  const prev = { at: now, from: id, text: text.slice(0, 80) };
+  b.lastMsg = { ...(b.lastMsg || {}), [id]: prev };
+  a.lastMsg = { ...(a.lastMsg || {}), [to]: prev };
+  return { ok: true };
+}
+export function chatRead(st, id, other) {
+  const a = st.acct[String(id)];
+  if (a && a.unread && a.unread[other]) { const u = { ...a.unread }; delete u[other]; a.unread = u; return true; }
+  return false;
 }
