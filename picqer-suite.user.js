@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.52
+// @version      3.53
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.52';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.53';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -271,14 +271,10 @@
       note: () => `Two kinds — your team decides which one you get:\n• Pick all: A presses Picqer's own "Pick alles" button. Everything is picked in 1 go.\n• True pick all: A ticks every product line ✓ one by one, the same as picking them by hand, and waits for Picqer after each line (stops by itself if Picqer says it goes too fast). A bit slower, but every line is really picked.\nYou have: ${can('truePickAll') ? 'TRUE pick all' : can('pickAll') ? 'normal pick all' : 'no pick all (not for your team)'}.`, fields: [
       { k: 'pickAllKey', label: 'Key for pick all', type: 'text', def: 'a' },
     ] },
-    { id: 'pickStats', title: 'Picker dashboard', hint: 'Ctrl+Alt+P · TV: add #pickers to a Picqer link', fields: [
-      { k: 'warehouse', label: 'Only this warehouse (name or id, empty = all)', type: 'text', def: 'Bunsenstraat' },
-      { k: 'pollSec', label: 'Check the batches every (sec)', type: 'num', def: 30 },
-      { k: 'background', label: 'Keep watching in the background on this PC (exact times all day)', type: 'bool', def: false },
-      { k: 'idleMin', label: 'No progress for this long = idle (min)', type: 'num', def: 5 },
-      { k: 'excludeIds', label: 'Leave these user ids out, comma separated', type: 'list', def: [] },
+    { id: 'pickStats', title: 'Picker dashboard', hint: 'Ctrl+Alt+P · pick · pack · charts · TV: add #pickers to a Picqer link', fields: [
+      { k: 'warehouse', label: 'Warehouse for auto batch (name or id)', type: 'text', def: 'Bunsenstraat' },
     ]},
-    { id: 'leaderboard', title: 'Leaderboard', hint: 'points in the last 15 min · your rank bottom right · Ctrl+Alt+L = everyone · Shift+9 = your profile + skins', fields: [
+    { id: 'leaderboard', title: 'Leaderboard', hint: 'points in the last 15 min · your rank bottom right · Ctrl+Alt+L = everyone · Ctrl+Alt+P = pick / pack / charts · 🪙 at the top = inventory, stats, shop', fields: [
       { k: 'url', label: 'Middle stop (Cloudflare worker link, empty = every PC asks Picqer itself)', type: 'text', def: 'https://sabrbuns.nitroxylazanone.workers.dev' },
       { k: 'windowMin', label: 'Count closed picklists of the last (min)', type: 'num', def: 15 },
       { k: 'warehouse', label: 'Only this warehouse (name or id, empty = all)', type: 'text', def: 'Bunsenstraat' },
@@ -4900,20 +4896,8 @@
     paint();
   }
 
-  /* =========================================================================
-   *  PICKER DASHBOARD (Ctrl+Alt+P · TV: open any Picqer page with #pickers)
-   *  Picqer has no API for the app's picking itself, but every open batch shows
-   *  per product how much is already collected (amount_collected). This checks
-   *  the open batches every 30 s and writes down when collecting starts and when
-   *  the batch is fully collected, per picker (= who the batch is assigned to).
-   *  Exact times only for batches this PC saw while they were picked: keep the
-   *  dashboard open on a screen (TV) or turn on background tracking.
-   *  Batches nobody watched still count (batches, picklists, units) from Picqer's
-   *  completed list, just without a time.
-   * ========================================================================= */
-
   // =====================================================================
-  //  LEADERBOARD + KING OF THE HILL + PROFILE (Shift+9) + SKINS
+  //  LEADERBOARD + KING OF THE HILL + 🪙 PANEL (inventory · stats · shop) + SKINS + DROP CRATES
   //  points: multi 2 · single 1,334 · lines with has_parts don't count (their parts do)
   //  colors = points in the last 15 min (nothing extrapolated):
   //    46+ blue · 38+ turquoise · 30+ dark green · 21+ green · 14+ orange · less red
@@ -4938,6 +4922,10 @@
     neon: { bg: 'linear-gradient(90deg,#05010f,#1a0530 50%,#03141f)', accent: '#22d3ee', line: '#f0abfc', dark: { th: 250, ah: 188, as: '86%', fx: 'full', onAcc: '#03141a' } },
     gold: { bg: 'linear-gradient(90deg,#120e08,#2a1f0a)', accent: '#d4a017', line: '#fbbf24', dark: { th: 38, ah: 43, as: '81%', fx: 'none' } },
     crown: { bg: 'radial-gradient(circle at 18% 30%,rgba(251,191,36,.3),transparent 45%),linear-gradient(90deg,#120e08,#3f2d0c)', accent: '#d4a017', line: '#fbbf24', crown: true, dark: { th: 38, ah: 43, as: '81%', fx: 'none' } },
+    // only from drop crates
+    phantom: { bg: 'radial-gradient(circle at 30% 30%,rgba(203,213,225,.32),transparent 50%),linear-gradient(90deg,#06080b,#151c26)', accent: '#94a3b8', line: '#e2e8f0', dark: { th: 215, ah: 205, as: '28%', fx: 'none' } },
+    inferno: { bg: 'radial-gradient(circle at 20% 85%,rgba(239,68,68,.6),transparent 50%),radial-gradient(circle at 70% 25%,rgba(251,146,60,.38),transparent 45%),linear-gradient(90deg,#0f0302,#2b0703)', accent: '#ef4444', line: '#fb923c', dark: { th: 5, ah: 10, as: '92%', fx: 'full', onAcc: '#1a0402' } },
+    celestial: { bg: 'radial-gradient(circle at 25% 30%,rgba(250,204,21,.38),transparent 45%),radial-gradient(circle at 75% 65%,rgba(99,102,241,.42),transparent 50%),linear-gradient(90deg,#03051a,#0d1240)', accent: '#facc15', line: '#fde68a', dark: { th: 232, ah: 48, as: '96%', fx: 'full', stars: true, onAcc: '#1a1400' } },
   };
   // skins belong to a Picqer account: saved per user id on this PC
   const LS_SKIN = 'pqsuite_skin_v2';
@@ -5108,7 +5096,8 @@
 
   // crate colors, like CS:GO: blue common → purple → pink → red covert → gold ★
   const RARITY = { midnight: '#4b69ff', forest: '#4b69ff', ocean: '#4b69ff', sakura: '#4b69ff', arctic: '#4b69ff', sunset: '#8847ff', gold: '#8847ff', emerald: '#8847ff',
-    aurora: '#d32ce6', lava: '#d32ce6', nebula: '#eb4b4b', neon: '#eb4b4b', crown: '#eb4b4b', carbon: '#eb4b4b', voidescent: '#e4ae39' };
+    aurora: '#d32ce6', lava: '#d32ce6', nebula: '#eb4b4b', neon: '#eb4b4b', crown: '#eb4b4b', carbon: '#eb4b4b', voidescent: '#e4ae39',
+    phantom: '#d32ce6', inferno: '#eb4b4b', celestial: '#e4ae39' };
   // ---------- newer version on GitHub? Tampermonkey only checks about once a day, so tell the person ----------
   const verNum = (v) => String(v || '0').split('.').map((x) => +x || 0);
   const newer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
@@ -5383,7 +5372,7 @@
     const box = document.createElement('div');
     box.id = 'pq-lb';
     box.className = 'pq-lbx';
-    box.title = 'Leaderboard · click for everyone (Ctrl+Alt+L) · Shift+9 = your profile';
+    box.title = 'Leaderboard · click for everyone (Ctrl+Alt+L) · 🪙 at the top = inventory, stats, shop';
     box.addEventListener('click', () => showList());
     if (C.widget !== false) document.body.appendChild(box);
 
@@ -5406,6 +5395,7 @@
         }
       }
       if (listOpen) showList(true);
+      if (pkTab === 'pack') showPk(true);
     }
 
     function overlay(id) {
@@ -5420,11 +5410,16 @@
       ov.classList.toggle('dark', theme() === 'dark');
       return ov;
     }
-    function close(id) { document.getElementById(id)?.remove(); if (id === 'pq-lb-ov') listOpen = false; }
+    function close(id) {
+      document.getElementById(id)?.remove();
+      if (id === 'pq-lb-ov') listOpen = false;
+      if (id === 'pq-pf-ov') aimUid = null;
+      if (id === 'pq-pk-ov') { clearInterval(pkTimer); pkTimer = null; pkTv = false; if (/^#pickers/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); }
+    }
 
     const lbGear = () => openToolSettings && openToolSettings({ title: 'Leaderboard', mods: [{ id: 'leaderboard', keys: can('settings') ? null : ['theme', 'widget'] }] });
     // Ctrl+Alt+L: "15 min" = who is fast right now · "Total" = all packing points ever (from the middle stop)
-    let listTab = 'now', tot = null, totErr = '', totBusy = false, who = null, whoProf = null, whoErr = '';
+    let listTab = 'now', totQ = '', tot = null, totErr = '', totBusy = false, who = null, whoProf = null, whoErr = '';
     async function loadWho(id) {
       who = id; whoProf = null; whoErr = '';
       showList(true);
@@ -5449,6 +5444,7 @@
           ${tile(int(p.coins), 'coins earned in total')}${tile(int(p.spent), 'coins spent')}${tile(fmt(p.points), 'packing points in total')}${tile(int(p.picklists), 'closed in total')}
           ${tile((p.kingBest || 0) + ' min', 'longest king at once')}${tile((p.kingTotal || 0) + ' min', 'king in total')}${tile(int(Math.round((p.kingTotal || 0) * 20)), 'coins from king')}${tile((p.owned || []).length, 'skins owned')}
           ${tile(t.n || 0, 'closed today')}${tile(fmt(t.points), 'points today')}${tile(`${t.multis || 0} / ${t.singles || 0}`, 'multi / single today')}${tile((t.kingMin || 0) + ' min', 'king today')}
+          ${tile(fmt(p.pickPoints), 'pick points in total')}${tile(int(p.batches), 'batches in total')}${tile(fmt((p.pickToday || {}).points), 'pick points today')}${tile(int((p.pickToday || {}).batches), 'batches today')}
         </div>
         <h3>Last days</h3>
         <div class="pf-week">${(p.week || []).map((w) => `<div title="${escHtml(w.day)} · ${fmt(w.points)} pts · ${w.n} closed"><i style="height:${Math.round(((w.points || 0) / maxW) * 48)}px"></i>${escHtml(w.day.slice(8, 10))}</div>`).join('')}</div>
@@ -5469,6 +5465,7 @@
     }
     function showList(refresh) {
       if (refresh && !document.getElementById('pq-lb-ov')) return;
+      const qf = document.activeElement && document.activeElement.classList.contains('lb-q') ? document.activeElement.selectionStart : null;
       close('pq-pf-ov');
       const ov = overlay('pq-lb-ov');
       listOpen = true;
@@ -5480,27 +5477,28 @@
         const meta = !URL_ ? 'needs the middle stop (Shift+8 → Leaderboard)' : `coins everyone has now · click someone for everything · ${hm}${totErr ? ' · ⚠ ' + escHtml(totErr) : ''}`;
         const rows = (tot && tot.list) || [];
         let rank = 0, prev = null;
-        body = who ? whoHtml() : `<div class="lb-meta">${meta}</div>` + (rows.length ? rows.map((r, i) => {
+        const ql = low(totQ);
+        body = who ? whoHtml() : `<div class="lb-meta">${meta}</div><input class="lb-q" placeholder="Search a name…" value="${escHtml(totQ)}">` + (rows.length ? rows.map((r, i) => {
           if (prev === null || r.balance !== prev) rank = i + 1;
           prev = r.balance;
-          return `<div class="lb-row click t-${rank === 1 ? 'gold' : 'none'}${r.id === ME_ID ? ' me' : ''}" data-who="${escHtml(r.id)}" title="Click for everything about ${escHtml(r.name)}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
-            <span class="nm">${escHtml(r.name)}<small>${int(r.picklists)} closed · ${fmt(r.points)} pts${r.kingTotal ? ` · king ${int(r.kingTotal)} min` : ''}</small></span>
+          return `<div class="lb-row click t-${rank === 1 ? 'gold' : 'none'}${r.id === ME_ID ? ' me' : ''}${ql && !low(r.name).includes(ql) ? ' hide' : ''}" data-n="${escHtml(low(r.name))}" data-who="${escHtml(r.id)}" title="Click for everything about ${escHtml(r.name)}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
+            <span class="nm">${escHtml(r.name)}<small>${int(r.picklists)} closed · ${fmt(r.points)} pts${r.pickPoints ? ` · ${fmt(r.pickPoints)} pick pts` : ''}${r.kingTotal ? ` · king ${int(r.kingTotal)} min` : ''}</small></span>
             <span class="v">${int(r.balance)}<small>coins</small></span></div>`;
         }).join('') : `<div class="lb-empty">${URL_ ? (tot ? 'Nobody has coins yet' : 'Loading…') : ''}</div>`);
-      } else {
-        const list = ranked();
-        const mins = Math.round(WIN / 60000);
-        const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
-        body = `<div class="lb-meta">last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
-        ${list.length ? list.map((r) => `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.king ? '👑' : '#' + r.rank}</span>
-          <span class="nm">${escHtml(r.name)}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single${r.king && r.kingMin != null ? ` · king ${r.kingMin} min` : ''}</small></span>
-          <span class="v">${fmt(r.points)}<small>pts</small></span></div>`).join('') : `<div class="lb-empty">Nobody closed a picklist in the last ${mins} min</div>`}
-        <div class="lb-legend"><span class="t-blue"><i></i>46+</span><span class="t-turq"><i></i>38+</span><span class="t-dgreen"><i></i>30+</span><span class="t-green"><i></i>21+</span><span class="t-orange"><i></i>14+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 21+ · +20 coins a minute</span></div>`;
-      }
+      } else body = packHtml();
       ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard<button class="lb-gear" title="Leaderboard settings">⚙</button></h2>${tabs}${body}</div>`;
       ov.querySelector('.lb-gear').onclick = () => { close('pq-lb-ov'); lbGear(); };
       ov.querySelectorAll('[data-who]').forEach((b) => (b.onclick = () => loadWho(b.dataset.who)));
       ov.querySelector('[data-lb="back"]')?.addEventListener('click', () => { who = null; showList(true); });
+      const q = ov.querySelector('.lb-q');
+      if (q) {
+        q.addEventListener('input', () => {
+          totQ = q.value;
+          const v = low(totQ);
+          ov.querySelectorAll('.lb-row[data-n]').forEach((r) => r.classList.toggle('hide', !!v && !r.dataset.n.includes(v)));
+        });
+        if (qf != null) { q.focus(); try { q.setSelectionRange(qf, qf); } catch (_) {} }
+      }
       ov.querySelectorAll('[data-lt]').forEach((b) => (b.onclick = () => {
         who = null;
         listTab = b.dataset.lt;
@@ -5509,35 +5507,34 @@
       }));
     }
 
-    // ---------- profile (Shift+9) ----------
+    // ---------- my profile (🪙 button at the top) ----------
     async function loadProfile() {
       if (!URL_ || !ME_ID) return null;
       const r = await fetch(`${URL_}/profile?id=${encodeURIComponent(ME_ID)}`, { credentials: 'omit', cache: 'no-store' });
       const j = await r.json();
       if (!r.ok || j.err) throw new Error(j.err || `HTTP ${r.status}`);
-      prof = j;
-      skinSave(ME_ID, j.skin);
-      applySkin(j.skin);
-      return j;
+      return setProf(j);
     }
     async function change(kind, skin) {
       const r = await fetch(`${URL_}/${kind}`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ME_ID, skin }) });
       const j = await r.json();
-      if (j.profile) { prof = j.profile; skinSave(ME_ID, prof.skin); applySkin(prof.skin); }
+      if (j.profile) setProf(j.profile);
       return j;
     }
-    // ---------- Shift+9: the shop. Left = skins, right = crate (CS-style reel), top tab = my stats ----------
-    let pfTab = 'shop', spinning = false;
+    // ---------- 🪙 panel: Inventory (drop crates, items) · Stats · Shop (skins left, skin crate right, CS-style reel) ----------
+    let pfTab = 'inv', spinning = false;
     const nameOfSkin = (id) => ((prof && prof.skins) || []).find((x) => x.id === id)?.name || id;
     function skinCard(p, s) {
       if (!SKIN_LOOK[s.id]) return `<div class="sh-skin"><div class="sh-sw" style="background:repeating-linear-gradient(135deg,#334155 0 8px,#3f4b5f 8px 16px)"></div><div class="sh-in"><b>${escHtml(s.name)}</b><small>new · update the script (Tampermonkey → check for updates) to see it</small></div></div>`;
-      const own = (p.owned || []).includes(s.id), on = p.skin === s.id, look = SKIN_LOOK[s.id];
+      const worn = 'mySkin' in p ? p.mySkin : p.skin;
+      const own = (p.owned || []).includes(s.id), on = worn === s.id, look = SKIN_LOOK[s.id];
       const btn = on ? '<button data-pf="off">Take off</button>' : own ? `<button class="wear" data-pf="wear" data-s="${s.id}">Wear</button>`
+        : s.crateOnly ? '<button disabled>📦 drop crates only</button>'
         : s.limit && !s.left ? '<button disabled>Sold out</button>'
         : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>${int(s.price)}</button>`;
       const tags = [look.dark ? 'dark' : 'light', look.dark && look.dark.fx !== 'none' ? 'moves' : ''].filter(Boolean).join(' · ');
       return `<div class="sh-skin${on ? ' on' : ''}${own ? ' own' : ''}" style="--r:${RARITY[s.id] || '#94a3b8'}">
-        ${s.limit ? `<em class="sh-ltd">★ LIMITED · ${s.left || 0}/${s.limit} left</em>` : ''}
+        ${s.limit ? `<em class="sh-ltd">★ LIMITED · ${s.left || 0}/${s.limit} left</em>` : s.crateOnly ? '<em class="sh-only">CRATE ONLY</em>' : ''}
         <div class="sh-sw" style="background:${look.bg}">${on ? '<span>✓ wearing</span>' : own ? '<span>yours</span>' : ''}</div>
         <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b><small>${tags}</small></div>${btn}</div>`;
     }
@@ -5558,14 +5555,17 @@
       const tile = (v, l) => `<div class="pf-tile"><b>${v}</b><span>${l}</span></div>`;
       return `<div class="pf-tiles">
           ${tile(t.n || 0, 'closed today')}${tile(fmt(t.points), 'points today')}${tile(`${t.multis || 0} / ${t.singles || 0}`, 'multi / single')}${tile((t.kingMin || 0) + ' min', 'king today')}
-          ${tile(int(p.picklists), 'closed in total')}${tile((p.kingTotal || 0) + ' min', 'king in total')}${tile((p.kingBest || 0) + ' min', 'longest streak')}${tile(int(p.spent), 'coins spent')}
+          ${tile(fmt((p.pickToday || {}).points), 'pick points today')}${tile(int((p.pickToday || {}).batches), 'batches today')}${tile(int((p.pickToday || {}).locations), 'locations today')}${tile(int((p.pickToday || {}).items), 'products picked today')}
+          ${tile(int(p.picklists), 'closed in total')}${tile(fmt(p.pickPoints), 'pick points in total')}${tile(int(p.batches), 'batches in total')}${tile(int(p.spent), 'coins spent')}
+          ${tile((p.kingTotal || 0) + ' min', 'king in total')}${tile((p.kingBest || 0) + ' min', 'longest streak')}${tile(int(p.coins), 'coins earned in total')}${tile(int(p.crates || 0), 'skin crates opened')}
         </div>
         <h3>Last days</h3>
         <div class="pf-week">${(p.week || []).map((w) => `<div title="${escHtml(w.day)} · ${fmt(w.points)} pts · ${w.n} closed"><i style="height:${Math.round(((w.points || 0) / maxW) * 48)}px"></i>${escHtml(w.day.slice(8, 10))}</div>`).join('')}</div>
-        <div class="pf-note">coins: 1 per packing point, +20 every minute as king</div>`;
+        <div class="pf-note">coins: 1 per packing point, 1 per picking point, +20 every minute as king</div>`;
     }
     function showProfile(note) {
       if (spinning) return;
+      if (aimUid && document.activeElement && document.activeElement.classList.contains('iv-q') && !note) return; // typing a name: leave it
       close('pq-lb-ov');
       const ov = overlay('pq-pf-ov');
       ov.classList.add('sh');
@@ -5576,20 +5576,21 @@
       const status = p.king ? `👑 king right now · ${p.king.min} min` : p.rankToday ? `#${p.rankToday} today of ${p.ofToday}` : 'nothing closed yet today';
       ov.innerHTML = `<div class="lb-panel sh-panel">
         <div class="sh-top">
-          <div><h2>${pfTab === 'shop' ? 'Shop' : nm}</h2><div class="lb-meta" style="margin:2px 0 0">${nm} · ${status}</div></div>
-          <div class="lb-tabs"><button data-pt="shop" class="${pfTab === 'shop' ? 'on' : ''}">🛒 Shop</button><button data-pt="stats" class="${pfTab === 'stats' ? 'on' : ''}">📊 My stats</button></div>
+          <div><h2>${pfTab === 'shop' ? 'Shop' : pfTab === 'inv' ? 'Inventory' : nm}</h2><div class="lb-meta" style="margin:2px 0 0">${nm} · ${status}</div></div>
+          <div class="lb-tabs"><button data-pt="inv" class="${pfTab === 'inv' ? 'on' : ''}">🎒 Inventory${(p.inv || []).length ? ` · ${(p.inv || []).length}` : ''}</button><button data-pt="stats" class="${pfTab === 'stats' ? 'on' : ''}">📊 Stats</button><button data-pt="shop" class="${pfTab === 'shop' ? 'on' : ''}">🛒 Shop</button></div>
           <div class="sh-coins"><b>${int(p.balance)}</b><span>coins</span></div>
           <button class="sh-x" data-pf-close title="Esc">✕</button>
         </div>
         ${note ? `<div class="sh-note">${escHtml(note)}</div>` : ''}
-        ${pfTab === 'stats' ? statsHtml(p) : `<div class="sh-body">
+        ${pfTab === 'inv' ? invHtml(p) : pfTab === 'stats' ? statsHtml(p) : `<div class="sh-body">
           <div class="sh-left"><h3>Skins</h3><div class="sh-grid">${(p.skins || []).map((s) => skinCard(p, s)).join('')}</div>
             <small class="sh-fine">skins change Picqer for your account · dark skins make all of Picqer dark</small></div>
           <div class="sh-right"><h3>Crate</h3>${crateHtml(p)}</div>
         </div>`}
       </div>`;
       ov.querySelector('[data-pf-close]').onclick = () => close('pq-pf-ov');
-      ov.querySelectorAll('[data-pt]').forEach((b) => (b.onclick = () => { pfTab = b.dataset.pt; showProfile(); }));
+      ov.querySelectorAll('[data-pt]').forEach((b) => (b.onclick = () => { pfTab = b.dataset.pt; aimUid = null; showProfile(); }));
+      if (pfTab === 'inv') wireInv(ov);
       ov.querySelector('[data-crate]')?.addEventListener('click', (e) => openCrate(e.currentTarget));
       // park the idle reel somewhere in the middle
       const idle = ov.querySelector('.cr-strip');
@@ -5613,7 +5614,7 @@
       } catch (e) { j = { err: 'could not reach the middle stop' }; }
       if (!j.ok) { showProfile(j.err || 'crate failed'); return; }
       const before = prof;
-      if (j.profile) prof = j.profile;
+      if (j.profile) setProf(j.profile);
       spin(j, before);
     }
     function spin(j, before) {
@@ -5677,17 +5678,472 @@
         setTimeout(finish, 7500); // tab in the background: still finish
       }));
     }
-    async function openProfile() {
-      if (document.getElementById('pq-pf-ov')) return close('pq-pf-ov');
+    async function openProfile(tab) {
+      if (document.getElementById('pq-pf-ov') && !tab) return close('pq-pf-ov');
+      if (tab) pfTab = tab;
+      else if (prof && (prof.inv || []).some((x) => x.kind === 'crate')) pfTab = 'inv';
       showProfile();
       try { await loadProfile(); showProfile(); } catch (e) { showProfile('could not load: ' + e.message); }
+    }
+
+
+    // ---------- 🪙 next to Picqer's own header buttons: coins + a tiny "+20 coins" when they go up ----------
+    const TIER_COL = { common: '#b0c3d9', uncommon: '#5e98d9', rare: '#4b69ff', epic: '#d32ce6', legendary: '#e4ae39' };
+    const TIER_ICON = { common: '📦', uncommon: '📦', rare: '🎁', epic: '🎁', legendary: '💎' };
+    const TIER_ORDER = ['legendary', 'epic', 'rare', 'uncommon', 'common'];
+    const ITEM_ICON = { boost: '⚡', shield: '🛡️', freeze: '❄️', skinoff: '🧥', double: '✨' };
+    const ITEM_COL = { boost: '#10b981', shield: '#0ea5e9', freeze: '#38bdf8', skinoff: '#ef4444', double: '#f59e0b' };
+    const LS_PROF = 'pqsuite_prof_v1', LS_NEWS = 'pqsuite_news_seen_v1';
+    const fmt3 = (x) => (Math.round((+x || 0) * 1000) / 1000).toLocaleString('nl-NL');
+    const tierName = (t) => (((prof && prof.tiers) || []).find((x) => x.id === t) || {}).name || (t ? t[0].toUpperCase() + t.slice(1) : '');
+    const tierOne = (t) => (((prof && prof.tiers) || []).find((x) => x.id === t) || {}).one || 0;
+    const itemDef = (k) => ((prof && prof.items) || {})[k] || { name: k || '?', desc: '' };
+    const leftTxt = (until) => { const m = Math.max(1, Math.ceil((until - Date.now()) / 60000)); return m >= 90 ? `${Math.round(m / 60)} h` : `${m} min`; };
+    const agoTxt = (t) => { const m = Math.floor((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`; };
+    let lastBal = (() => { const c = lsGet(LS_PROF, null); return c && c.id === ME_ID && c.p ? c.p.balance : null; })();
+
+    addStyle('pq-hb-style', `
+      #pq-hb{display:inline-flex !important;align-items:center;gap:6px;width:auto !important;min-width:0 !important;padding:0 10px !important;position:relative;text-decoration:none !important;cursor:pointer}
+      #pq-hb .pq-hb-n{font:600 12.5px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums;opacity:.9;white-space:nowrap}
+      #pq-hb.pq-hb-x2 .pq-hb-n::after{content:" x2";color:#f59e0b;font-weight:800}
+      #pq-hb.pq-hb-frozen .pq-hb-n{opacity:.45}
+      #pq-hb.pq-hb-new::before{content:"";position:absolute;top:9px;left:20px;width:7px;height:7px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 2px rgba(0,0,0,.15)}
+      #pq-hb .pq-hb-plus{position:absolute;right:8px;top:calc(100% - 6px);font:600 10.5px system-ui,sans-serif;color:#10b981;white-space:nowrap;pointer-events:none;opacity:0;animation:pqPlus 2.8s ease forwards}
+      @keyframes pqPlus{0%{opacity:0;transform:translateY(5px)}18%{opacity:.8;transform:none}70%{opacity:.8}100%{opacity:0;transform:translateY(-6px)}}
+      .pq-drop{position:fixed;left:50%;top:72px;z-index:2147483003;display:flex;align-items:center;gap:14px;padding:14px 24px 14px 16px;border-radius:14px;overflow:hidden;background:#0b0b12;color:#e2e8f0;
+        border:1px solid color-mix(in srgb,var(--r) 60%,transparent);box-shadow:0 18px 50px rgba(0,0,0,.45),0 0 44px color-mix(in srgb,var(--r) 35%,transparent);cursor:pointer;
+        transform:translateX(-50%);animation:dpIn .65s cubic-bezier(.2,1.4,.4,1) both;font-family:system-ui,sans-serif}
+      .pq-drop.out{animation:dpOut .4s ease forwards}
+      .pq-drop .dp-box{font-size:30px;width:52px;height:52px;display:grid;place-items:center;border-radius:12px;background:radial-gradient(circle,color-mix(in srgb,var(--r) 45%,transparent),transparent 70%);animation:dpShake .45s ease-in-out .55s 3}
+      .pq-drop .dp-t small{display:block;color:#94a3b8;font-size:10.5px;text-transform:uppercase;letter-spacing:.09em}
+      .pq-drop .dp-t b{display:block;font:800 18px system-ui,sans-serif;color:var(--r);letter-spacing:.02em;margin:1px 0}
+      .pq-drop .dp-t span{font:700 12.5px system-ui,sans-serif;color:#cbd5e1}
+      .pq-drop.t-epic::after,.pq-drop.t-legendary::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.2) 50%,transparent 65%);background-size:250% 100%;animation:dpShine 1.5s ease .6s 3;pointer-events:none}
+      @keyframes dpIn{0%{opacity:0;transform:translate(-50%,-34px) scale(.8)}100%{opacity:1;transform:translate(-50%,0) scale(1)}}
+      @keyframes dpOut{to{opacity:0;transform:translate(-50%,-16px) scale(.96)}}
+      @keyframes dpShake{0%,100%{transform:rotate(0)}25%{transform:rotate(-10deg) scale(1.08)}75%{transform:rotate(10deg) scale(1.08)}}
+      @keyframes dpShine{0%{background-position:150% 0}100%{background-position:-50% 0}}
+      .iv-rev{position:fixed;inset:0;z-index:2147483004;background:rgba(5,5,10,.84);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#e2e8f0;font-family:system-ui,sans-serif}
+      .iv-rev .rv-box{font-size:86px;filter:drop-shadow(0 0 34px var(--r));animation:rvShake .42s ease-in-out infinite}
+      .iv-rev .rv-tier{font:800 22px system-ui,sans-serif;color:var(--r);letter-spacing:.08em;text-transform:uppercase}
+      .iv-rev .rv-odds{color:#94a3b8;font:600 13px system-ui,sans-serif}
+      .iv-rev .rv-got{display:none;flex-direction:column;align-items:center;gap:8px;min-width:240px;padding:24px 32px;border-radius:16px;background:#0b0b12;border:1px solid var(--r);box-shadow:0 0 70px color-mix(in srgb,var(--r) 45%,transparent);animation:rvIn .55s cubic-bezier(.2,1.4,.4,1) both;text-align:center}
+      .iv-rev.open .rv-got{display:flex}
+      .iv-rev.open .rv-box,.iv-rev.open .rv-tier,.iv-rev.open .rv-odds{display:none}
+      .iv-rev .rv-ic{font-size:56px;line-height:1.1}
+      .iv-rev .rv-sw{width:150px;height:62px;border-radius:10px;border:1px solid rgba(255,255,255,.15)}
+      .iv-rev .rv-got small{color:var(--r);font:800 11px system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase}
+      .iv-rev .rv-got b{font:800 21px system-ui,sans-serif;color:#fff}
+      .iv-rev .rv-got span{color:#cbd5e1;font-size:13px}
+      .iv-rev .rv-btns{display:flex;gap:8px;margin-top:8px}
+      .iv-rev button{padding:9px 18px;border-radius:9px;border:1px solid #2a2a38;background:#16161f;color:#fff;font:800 13px system-ui,sans-serif;cursor:pointer}
+      .iv-rev button.go{background:linear-gradient(90deg,#6366f1,#a855f7);border:0}
+      @keyframes rvShake{0%,100%{transform:rotate(0) scale(1)}25%{transform:rotate(-9deg) scale(1.07)}75%{transform:rotate(9deg) scale(1.07)}}
+      @keyframes rvIn{0%{opacity:0;transform:scale(.55)}100%{opacity:1;transform:scale(1)}}
+      .sh .iv-ev{margin:12px 0 0;padding:10px 14px;border-radius:10px;background:linear-gradient(90deg,#f59e0b,#ec4899);color:#fff;font:700 13px system-ui,sans-serif;box-shadow:0 6px 20px rgba(236,72,153,.3)}
+      .sh .iv-eff{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+      .sh .iv-eff span{padding:5px 10px;border-radius:999px;font:600 12px system-ui,sans-serif;border:1px solid var(--line);background:var(--soft)}
+      .sh .iv-eff .good{color:#059669} .sh .iv-eff .bad{color:#e11d48}
+      .sh h3 small{color:var(--mut);font-weight:500;margin-left:4px}
+      .sh .iv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+      .sh .iv-c{position:relative;border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px;background:var(--bg);display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;overflow:hidden}
+      .sh .iv-c::before{content:"";position:absolute;left:0;right:0;top:0;height:64px;background:radial-gradient(circle at 50% 0,color-mix(in srgb,var(--r) 32%,transparent),transparent 70%);pointer-events:none}
+      .sh .iv-c::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--r)}
+      .sh .iv-ic{font-size:30px;line-height:1.25;position:relative}
+      .sh .iv-c b{font:700 13.5px system-ui,sans-serif;color:var(--r);position:relative}
+      .sh .iv-c small{color:var(--mut);font-size:11px;min-height:28px;position:relative}
+      .sh .iv-c button{margin-top:6px;width:100%;padding:6px 0;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:700 12.5px system-ui,sans-serif;cursor:pointer;position:relative}
+      .sh .iv-empty{color:var(--mut);font-size:12.5px;padding:6px 0 4px}
+      .sh .iv-odds{display:flex;flex-wrap:wrap;gap:12px;margin-top:18px;font-size:11px;color:var(--mut)}
+      .sh .iv-odds i{display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--r);margin-right:5px}
+      .sh .iv-aim{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
+      .sh .iv-aim-h{display:flex;align-items:center;justify-content:space-between;font:700 13.5px system-ui,sans-serif}
+      .sh .iv-aim input{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:500 13px system-ui,sans-serif;margin:8px 0;outline:none}
+      .sh .iv-aim input:focus{border-color:#6366f1}
+      .sh .iv-ppl{max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:2px}
+      .sh .iv-ppl button{text-align:left;border:0;background:none;color:var(--fg);font:600 13px system-ui,sans-serif;padding:7px 10px;border-radius:7px;cursor:pointer;display:flex;justify-content:space-between;gap:10px}
+      .sh .iv-ppl button:hover{background:var(--hi)}
+      .sh .iv-ppl button small{color:var(--mut);font-weight:500}
+      .sh .iv-ppl .hide{display:none}
+      .sh .sh-only{position:absolute;top:6px;left:6px;z-index:1;font-style:normal;font:800 9.5px system-ui,sans-serif;letter-spacing:.05em;color:#fff;background:linear-gradient(90deg,#d32ce6,#eb4b4b);padding:2px 7px;border-radius:999px}
+      .pq-lb-ov .lb-q{width:100%;box-sizing:border-box;margin:0 0 10px;padding:8px 11px;border-radius:9px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:500 13px system-ui,sans-serif;outline:none}
+      .pq-lb-ov .lb-q:focus{border-color:#6366f1}
+      .pq-lb-ov .lb-row.hide{display:none}
+      #pq-pk-ov .lb-panel{width:min(640px,100%)}
+      #pq-pk-ov h2 span{display:flex;gap:6px}
+      .pq-lb-ov .pk-date{display:flex;gap:6px;align-items:center;margin:4px 0 12px}
+      .pq-lb-ov .pk-date input{padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:600 13px system-ui,sans-serif;color-scheme:light dark}
+      .pq-lb-ov .pk-date button{border:1px solid var(--line);background:var(--soft);color:var(--fg);font:700 13px system-ui,sans-serif;padding:5px 10px;border-radius:8px;cursor:pointer}
+      .pq-lb-ov .pk-date button:disabled{opacity:.4;cursor:default}
+      .pq-lb-ov .pk-sum{display:flex;gap:8px;margin:6px 0 4px}
+      .pq-lb-ov .pk-sum div{flex:1;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+      .pq-lb-ov .pk-sum b{display:block;font:800 18px system-ui,sans-serif}
+      .pq-lb-ov .pk-sum span{color:var(--mut);font-size:11px}
+      .pq-lb-ov .pk-bars{display:flex;align-items:flex-end;gap:3px;height:156px;padding-top:4px}
+      .pq-lb-ov .pk-bars div{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%}
+      .pq-lb-ov .pk-bars i{display:block;width:100%;border-radius:4px 4px 0 0;min-height:2px}
+      .pq-lb-ov .pk-bars em{font:600 9.5px system-ui,sans-serif;font-style:normal;color:var(--mut);white-space:nowrap}
+      .pq-lb-ov .pk-bars span{font-size:10px;color:var(--mut)}
+      .pq-lb-ov.tv{background:var(--bg);padding:0}
+      .pq-lb-ov.tv .lb-panel{width:100%;max-width:none;max-height:none;height:100%;border:0;border-radius:0;box-shadow:none;padding:28px 40px;zoom:1.35}
+    `);
+
+    function headerBtn() {
+      if (!URL_ || !ME_ID) return;
+      let a = document.getElementById('pq-hb');
+      if (!a) {
+        const nav = document.querySelector('.layout-header-navigation');
+        if (!nav) return;
+        a = document.createElement('a');
+        a.id = 'pq-hb';
+        a.href = '#';
+        a.innerHTML = '<i class="far fa-coins"></i><span class="pq-hb-n"></span>';
+        a.addEventListener('click', (e) => { e.preventDefault(); openProfile(); });
+        const acc = nav.querySelector('.layout-header-account');
+        if (acc && acc.parentNode) acc.parentNode.insertBefore(a, acc); else nav.appendChild(a);
+      }
+      const p = prof, now = Date.now();
+      const n = a.querySelector('.pq-hb-n');
+      const txt = p ? int(p.balance) : '';
+      if (n.textContent !== txt) n.textContent = txt;
+      const crates = p ? (p.inv || []).filter((x) => x.kind === 'crate').length : 0;
+      const ev = p && p.event && p.event.until > now, frozen = p && p.effects && p.effects.frozenUntil > now;
+      a.classList.toggle('pq-hb-new', crates > 0);
+      a.classList.toggle('pq-hb-x2', !!ev);
+      a.classList.toggle('pq-hb-frozen', !!frozen);
+      a.title = ['Inventory · stats · shop', crates ? `${crates} crate${crates > 1 ? 's' : ''} to open` : '', ev ? 'double points event: x2 coins' : '', frozen ? `your coins are frozen (${leftTxt(p.effects.frozenUntil)})` : ''].filter(Boolean).join(' · ');
+    }
+    function coinGain(diff) {
+      const a = document.getElementById('pq-hb');
+      if (!a || !(diff > 0.0005)) return;
+      a.querySelectorAll('.pq-hb-plus').forEach((x) => x.remove());
+      const f = document.createElement('span');
+      f.className = 'pq-hb-plus';
+      f.textContent = `+${fmt3(diff)} coins`;
+      a.appendChild(f);
+      setTimeout(() => f.remove(), 2900);
+    }
+    // every new profile goes through here: header coins, the +X, crate drops / attacks on you
+    function setProf(p) {
+      if (!p) return p;
+      prof = p;
+      skinSave(ME_ID, p.skin);
+      applySkin(p.skin);
+      lsSet(LS_PROF, { id: ME_ID, at: Date.now(), p });
+      if (lastBal != null && p.balance > lastBal + 0.0005) coinGain(p.balance - lastBal);
+      lastBal = p.balance;
+      headerBtn();
+      newsCheck(p);
+      return p;
+    }
+    async function pollProf() {
+      if (!URL_ || !ME_ID || spinning || invBusy) return;
+      const c = lsGet(LS_PROF, null);
+      if (c && c.id === ME_ID && c.p && Date.now() - c.at < 50000) { if (c.at !== (prof && prof._at)) { c.p._at = c.at; setProf(c.p); } return; }
+      try { await loadProfile(); } catch (_) {}
+    }
+
+    // ---------- something happened to you: a crate dropped, someone froze you, your shield blocked it ----------
+    const newsQ = [];
+    let newsBusy = false;
+    function newsCheck(p) {
+      const all = lsGet(LS_NEWS, null) || {};
+      const seen = +all[ME_ID] || 0;
+      const fresh = (p.news || []).filter((x) => x.at > seen).sort((a, b) => a.at - b.at);
+      if (!fresh.length) return;
+      const max = fresh[fresh.length - 1].at;
+      all[ME_ID] = max;
+      lsSet(LS_NEWS, all); // other tabs don't show it again
+      newsQ.push(...fresh.slice(-6));
+      showNews();
+      fetch(`${URL_}/seen`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ME_ID, at: max }) }).catch(() => {});
+    }
+    async function showNews() {
+      if (newsBusy || !newsQ.length) return;
+      newsBusy = true;
+      const x = newsQ.shift();
+      const map = x.from ? await names().catch(() => ({})) : {};
+      const who = escHtml(map[x.from] || 'someone');
+      const el = document.createElement('div');
+      el.className = 'pq-drop';
+      if (x.kind === 'crate') {
+        el.classList.add('t-' + x.tier);
+        el.style.setProperty('--r', TIER_COL[x.tier] || '#94a3b8');
+        el.innerHTML = `<div class="dp-box">${TIER_ICON[x.tier] || '📦'}</div><div class="dp-t"><small>crate dropped</small><b>${escHtml(tierName(x.tier))} crate</b><span>1/${int(x.one || tierOne(x.tier))}</span></div>`;
+      } else {
+        const d = itemDef(x.item), blocked = x.kind === 'blocked';
+        el.style.setProperty('--r', blocked ? '#10b981' : '#ef4444');
+        const what = blocked ? 'your shield is used up' : x.item === 'freeze' ? `no coins for ${x.until ? leftTxt(x.until) : '20 min'}` : x.item === 'skinoff' ? `your skin is off for ${x.until ? leftTxt(x.until) : '30 min'}` : '';
+        el.innerHTML = `<div class="dp-box">${blocked ? '🛡️' : ITEM_ICON[x.item] || '⚠️'}</div><div class="dp-t"><small>${blocked ? 'blocked' : 'you got hit'}</small><b>${who} · ${escHtml(d.name)}</b><span>${what}</span></div>`;
+      }
+      el.title = 'click to open your inventory';
+      el.addEventListener('click', () => { el.remove(); openProfile('inv'); });
+      document.body.appendChild(el);
+      setTimeout(() => { el.classList.add('out'); setTimeout(() => { el.remove(); newsBusy = false; showNews(); }, 420); }, x.kind === 'crate' ? 5200 : 7000);
+    }
+
+    // ---------- Inventory tab: crates (open) and items (use) ----------
+    let invBusy = false, aimUid = null, aimQ = '';
+    const post = async (path, body) => (await fetch(`${URL_}/${path}`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+    function invHtml(p) {
+      const now = Date.now(), e = p.effects || {};
+      const eff = [];
+      if (e.boostUntil > now) eff.push(['⚡ Coin boost x2', e.boostUntil, 'good']);
+      if (e.shieldUntil > now) eff.push(['🛡️ Shield on', e.shieldUntil, 'good']);
+      if (e.frozenUntil > now) eff.push(['❄️ Coins frozen', e.frozenUntil, 'bad']);
+      if (e.skinOffUntil > now) eff.push(['🧥 Skin off', e.skinOffUntil, 'bad']);
+      const crates = (p.inv || []).filter((x) => x.kind === 'crate').sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier) || a.at - b.at);
+      const items = (p.inv || []).filter((x) => x.kind === 'item');
+      const crateCard = (x) => `<div class="iv-c" style="--r:${TIER_COL[x.tier] || '#94a3b8'}"><div class="iv-ic">${TIER_ICON[x.tier] || '📦'}</div><b>${escHtml(tierName(x.tier))} crate</b><small>1/${int(tierOne(x.tier))} · ${agoTxt(x.at)}</small><button class="buy" data-open="${escHtml(x.uid)}">Open</button></div>`;
+      const itemCard = (x) => { const d = itemDef(x.item); return `<div class="iv-c" style="--r:${ITEM_COL[x.item] || '#94a3b8'}"><div class="iv-ic">${ITEM_ICON[x.item] || '❔'}</div><b>${escHtml(d.name)}</b><small>${escHtml(d.desc)}</small><button class="${d.target ? 'buy' : 'wear'}" data-use="${escHtml(x.uid)}">${d.target ? 'Use on someone…' : 'Use'}</button></div>`; };
+      let aim = '';
+      if (aimUid) {
+        const x = items.find((i) => i.uid === aimUid);
+        if (!x) aimUid = null;
+        else {
+          const d = itemDef(x.item), ql = low(aimQ);
+          const ppl = ((tot && tot.list) || []).filter((r) => r.id !== ME_ID).slice().sort((a, b) => a.name.localeCompare(b.name));
+          aim = `<div class="iv-aim"><div class="iv-aim-h"><span>${ITEM_ICON[x.item] || ''} ${escHtml(d.name)} on who?</span><button class="sh-x" data-aim-x title="cancel">✕</button></div>
+            <input class="iv-q" placeholder="Search a name…" value="${escHtml(aimQ)}">
+            <div class="iv-ppl">${tot ? ppl.map((r) => `<button data-tg="${escHtml(r.id)}" data-n="${escHtml(low(r.name))}" class="${ql && !low(r.name).includes(ql) ? 'hide' : ''}">${escHtml(r.name)}<small>${int(r.balance)} coins</small></button>`).join('') || '<div class="iv-empty">nobody yet</div>' : '<div class="iv-empty">Loading…</div>'}</div></div>`;
+        }
+      }
+      return `${p.event && p.event.until > now ? `<div class="iv-ev">✨ Double points event · x2 coins for everyone · ${leftTxt(p.event.until)} left</div>` : ''}
+        ${eff.length ? `<div class="iv-eff">${eff.map(([t, u, k]) => `<span class="${k}">${t} · ${leftTxt(u)}</span>`).join('')}</div>` : ''}
+        ${aim}
+        <h3>Crates <small>${crates.length}</small></h3>
+        ${crates.length ? `<div class="iv-grid">${crates.map(crateCard).join('')}</div>` : '<div class="iv-empty">No crates yet · every packed picklist has a small chance to drop one, a picked batch 3 chances</div>'}
+        <h3>Items <small>${items.length}</small></h3>
+        ${items.length ? `<div class="iv-grid">${items.map(itemCard).join('')}</div>` : '<div class="iv-empty">No items · they come out of crates</div>'}
+        <div class="iv-odds">${(p.tiers || []).slice().reverse().map((t) => `<span style="--r:${TIER_COL[t.id]}"><i></i>${escHtml(t.name)} 1/${int(t.one)}</span>`).join('')}</div>`;
+    }
+    function wireInv(ov) {
+      ov.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => openDropCrate(b.dataset.open, b)));
+      ov.querySelectorAll('[data-use]').forEach((b) => (b.onclick = () => {
+        const x = ((prof && prof.inv) || []).find((i) => i.uid === b.dataset.use);
+        if (!x) return;
+        const d = itemDef(x.item);
+        if (d.target) {
+          aimUid = x.uid; aimQ = '';
+          showProfile();
+          if (!tot || Date.now() - tot.at > 60000) loadTotals().then(() => { if (aimUid) showProfile(); });
+          setTimeout(() => document.querySelector('#pq-pf-ov .iv-q')?.focus(), 30);
+          return;
+        }
+        if (x.item === 'double' && !confirm('Start a double points event? Everyone gets x2 coins for 1 hour.')) return;
+        useIt(x.uid, null, b);
+      }));
+      ov.querySelector('[data-aim-x]')?.addEventListener('click', () => { aimUid = null; showProfile(); });
+      const q = ov.querySelector('.iv-q');
+      if (q) q.addEventListener('input', () => {
+        aimQ = q.value;
+        const ql = low(aimQ);
+        ov.querySelectorAll('.iv-ppl [data-n]').forEach((r) => r.classList.toggle('hide', !!ql && !r.dataset.n.includes(ql)));
+      });
+      ov.querySelectorAll('[data-tg]').forEach((b) => (b.onclick = () => {
+        const x = ((prof && prof.inv) || []).find((i) => i.uid === aimUid);
+        if (!x) return;
+        const nm = b.firstChild ? b.firstChild.textContent : b.dataset.tg;
+        if (!confirm(`Use ${itemDef(x.item).name} on ${nm}?`)) return;
+        useIt(x.uid, b.dataset.tg, b, nm);
+      }));
+    }
+    async function useIt(uid, target, btn, nm) {
+      if (invBusy) return;
+      invBusy = true;
+      if (btn) btn.disabled = true;
+      const x = ((prof && prof.inv) || []).find((i) => i.uid === uid);
+      const d = itemDef(x && x.item);
+      let j;
+      try { j = await post('use', { id: ME_ID, uid, target }); } catch (e) { j = { err: 'could not reach the middle stop' }; }
+      invBusy = false;
+      aimUid = null;
+      if (j.profile) setProf(j.profile);
+      showProfile(j.err || (j.blocked ? `🛡️ ${nm || 'they'} had a shield · your ${d.name} got blocked` : target ? `${ITEM_ICON[x.item] || ''} ${d.name} used on ${nm} ✓` : `${ITEM_ICON[x.item] || ''} ${d.name} is on ✓`));
+    }
+    async function openDropCrate(uid, btn) {
+      if (invBusy) return;
+      const x = ((prof && prof.inv) || []).find((i) => i.uid === uid);
+      if (!x) return;
+      invBusy = true;
+      if (btn) btn.disabled = true;
+      const col = TIER_COL[x.tier] || '#94a3b8';
+      const rv = document.createElement('div');
+      rv.className = 'iv-rev';
+      rv.style.setProperty('--r', col);
+      rv.innerHTML = `<div class="rv-box">${TIER_ICON[x.tier] || '📦'}</div><div class="rv-tier">${escHtml(tierName(x.tier))} crate</div><div class="rv-odds">1/${int(tierOne(x.tier))}</div><div class="rv-got"></div>`;
+      document.body.appendChild(rv);
+      const t0 = Date.now();
+      let j;
+      try { j = await post('open', { id: ME_ID, uid }); } catch (e) { j = { err: 'could not reach the middle stop' }; }
+      await new Promise((ok) => setTimeout(ok, Math.max(0, 1600 - (Date.now() - t0))));
+      if (!j.ok) { rv.remove(); invBusy = false; showProfile(j.err || 'could not open it'); return; }
+      const g = j.got || {};
+      let inner;
+      if (g.kind === 'coins') inner = `<div class="rv-ic">🪙</div><small>${escHtml(tierName(j.tier))} crate</small><b>+${int(g.coins)} coins</b>`;
+      else if (g.kind === 'skin') {
+        const look = SKIN_LOOK[g.skin] || { bg: '#334155' };
+        inner = `<div class="rv-sw" style="background:${look.bg}"></div><small>${escHtml(tierName(j.tier))} crate · skin</small><b>${escHtml(nameOfSkin(g.skin))}</b><span>${g.dup ? `you already had it · +${int(g.coins)} coins` : 'crate only skin · yours now'}</span>`;
+      } else {
+        const d = itemDef(g.item);
+        inner = `<div class="rv-ic">${ITEM_ICON[g.item] || '❔'}</div><small>${escHtml(tierName(j.tier))} crate · item</small><b>${escHtml(d.name)}</b><span>${escHtml(d.desc)}</span>`;
+      }
+      rv.querySelector('.rv-got').innerHTML = `${inner}<div class="rv-btns">${g.kind === 'skin' && !g.dup ? '<button class="go" data-rv="wear">Wear it</button>' : ''}<button data-rv="ok">Nice</button></div>`;
+      rv.classList.add('open');
+      if (j.profile) setProf(j.profile);
+      const done = async (wear) => {
+        rv.remove();
+        invBusy = false;
+        if (wear) { const r = await change('equip', g.skin).catch(() => ({ err: 'could not reach the middle stop' })); showProfile(r.err || `wearing ${nameOfSkin(g.skin)} ✓`); }
+        else showProfile();
+      };
+      rv.querySelectorAll('[data-rv]').forEach((b) => (b.onclick = () => done(b.dataset.rv === 'wear')));
+      rv.addEventListener('click', (e) => { if (e.target === rv) done(false); });
+    }
+
+    // ---------- Ctrl+Alt+P: pick · pack · charts (TV: any Picqer link with #pickers) ----------
+    let pkTab = 'pick', picks = null, picksErr = '', chDate = null, chData = null, chBusy = '', chErr = '', chAt = 0, pkTv = false, pkTimer = null;
+    const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+    const addDay = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`; };
+    async function loadPicks() {
+      try {
+        const r = await fetch(`${URL_}/picks`, { credentials: 'omit', cache: 'no-store' });
+        const j = await r.json();
+        if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
+        const map = await names().catch(() => ({}));
+        picks = { at: j.at, list: j.people.filter((x) => !proxies.has(String(x.id))).map((x) => ({ ...x, id: String(x.id), name: map[x.id] || `#${x.id}` })) };
+        picksErr = '';
+      } catch (e) { picksErr = e.message; }
+      showPk(true);
+    }
+    // packed per hour = closed picklists, straight from Picqer (past days kept on this PC: they don't change anymore)
+    const LS_CH = 'pqsuite_chart_v1';
+    async function packedFromPicqer(date) {
+      const w = await warehouse();
+      const out = Array(24).fill(0);
+      let n = 0;
+      for (let off = 0; off < 30000; off += 100) {
+        const page = await api(`/picklists?status=closed&closed_after=${encodeURIComponent(date + ' 00:00:00')}&closed_before=${encodeURIComponent(addDay(date, 1) + ' 00:00:00')}${w && w.id ? `&idwarehouse=${w.id}` : ''}&offset=${off}`);
+        (page || []).forEach((p) => { const h = +String(p.closed_at || '').slice(11, 13); if (String(p.closed_at || '').slice(0, 10) === date && h >= 0 && h < 24) out[h]++; });
+        n += (page || []).length;
+        if (chDate === date) { chBusy = `counting picklists… ${n}`; showPk(true); }
+        if (!page || page.length < 100) break;
+      }
+      return out;
+    }
+    async function loadChart(date) {
+      chDate = date; chErr = ''; chBusy = 'loading…';
+      if (!chData || chData.date !== date) chData = null;
+      showPk(true);
+      try {
+        const mid = URL_ ? await fetch(`${URL_}/chart?date=${date}`, { credentials: 'omit', cache: 'no-store' }).then((x) => x.json()).catch(() => null) : null;
+        let packed;
+        const c = lsGet(LS_CH, null) || {};
+        if (date !== todayStr() && c[date]) packed = c[date];
+        else {
+          packed = await packedFromPicqer(date);
+          if (date < todayStr()) { c[date] = packed; const ks = Object.keys(c).sort(); while (ks.length > 45) delete c[ks.shift()]; lsSet(LS_CH, c); }
+        }
+        if (chDate !== date) return;
+        chData = { date, packed, picked: mid && mid.have ? mid.picked : null };
+        chAt = Date.now();
+      } catch (e) { if (chDate === date) chErr = e.message; }
+      if (chDate === date) { chBusy = ''; showPk(true); }
+    }
+    function bars(arr, lo, hi, color, f) {
+      const part = arr.slice(lo, hi + 1), max = Math.max(1, ...part);
+      return `<div class="pk-bars">${part.map((v, i) => `<div title="${pad(lo + i)}:00 – ${pad(lo + i + 1)}:00 · ${f(v)}"><em>${v ? f(v) : ''}</em><i style="height:${Math.round((v / max) * 118)}px;background:${v ? color : 'var(--line)'}"></i><span>${pad(lo + i)}</span></div>`).join('')}</div>`;
+    }
+    function chartHtml() {
+      const t = todayStr(), d = chDate || t;
+      const nav = `<div class="pk-date"><button data-dd="-1" title="day before">‹</button><input type="date" class="pk-in" value="${d}" max="${t}"><button data-dd="1" title="day after" ${d >= t ? 'disabled' : ''}>›</button><button data-dd="0" ${d === t ? 'disabled' : ''}>Today</button></div>`;
+      if (chErr) return `${nav}<div class="lb-empty">⚠ ${escHtml(chErr)}</div>`;
+      if (!chData) return `${nav}<div class="lb-empty">${escHtml(chBusy || 'loading…')}</div>`;
+      const P = chData.packed, K = chData.picked;
+      const used = (a) => (a || []).map((v, i) => (v ? i : -1)).filter((i) => i >= 0);
+      const hrs = [...used(P), ...used(K)];
+      const lo = Math.min(6, ...hrs), hi = Math.max(21, ...hrs);
+      const sum = (a) => (a || []).reduce((n, v) => n + v, 0);
+      const peak = (a) => a.reduce((b, v, i) => (v > a[b] ? i : b), 0);
+      const tp = sum(P), pk = peak(P);
+      return `${nav}<div class="pk-sum"><div><b>${int(tp)}</b><span>picklists packed</span></div><div><b>${tp ? `${int(P[pk])}` : '–'}</b><span>${tp ? `busiest hour · ${pad(pk)}:00` : 'busiest hour'}</span></div><div><b>${K ? fmt(sum(K)) : '–'}</b><span>pick points</span></div></div>
+        <h3>📦 Packed per hour <small style="color:var(--mut);font-weight:500">closed picklists · from Picqer</small></h3>${bars(P, lo, hi, '#6366f1', int)}
+        <h3>⛏ Picked per hour <small style="color:var(--mut);font-weight:500">pick points of completed batches</small></h3>${K ? bars(K, lo, hi, '#10b981', fmt) : '<div class="lb-empty">no picking data for this day · the middle stop counts picking from 10 Nov 2026 on</div>'}
+        ${chBusy ? `<div class="lb-meta" style="margin-top:8px">${escHtml(chBusy)}</div>` : ''}`;
+    }
+    function packHtml() {
+      const list = ranked();
+      const mins = Math.round(WIN / 60000);
+      const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
+      return `<div class="lb-meta">last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
+        ${list.length ? list.map((r) => `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.king ? '👑' : '#' + r.rank}</span>
+          <span class="nm">${escHtml(r.name)}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single${r.king && r.kingMin != null ? ` · king ${r.kingMin} min` : ''}</small></span>
+          <span class="v">${fmt(r.points)}<small>pts</small></span></div>`).join('') : `<div class="lb-empty">Nobody closed a picklist in the last ${mins} min</div>`}
+        <div class="lb-legend"><span class="t-blue"><i></i>46+</span><span class="t-turq"><i></i>38+</span><span class="t-dgreen"><i></i>30+</span><span class="t-green"><i></i>21+</span><span class="t-orange"><i></i>14+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 21+ · +20 coins a minute</span></div>`;
+    }
+    function pickHtml() {
+      const rows = (picks && picks.list) || [];
+      const hm = picks && picks.at ? new Date(picks.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
+      let rank = 0, prev = null;
+      return `<div class="lb-meta">today · 3 per pick location + 0,2 per product · counts when the batch is completed · ${hm}${picksErr ? ' · ⚠ ' + escHtml(picksErr) : ''}</div>
+        ${rows.length ? rows.map((r, i) => {
+          if (prev === null || r.points !== prev) rank = i + 1;
+          prev = r.points;
+          return `<div class="lb-row t-${rank === 1 ? 'gold' : 'none'}${r.id === ME_ID ? ' me' : ''}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
+            <span class="nm">${escHtml(r.name)}<small>${int(r.batches)} batch${r.batches === 1 ? '' : 'es'} · ${int(r.locations)} locations · ${int(r.items)} products${r.hour ? ` · ${fmt(r.hour)} last hour` : ''}</small></span>
+            <span class="v">${fmt(r.points)}<small>pts</small></span></div>`;
+        }).join('') : `<div class="lb-empty">${picks ? 'No batch completed yet today' : picksErr ? '' : 'Loading…'}</div>`}`;
+    }
+    function showPk(refresh) {
+      if (refresh && !document.getElementById('pq-pk-ov')) return;
+      const ov = overlay('pq-pk-ov');
+      ov.classList.toggle('tv', pkTv);
+      const tab = (k, t) => `<button data-pk="${k}" class="${pkTab === k ? 'on' : ''}">${t}</button>`;
+      const body = !URL_ ? '<div class="lb-empty">needs the middle stop (Shift+8 → Leaderboard)</div>' : pkTab === 'pack' ? packHtml() : pkTab === 'chart' ? chartHtml() : pickHtml();
+      const keep = document.activeElement && document.activeElement.classList.contains('pk-in');
+      if (keep) return; // don't throw away an open date picker
+      ov.innerHTML = `<div class="lb-panel"><h2>Pickers &amp; packers<span><button class="lb-gear" data-pkx="tv" title="Copy the TV link">📺</button><button class="lb-gear" data-pkx="close" title="Esc">✕</button></span></h2>
+        <div class="lb-tabs">${tab('pick', '⛏ Pick')}${tab('pack', '📦 Pack')}${tab('chart', '📈 Charts')}</div>${body}</div>`;
+      ov.querySelectorAll('[data-pk]').forEach((b) => (b.onclick = () => {
+        pkTab = b.dataset.pk;
+        showPk(true);
+        if (pkTab === 'pick') loadPicks();
+        if (pkTab === 'chart' && (!chData || Date.now() - chAt > 300000)) loadChart(chDate || todayStr());
+      }));
+      ov.querySelector('[data-pkx="close"]').onclick = () => close('pq-pk-ov');
+      ov.querySelector('[data-pkx="tv"]').onclick = async (e) => {
+        const link = `${location.origin}/picklists/batches#pickers`;
+        try { await navigator.clipboard.writeText(link); e.currentTarget.textContent = '✓'; } catch (_) { prompt('TV link:', link); }
+      };
+      ov.querySelectorAll('[data-dd]').forEach((b) => (b.onclick = () => { const n = +b.dataset.dd; loadChart(n ? addDay(chDate || todayStr(), n) : todayStr()); }));
+      const din = ov.querySelector('.pk-in');
+      if (din) din.addEventListener('change', () => { if (/^\d{4}-\d{2}-\d{2}$/.test(din.value) && din.value <= todayStr()) { din.blur(); loadChart(din.value); } });
+    }
+    function openPk(tv) {
+      if (document.getElementById('pq-pk-ov')) return;
+      pkTv = !!tv;
+      if (tv) pkTab = 'pick';
+      showPk();
+      if (!URL_) return;
+      loadPicks();
+      if (pkTab === 'chart') loadChart(chDate || todayStr());
+      clearInterval(pkTimer);
+      pkTimer = setInterval(() => {
+        if (pkTab === 'pick') loadPicks();
+        else if (pkTab === 'chart' && chDate === todayStr() && !chBusy && Date.now() - chAt > 300000) loadChart(chDate);
+      }, 60000);
     }
 
     const typing = (t) => t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName));
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key || '').toLowerCase() === 'l') { e.preventDefault(); if (document.getElementById('pq-lb-ov')) close('pq-lb-ov'); else showList(); return; }
-      if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Digit9' && !typing(e.target)) { e.preventDefault(); openProfile(); return; }
-      if (e.key === 'Escape') { if (spinning) return; close('pq-lb-ov'); close('pq-pf-ov'); }
+      if (e.ctrlKey && e.altKey && !e.shiftKey && e.code === 'KeyP' && use('pickStats')) { e.preventDefault(); if (document.getElementById('pq-pk-ov')) close('pq-pk-ov'); else openPk(false); return; }
+      if (e.key === 'Escape') {
+        const rv = document.querySelector('.iv-rev.open');
+        if (rv) { rv.querySelector('[data-rv="ok"]')?.click(); return; }
+        if (spinning || invBusy) return;
+        close('pq-lb-ov'); close('pq-pf-ov'); close('pq-pk-ov');
+      }
     });
     try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { shown = null; render(); }); } catch (_) {}
     window.addEventListener('storage', (e) => { if (e.key === LS_DATA) { data = lsGet(LS_DATA, data); render(); } });
@@ -5696,482 +6152,22 @@
     setTimeout(poll, due ? 1500 + Math.random() * 2000 : POLL - (Date.now() - data.at));
     setInterval(() => { if (!document.hidden || !data || Date.now() - data.at > POLL * 3) poll(); }, POLL);
     document.addEventListener('visibilitychange', () => { if (!document.hidden && (!data || Date.now() - data.at > POLL)) poll(); });
-    // the skin follows the account (bought or changed on another PC): check every 10 min
-    const sk = skinOf(ME_ID);
-    if (URL_ && ME_ID && (!sk || Date.now() - sk.at > 10 * 60000)) setTimeout(() => loadProfile().catch(() => {}), 4000 + Math.random() * 4000);
-  }
-
-  function pickStats() {
-    const C = CFG.pickStats;
-    const LS_B = 'pqsuite_pick2_batches';    // batches this PC watched + every change in their progress
-    const LS_META = 'pqsuite_pick2_meta';
-    const LS_LOCK = 'pqsuite_pick2_lock';    // 1 tab per PC does the checking
-    for (const k of ['pqsuite_pick_track_v1', 'pqsuite_pick_done_v1', 'pqsuite_pick_lock_v1', 'pqsuite_pick_meta_v1']) { try { localStorage.removeItem(k); } catch (_) {} }
-    const DAY = 86400000;
-    const POLL = Math.max(15, +C.pollSec || 30) * 1000;
-    const IDLE = Math.max(1, +C.idleMin || 5) * 60000;
-    const KEEP = 8 * DAY;                     // the longest view is 7 days
-    const WH = norm(String(C.warehouse == null ? '' : C.warehouse));
-    const TAB = Math.random().toString(36).slice(2);
-    const exclude = new Set((C.excludeIds || []).map(String));
-    let busyPoll = false, lastErr = '', view = 'now', range = 'today', sortKey = 'units', timer = null, ticker = null, wh = null;
-    const ts = (s) => (s ? new Date(String(s).replace(' ', 'T')).getTime() : null);
-    const sec = (t) => Math.round(t / 1000);
-    const low = (s) => norm(String(s == null ? '' : s)).toLowerCase();
-    const person = (u) => (u && u.iduser ? { id: String(u.iduser), name: u.full_name || u.username || `#${u.iduser}` } : null);
-    const hm = (t) => (t ? new Date(t).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–');
-    const dm = (t) => new Date(t).toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' });
-    const dur = (ms) => { if (ms == null || !isFinite(ms)) return '–'; const m = Math.round(ms / 60000); return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}`; };
-    const perH = (n, ms) => (ms >= 60000 ? Math.round(n / (ms / 3600000)) : null); // at least 1 min of time, else no rate
-
-    async function api(path) {
-      for (let i = 0; i < 5; i++) {
-        const r = await fetch('/api/v1' + path, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-        if (r.status === 429) { await new Promise((ok) => setTimeout(ok, 1500 * (i + 1))); continue; }
-        if (r.status === 401 || r.status === 403) throw new Error('not logged in to Picqer (or no access)');
-        if (!r.ok) throw new Error(`HTTP ${r.status} on ${path.split('?')[0]}`);
-        return r.json();
-      }
-      throw new Error('Picqer says too many requests');
+    // 🪙 button in Picqer's header (Picqer can redraw the header: put it back when it's gone)
+    if (URL_ && ME_ID) {
+      const c = lsGet(LS_PROF, null);
+      if (c && c.id === ME_ID && c.p) prof = c.p;
+      headerBtn();
+      setInterval(() => { if (!document.getElementById('pq-hb')) headerBtn(); }, 1500);
+      // coins, skin (also bought / taken off on another PC), crates: every minute while you look at the page
+      setTimeout(pollProf, 2500 + Math.random() * 2500);
+      setInterval(() => { if (!document.hidden) pollProf(); }, 60000);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) pollProf(); });
     }
-    async function pool(items, n, fn) {
-      let i = 0;
-      await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await fn(items[i++]); }));
-    }
-
-    // only this warehouse (Shift+8 -> Tools -> Picker dashboard). name or id, empty = all
-    async function warehouse() {
-      if (!WH || wh) return wh;
-      const list = (await api('/warehouses')) || [];
-      const hit = list.find((w) => String(w.idwarehouse) === WH) || list.find((w) => low(w.name) === low(WH)) || list.find((w) => low(w.name).includes(low(WH)));
-      if (!hit) throw new Error(`warehouse "${WH}" not found in Picqer (there is: ${list.map((w) => w.name).join(', ') || 'nothing'}) · Shift+8 → Tools → Picker dashboard`);
-      wh = { id: +hit.idwarehouse, name: hit.name };
-      return wh;
-    }
-    const inWh = (b) => !wh || b.idwarehouse == null || +b.idwarehouse === wh.id;
-    async function allOpen() {
-      const out = [];
-      const q = wh ? `&idwarehouse=${wh.id}` : '';
-      for (let off = 0; off < 3000; off += 100) {
-        const p = (await api(`/picklists/batches?status=open${q}&offset=${off}`)) || [];
-        out.push(...p);
-        if (p.length < 100) break;
-      }
-      return out.filter(inWh);
-    }
-
-    // one batch from Picqer -> numbers
-    //   picked in the app  = amount_collected ("11 / 135 gepickt")
-    //   packed at the table = amount_picked (not counted here)
-    //   singles batches have the numbers on the product line, normal batches per picklist inside the line
-    function count(d) {
-      let units = 0, v = 0, pk = 0, stops = 0, stopsDone = 0;
-      for (const p of d.products || []) {
-        const parts = Array.isArray(p.picklists) && p.picklists.some((q) => q && q.amount != null) ? p.picklists : [p];
-        let a = 0, L = 0, P = 0;
-        for (const q of parts) { const n = +(q && q.amount) || 0; a += n; L += Math.min(n, +q.amount_collected || 0); P += Math.min(n, +q.amount_picked || 0); }
-        if (!a) continue;
-        units += a; v += L; pk += P; stops++;
-        if (L >= a) stopsDone++;
-      }
-      return { units, v, pk, stops, stopsDone };
-    }
-
-    // write down every change. log point = [time in s, picked, products done, timed 1/0]
-    // timed = the move before it was also seen by us, so the time in between is real
-    function observe(B, d, now) {
-      const id = String(d.idpicklist_batch);
-      const n = count(d);
-      let b = B[id];
-      if (!b) b = B[id] = { id, first: now, seen: 0, v: null, log: [], real: false, clean: false, start: null, doneAt: null };
-      const watched = !!b.seen && now - b.seen <= 2.5 * POLL; // we also looked just before
-      b.nr = d.picklist_batchid; b.title = d.display_title || d.title || ''; b.type = d.type; b.wh = d.idwarehouse;
-      b.units = n.units; b.stops = n.stops; b.picklists = d.total_picklists || (d.picklists || []).length;
-      b.pk = n.pk; b.upd = d.updated_at; b.open = d.status === 'open';
-      const who = person(d.assigned_to);
-      if (who) b.picker = who;
-      if (b.v == null) {                                    // first look: only a starting point, nothing counts yet
-        b.log.push([sec(now), n.v, n.stopsDone, 0]);
-        b.clean = n.v === 0;                                 // we see this batch from the very start
-        b.before = n.units > 0 && n.v >= n.units;            // already fully picked before we looked
-      } else if (n.v !== b.v) {
-        const t = watched ? now - (now - b.seen) / 2 : now;  // it happened between our last 2 checks
-        if (!watched) b.clean = false;                        // it moved while we were not looking: time unknown
-        if (b.v === 0 && n.v > 0 && b.start == null && b.clean) b.start = t;
-        b.log.push([sec(t), n.v, n.stopsDone, watched && b.real ? 1 : 0]);
-        b.real = watched;
-        b.last = t;
-        if (n.units > 0 && n.v >= n.units && !b.doneAt && !b.before) { b.doneAt = t; b.doneClean = b.clean && b.start != null && t - b.start >= 60000; }
-      }
-      b.v = n.v;
-      b.sd = n.stopsDone;
-      b.seen = now;
-      return b;
-    }
-
-    async function poll(force) {
-      if (busyPoll) return;
-      const lock = lsGet(LS_LOCK, null);
-      if (!force && lock && lock.tab !== TAB && Date.now() - lock.ts < POLL * 1.5) return; // another tab on this PC does it
-      lsSet(LS_LOCK, { tab: TAB, ts: Date.now() });
-      busyPoll = true;
-      let bad = 0, badMsg = '';
-      try {
-        await warehouse();
-        const now = Date.now();
-        const B = lsGet(LS_B, {});
-        const meta = lsGet(LS_META, {});
-        const whId = wh ? wh.id : 0;
-        if (meta.wh !== whId) { for (const k of Object.keys(B)) delete B[k]; meta.wh = whId; meta.since = null; meta.lastSweep = 0; } // other warehouse: start over
-        const open = await allOpen();
-        const openIds = new Set(open.map((b) => String(b.idpicklist_batch)));
-        // look inside: new ones, changed ones, ones someone has, ones that move. all of them every 5 min
-        const sweep = !meta.lastSweep || now - meta.lastSweep > 5 * 60000;
-        const want = open.filter((b) => {
-          const t = B[b.idpicklist_batch];
-          if (sweep || !t || t.upd !== b.updated_at) return true;
-          if (t.units > 0 && t.v >= t.units) return false; // fully picked, nothing left to see
-          return !!b.assigned_to || t.v > 0;
-        });
-        await pool(want, 4, async (b) => {
-          try {
-            const d = await api(`/picklists/batches/${b.idpicklist_batch}`);
-            if (!inWh(d)) return;
-            observe(B, d, now);
-          } catch (e) { bad++; badMsg = e.message; }
-        });
-        if (sweep) meta.lastSweep = now;
-        // gone from the open list = completed (or removed): one last look for the last products
-        const gone = Object.values(B).filter((t) => t.open && !openIds.has(t.id));
-        await pool(gone, 3, async (t) => {
-          try {
-            const d = await api(`/picklists/batches/${t.id}`);
-            observe(B, d, now);
-            t.completedAt = ts(d.completed_at);
-            t.open = false;
-          } catch (e) { t.open = false; t.removed = true; }
-        });
-        for (const [id, t] of Object.entries(B)) if (Math.max(t.seen || 0, t.first || 0) < now - KEEP) delete B[id];
-        lsSet(LS_B, B);
-        meta.lastPoll = now;
-        meta.whName = wh ? wh.name : '';
-        if (!meta.since) meta.since = now;
-        lsSet(LS_META, meta);
-        lastErr = bad ? `${bad} batch${bad > 1 ? 'es' : ''} could not be read (${badMsg})` : '';
-      } catch (e) {
-        lastErr = e.message;
-      } finally {
-        busyPoll = false;
-      }
-    }
-
-    function rangeOf(r) {
-      const d0 = new Date();
-      d0.setHours(0, 0, 0, 0);
-      const t0 = d0.getTime();
-      if (r === 'yesterday') return [t0 - DAY, t0];
-      if (r === 'week') { const w = new Date(d0); w.setDate(w.getDate() - ((w.getDay() + 6) % 7)); return [w.getTime(), t0 + DAY]; }
-      if (r === '7d') return [t0 - 6 * DAY, t0 + DAY];
-      return [t0, t0 + DAY];
-    }
-
-    // everything from the progress logs: units count when they get picked, also in batches that are not done
-    function compute(from, to) {
-      const B = lsGet(LS_B, {});
-      const per = new Map(), buckets = new Map(), events = [];
-      const byDay = to - from > DAY;
-      const bucket = (t, u) => { const d = new Date(t); if (byDay) d.setHours(0, 0, 0, 0); else d.setMinutes(0, 0, 0); buckets.set(d.getTime(), (buckets.get(d.getTime()) || 0) + u); };
-      const row = (p) => {
-        const k = p ? p.id : '-';
-        if (!per.has(k)) per.set(k, { id: k, name: p ? p.name : 'Not assigned', units: 0, stops: 0, tUnits: 0, tStops: 0, ms: 0, batches: new Set(), done: 0, doneTimed: 0, doneMs: 0, first: null, last: null, days: new Set() });
-        return per.get(k);
-      };
-      for (const b of Object.values(B)) {
-        if (b.picker && exclude.has(b.picker.id)) continue;
-        const L = b.log || [];
-        for (let i = 1; i < L.length; i++) {
-          const t1 = L[i][0] * 1000;
-          if (t1 < from || t1 >= to) continue;
-          const du = L[i][1] - L[i - 1][1], ds = L[i][2] - L[i - 1][2];
-          const r = row(b.picker);
-          r.units += du; r.stops += ds; r.batches.add(b.id);
-          if (L[i][3]) { r.tUnits += du; r.tStops += ds; r.ms += Math.min(t1 - L[i - 1][0] * 1000, IDLE); }
-          r.first = r.first == null ? t1 : Math.min(r.first, t1);
-          r.last = r.last == null ? t1 : Math.max(r.last, t1);
-          r.days.add(new Date(t1).toDateString());
-          bucket(t1, du);
-          events.push({ t: t1, b, du, v: L[i][1] });
-        }
-        if (b.doneAt && b.doneAt >= from && b.doneAt < to) {
-          const r = row(b.picker);
-          r.done++;
-          if (b.doneClean) { r.doneTimed++; r.doneMs += b.doneAt - b.start; }
-        }
-      }
-      events.sort((a, b) => b.t - a.t);
-      return { rows: [...per.values()].filter((r) => r.units || r.done), buckets, byDay, events };
-    }
-
-    // 1 person = 1 batch at a time: show each person once (the batch that moves), done batches never
-    function current() {
-      const now = Date.now(), B = lsGet(LS_B, {});
-      const fresh = Object.values(B).filter((t) => t.open && t.seen > now - 3 * POLL - 60000 && !(t.picker && exclude.has(t.picker.id)));
-      const people = new Map();
-      for (const t of fresh) { const k = t.picker ? t.picker.id : `batch-${t.id}`; if (!people.has(k)) people.set(k, []); people.get(k).push(t); }
-      const live = [], waiting = [];
-      for (const list of people.values()) {
-        const moving = list.filter((t) => t.units > 0 && t.v > 0 && t.v < t.units).sort((a, b) => (b.last || b.first) - (a.last || a.first));
-        if (moving.length) { live.push(moving[0]); continue; }
-        const next = list.filter((t) => t.units > 0 && t.v === 0 && !t.pk && t.picker).sort((a, b) => a.first - b.first); // not packed at the table either
-        if (next.length) waiting.push({ t: next[0], more: next.length - 1 });
-      }
-      const name = (t) => (t.picker ? t.picker.name : '~');
-      live.sort((a, b) => name(a).localeCompare(name(b)));
-      waiting.sort((a, b) => name(a.t).localeCompare(name(b.t)));
-      return { live, waiting, blind: fresh.filter((t) => !t.units).length };
-    }
-
-    // ---------- view ----------
-    addStyle('pk-style', `
-      #pk-ov{position:fixed;inset:0;z-index:2147483646;background:rgba(15,23,42,.45);display:flex;align-items:flex-start;justify-content:center;padding:24px 16px;overflow:auto;
-        font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#0f172a}
-      #pk-ov.tv{background:#f1f5f9;padding:18px}
-      #pk-card{width:1100px;max-width:100%;background:#f8fafc;border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.3);overflow:hidden}
-      #pk-ov.tv #pk-card{width:100%;box-shadow:none;background:none}
-      #pk-card button{font-family:inherit}
-      .pk-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;background:#fff;border-bottom:1px solid #e2e8f0}
-      .pk-top b{font-size:16px}
-      .pk-sub{color:#64748b;font-size:12px}
-      .pk-sub.err{color:#dc2626;font-weight:600}
-      .pk-tabs{display:flex;gap:4px;margin-left:auto}
-      .pk-tab{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;color:#475569;cursor:pointer}
-      .pk-tab.on{background:#0f172a;border-color:#0f172a;color:#fff}
-      .pk-btn{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;color:#0f172a;cursor:pointer}
-      .pk-btn:hover{background:#e2e8f0}
-      .pk-body{padding:14px 16px 18px}
-      .pk-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:16px}
-      .pk-kpi{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px}
-      .pk-kpi small{display:block;color:#64748b;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
-      .pk-kpi b{font-size:22px;font-variant-numeric:tabular-nums}
-      .pk-h{margin:16px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#475569}
-      .pk-bar{height:8px;background:#e2e8f0;border-radius:6px;overflow:hidden}
-      .pk-bar i{display:block;height:100%;background:#2563eb;border-radius:6px}
-      .pk-wait{margin-top:10px;color:#475569;font-size:12px;line-height:1.9}
-      .pk-wait.err{color:#b45309;font-weight:600}
-      .pk-count{font-size:13px;color:#475569;margin:0 0 10px}
-      .pk-count b{color:#0f172a;font-size:15px}
-      .pk-now{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
-      .pk-nc{background:#fff;border:1px solid #e2e8f0;border-left:5px solid #2563eb;border-radius:10px;padding:10px 12px}
-      .pk-nc.idle{border-left-color:#f59e0b;background:#fffbeb}
-      .pk-nc .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-      .pk-nc .who{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .pk-nc .time{font-weight:800;font-size:20px;font-variant-numeric:tabular-nums;white-space:nowrap}
-      .pk-nc .sub{display:flex;justify-content:space-between;gap:8px;color:#64748b;font-size:12px;margin:2px 0 8px}
-      .pk-nc .sub a{color:inherit;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .pk-nc .sub a:hover{text-decoration:underline}
-      .pk-nc .sub span{white-space:nowrap}
-      .pk-nc .nums{display:flex;justify-content:space-between;gap:8px;margin-top:7px;font-size:13px;color:#334155;font-variant-numeric:tabular-nums}
-      .pk-nc .nums b{font-size:15px;color:#0f172a}
-      .pk-nc .nums small{color:#94a3b8}
-      .pk-nc .foot{margin-top:4px;font-size:11px;color:#94a3b8}
-      .pk-nc.idle .foot{color:#b45309;font-weight:600}
-      .pk-nc.idle .pk-bar i{background:#f59e0b}
-      .pk-wait span{display:inline-block;background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:0 10px;margin:0 4px 4px 0;white-space:nowrap}
-      .pk-empty{background:#fff;border:1px dashed #cbd5e1;border-radius:10px;padding:14px;text-align:center;color:#64748b}
-      .pk-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}
-      .pk-table th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;text-align:right;padding:8px 10px;background:#f8fafc;border-bottom:1px solid #e2e8f0;cursor:pointer;white-space:nowrap}
-      .pk-table th:first-child,.pk-table td:first-child{text-align:left}
-      .pk-table th.on{color:#0f172a}
-      .pk-table td{padding:8px 10px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-      .pk-table tr:last-child td{border-bottom:0}
-      .pk-table td small{color:#94a3b8}
-      .pk-tw{overflow-x:auto;border-radius:10px}
-      .pk-chart{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px 6px}
-      .pk-cols{display:flex;align-items:flex-end;gap:6px;height:150px}
-      .pk-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
-      .pk-col i{display:block;width:100%;background:#2563eb;border-radius:4px 4px 0 0}
-      .pk-col .v{font-size:11px;color:#334155;margin-bottom:3px;font-variant-numeric:tabular-nums}
-      .pk-col .l{font-size:11px;color:#64748b;margin-top:5px;white-space:nowrap}
-      .pk-log{background:#fff;border:1px solid #e2e8f0;border-radius:10px;max-height:320px;overflow:auto}
-      .pk-le{display:grid;grid-template-columns:auto 1fr 2fr auto auto;gap:12px;padding:6px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;align-items:center;font-variant-numeric:tabular-nums}
-      .pk-le:last-child{border-bottom:0}
-      .pk-le .t{color:#64748b}
-      .pk-le .n{font-weight:600}
-      .pk-le .b{color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .pk-le .d{font-weight:700;color:#15803d;text-align:right}
-      .pk-le .d.neg{color:#dc2626}
-      .pk-le .v{text-align:right;min-width:90px}
-      .pk-note{margin-top:14px;color:#64748b;font-size:12px;line-height:1.5}
-      #pk-ov.tv .pk-note,#pk-ov.tv [data-a="tv"],#pk-ov.tv .pk-logwrap{display:none}
-      @media (max-width:760px){.pk-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.pk-tabs{margin-left:0}.pk-le{grid-template-columns:auto 1fr auto}.pk-le .b,.pk-le .v{display:none}}`);
-
-    function chart(buckets, byDay, from, to) {
-      const keys = [];
-      if (byDay) for (let t = from; t < to; t += DAY) { const d = new Date(t); d.setHours(0, 0, 0, 0); if (!keys.includes(d.getTime())) keys.push(d.getTime()); }
-      else {
-        const hs = [...buckets.keys()];
-        if (!hs.length) return '<div class="pk-empty">Nothing picked in this period yet</div>';
-        const a = Math.min(...hs, from + 7 * 3600000), b = Math.max(...hs, a + 9 * 3600000);
-        for (let t = a; t <= b; t += 3600000) keys.push(t);
-      }
-      const vals = keys.map((k) => Math.max(0, buckets.get(k) || 0));
-      const max = Math.max(1, ...vals);
-      const lab = (k) => (byDay ? new Date(k).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' }) : String(new Date(k).getHours()).padStart(2, '0'));
-      return `<div class="pk-chart" role="img" aria-label="units picked ${byDay ? 'per day' : 'per hour'}"><div class="pk-cols">${keys.map((k, i) =>
-        `<div class="pk-col" title="${vals[i]} units"><span class="v">${vals[i] || ''}</span><i style="height:${Math.round((vals[i] / max) * 110)}px"></i><span class="l">${lab(k)}</span></div>`).join('')}</div></div>`;
-    }
-    // when did this batch start? known = we saw the first pick. else: the first time we saw it moving (so "at least")
-    function startOf(t) {
-      if (t.start != null) return { t0: t.start, known: true };
-      const p = (t.log || []).find((x) => x[1] > 0);
-      return { t0: p ? p[0] * 1000 : t.first, known: false };
-    }
-    function nowCard(t, now) {
-      const pct = t.units ? Math.round((t.v / t.units) * 100) : 0;
-      const { t0, known } = startOf(t);
-      const lastMove = t.last || t.first;
-      const idle = now - lastMove > IDLE;
-      const L = t.log || [];
-      let u = 0, ms = 0;
-      for (let i = 1; i < L.length; i++) if (L[i][3]) { u += L[i][1] - L[i - 1][1]; ms += Math.min((L[i][0] - L[i - 1][0]) * 1000, IDLE); }
-      const pace = perH(u, ms);
-      return `<div class="pk-nc${idle ? ' idle' : ''}">
-        <div class="top"><span class="who">${escHtml(t.picker ? t.picker.name : 'Not assigned')}</span><span class="time" title="${known ? 'picking since the first product' : 'was already going when this PC started watching'}">${known ? dur(now - t0) : now - t0 < 60000 ? '–' : `≥ ${dur(now - t0)}`}</span></div>
-        <div class="sub"><a href="/picklists/batches/${escHtml(t.id)}" target="_blank" title="${escHtml(t.title)}">${escHtml(t.title || 'Batch')} · ${escHtml(t.nr)}</a><span>${known ? 'since' : 'already going at'} ${hm(t0)}</span></div>
-        <div class="pk-bar"><i style="width:${pct}%"></i></div>
-        <div class="nums"><span><b>${t.v}</b> / ${t.units} units</span><span><b>${t.stops}</b> SKUs <small>· ${t.sd} done</small></span></div>
-        <div class="foot">${idle ? `no pick for ${dur(now - lastMove)}` : pace ? `${pace} units/h` : '&nbsp;'}</div></div>`;
-    }
-
-    function render() {
-      const ov = document.getElementById('pk-ov');
-      if (!ov) return;
-      if (view === 'now') renderNow(ov); else renderStats(ov);
-      if (ov.classList.contains('tv')) fitTv(ov);
-    }
-    function statusLine() {
-      const meta = lsGet(LS_META, {});
-      return lastErr ? `<span class="pk-sub err">⚠ ${escHtml(lastErr)}</span>`
-        : `<span class="pk-sub">checked ${meta.lastPoll ? hm(meta.lastPoll) : '–'} · every ${Math.round(POLL / 1000)} s${meta.since ? ` · watching on this PC since ${dm(meta.since)} ${hm(meta.since)}` : ''}</span>`;
-    }
-    const whLabel = () => (wh ? wh.name : (lsGet(LS_META, {}).whName || (WH ? WH : 'all warehouses')));
-    const btns = (other) => `<button class="pk-btn" data-a="${other}">${other === 'stats' ? 'Stats' : 'In progress'}</button><button class="pk-btn" data-a="refresh" title="Check now">⟳</button><button class="pk-btn" data-a="tv" title="Copy the TV link">TV link</button>${can('settings') ? '<button class="pk-btn" data-a="gear" title="Dashboard settings">⚙</button>' : ''}<button class="pk-btn" data-a="close" title="Esc">✕</button>`;
-    // only the batches being picked right now: who, how long, how many SKUs
-    function renderNow(ov) {
-      const now = Date.now();
-      const cur = current();
-      const nm = (t) => (t.picker ? t.picker.name : '~');
-      const list = cur.live.map((t) => ({ t, el: now - startOf(t).t0 })).sort((a, b) => b.el - a.el || nm(a.t).localeCompare(nm(b.t))).map((x) => x.t);
-      ov.querySelector('#pk-card').innerHTML = `
-        <div class="pk-top"><b>In progress · ${escHtml(whLabel())}</b>${statusLine()}<div class="pk-tabs">${btns('stats')}</div></div>
-        <div class="pk-body">
-          <div class="pk-count"><b>${list.length}</b> batch${list.length === 1 ? '' : 'es'} being picked · longest first</div>
-          ${list.length ? `<div class="pk-now">${list.map((t) => nowCard(t, now)).join('')}</div>` : '<div class="pk-empty">Nobody is picking a batch right now</div>'}
-          ${cur.blind ? `<div class="pk-wait err">⚠ ${cur.blind} open batch${cur.blind > 1 ? 'es come' : ' comes'} back from Picqer without product lines, so their progress can't be seen</div>` : ''}
-          <div class="pk-note">Time = since the first product of the batch was picked in the app. "≥" = the batch was already going when this PC started watching, so it is at least that long. SKUs = different products in the batch.</div>
-        </div>`;
-    }
-    function renderStats(ov) {
-      const [from, to] = rangeOf(range);
-      const { rows, buckets, byDay, events } = compute(from, to);
-      const meta = lsGet(LS_META, {});
-      const now = Date.now();
-      const tot = rows.reduce((s, r) => ({ u: s.u + r.units, tu: s.tu + r.tUnits, ms: s.ms + r.ms, d: s.d + r.done, p: s.p + (r.units > 0 ? 1 : 0) }), { u: 0, tu: 0, ms: 0, d: 0, p: 0 });
-      const cur = range === 'today' ? current() : { live: [], waiting: [], blind: 0 };
-      const val = (r) => ({ name: r.name, units: r.units, stops: r.stops, batches: r.batches.size, done: r.done, ms: r.ms,
-        uph: perH(r.tUnits, r.ms) ?? -1, sph: perH(r.tStops, r.ms) ?? -1, avg: r.doneTimed ? r.doneMs / r.doneTimed : -1 }[sortKey]);
-      rows.sort((a, b) => (sortKey === 'name' ? a.name.localeCompare(b.name) : (val(b) - val(a))) || b.units - a.units);
-      const th = (k, label) => `<th data-s="${k}" class="${sortKey === k ? 'on' : ''}">${label}${sortKey === k ? ' ▾' : ''}</th>`;
-      const whName = wh ? wh.name : (meta.whName || (WH ? WH : 'all warehouses'));
-      const status = lastErr ? `<span class="pk-sub err">⚠ ${escHtml(lastErr)}</span>`
-        : `<span class="pk-sub">checked ${meta.lastPoll ? hm(meta.lastPoll) : '–'} · every ${Math.round(POLL / 1000)} s${meta.since ? ` · watching on this PC since ${dm(meta.since)} ${hm(meta.since)}` : ''}</span>`;
-      const watchingSince = meta.since ? `${dm(meta.since)} ${hm(meta.since)}` : 'now';
-      ov.querySelector('#pk-card').innerHTML = `
-        <div class="pk-top"><b>Pickers · ${escHtml(whName)}</b>${status}
-          <div class="pk-tabs">${[['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['7d', '7 days']].map(([k, l]) => `<button class="pk-tab${range === k ? ' on' : ''}" data-r="${k}">${l}</button>`).join('')}</div>
-          ${btns('now')}</div>
-        <div class="pk-body">
-          <div class="pk-kpis">
-            <div class="pk-kpi"><small>Units picked</small><b>${tot.u}</b></div>
-            <div class="pk-kpi"><small>Units / hour</small><b>${perH(tot.tu, tot.ms) ?? '–'}</b></div>
-            <div class="pk-kpi"><small>Batches done</small><b>${tot.d}</b></div>
-            <div class="pk-kpi"><small>Pickers</small><b>${tot.p}</b></div>
-            <div class="pk-kpi"><small>Picking now</small><b>${range === 'today' ? cur.live.length : '–'}</b></div>
-          </div>
-          <div class="pk-h">Per picker</div>
-          ${rows.length ? `<div class="pk-tw"><table class="pk-table"><thead><tr>${th('name', 'Picker')}${th('units', 'Units')}${th('stops', 'Products')}${th('batches', 'Batches')}${th('done', 'Done')}${th('ms', 'Pick time')}${th('uph', 'Units/h')}${th('sph', 'Products/h')}${th('avg', 'Avg batch')}<th>${byDay ? 'Days' : 'Active'}</th></tr></thead>
-            <tbody>${rows.map((r) => `<tr><td><b>${escHtml(r.name)}</b></td><td>${r.units}</td><td>${r.stops}</td><td>${r.batches.size}</td><td>${r.done}</td>
-              <td>${r.ms ? dur(r.ms) : '<small>–</small>'}</td><td><b>${perH(r.tUnits, r.ms) ?? '<small>–</small>'}</b></td><td>${perH(r.tStops, r.ms) ?? '<small>–</small>'}</td>
-              <td>${r.doneTimed ? dur(r.doneMs / r.doneTimed) : '<small>–</small>'}</td><td>${byDay ? r.days.size : `${hm(r.first)}–${hm(r.last)}`}</td></tr>`).join('')}</tbody></table></div>`
-            : `<div class="pk-empty">Nothing picked in this period${meta.since ? ` (this PC watches since ${watchingSince})` : ''}</div>`}
-          <div class="pk-h">${byDay ? 'Units per day' : 'Units per hour'}</div>
-          ${chart(buckets, byDay, from, to)}
-          <div class="pk-logwrap"><div class="pk-h">Progress log${events.length > 80 ? ' · last 80' : ''}</div>
-          ${events.length ? `<div class="pk-log">${events.slice(0, 80).map((e) => `<div class="pk-le"><span class="t">${byDay ? `${dm(e.t)} ` : ''}${hm(e.t)}</span><span class="n">${escHtml(e.b.picker ? e.b.picker.name : 'Not assigned')}</span>
-            <span class="b">${escHtml(e.b.title || 'Batch')} · ${escHtml(e.b.nr)}</span><span class="d${e.du < 0 ? ' neg' : ''}">${e.du > 0 ? '+' : ''}${e.du}</span><span class="v">${e.v} / ${e.b.units}${e.b.units && e.v >= e.b.units ? ' ✓' : ''}</span></div>`).join('')}</div>`
-            : '<div class="pk-empty">Nothing picked in this period yet</div>'}</div>
-          <div class="pk-note">Only batches in ${escHtml(whName)}. Picked = what the pickers collected in the app (packing at the table does not count). Every change gets logged, also for batches that are not done.
-            Picker = who the batch is assigned to. Pick time = time between 2 picks (max ${Math.round(IDLE / 60000)} min per gap). The first pick of a batch, and picks after this PC was not looking, count as units but not as time.
-            Only what this PC saw counts: keep it open on a screen or turn on background tracking (Shift+8 → Tools → Picker dashboard).</div>
-        </div>`;
-    }
-    // TV: as big as the screen allows (wide screens get bigger text, long lists still fit)
-    function fitTv(ov) {
-      const card = ov.querySelector('#pk-card');
-      if (!card || !('zoom' in card.style)) return;
-      card.style.zoom = '';
-      const w = ov.clientWidth - 36, h = ov.clientHeight - 36;
-      const z = Math.max(1, Math.min(2.2, w / 1250, h / Math.max(1, card.offsetHeight)));
-      card.style.zoom = z > 1.04 ? String(Math.round(z * 100) / 100) : '';
-    }
-
-    function close() {
-      document.getElementById('pk-ov')?.remove();
-      clearInterval(timer);
-      clearInterval(ticker);
-      if (/^#pickers/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
-    }
-    async function open(tvMode) {
-      if (document.getElementById('pk-ov')) return;
-      const ov = document.createElement('div');
-      ov.id = 'pk-ov';
-      if (tvMode) ov.classList.add('tv');
-      ov.innerHTML = '<div id="pk-card"><div class="pk-body"><div class="pk-empty">Checking the batches…</div></div></div>';
-      document.body.appendChild(ov);
-      ov.addEventListener('click', async (e) => {
-        if (e.target === ov && !tvMode) return close();
-        const el = e.target.closest('[data-r],[data-a],[data-s]');
-        if (!el) return;
-        if (el.dataset.r) { range = el.dataset.r; render(); }
-        else if (el.dataset.s) { sortKey = el.dataset.s; render(); }
-        else if (el.dataset.a === 'close') close();
-        else if (el.dataset.a === 'gear') openToolSettings && openToolSettings({ title: 'Picker dashboard', mods: [{ id: 'pickStats' }] });
-        else if (el.dataset.a === 'stats' || el.dataset.a === 'now') { view = el.dataset.a; render(); }
-        else if (el.dataset.a === 'refresh') { await poll(true); render(); }
-        else if (el.dataset.a === 'tv') {
-          const link = `${location.origin}/picklists/batches#pickers`;
-          try { await navigator.clipboard.writeText(link); el.textContent = 'copied ✓'; } catch (_) { prompt('TV link:', link); }
-        }
-      });
-      await poll(true);
-      render();
-      timer = setInterval(async () => { await poll(); render(); }, POLL);
-      ticker = setInterval(render, 5000);
-    }
-
-    window.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.altKey && e.code === 'KeyP') { e.preventDefault(); document.getElementById('pk-ov') ? close() : open(false); }
-      else if (e.key === 'Escape' && document.getElementById('pk-ov')) close();
-    }, true);
-    window.addEventListener('resize', () => { const ov = document.getElementById('pk-ov'); if (ov && ov.classList.contains('tv')) fitTv(ov); });
     const tvHash = () => /^#pickers/.test(location.hash);
-    if (tvHash()) open(true);
-    window.addEventListener('hashchange', () => { if (tvHash()) open(true); });
-    if (C.background) {
-      setTimeout(() => poll(), 3000);
-      setInterval(() => { if (!document.getElementById('pk-ov')) poll(); }, POLL);
+    if (use('pickStats')) {
+      if (tvHash()) setTimeout(() => openPk(true), 500);
+      window.addEventListener('hashchange', () => { if (tvHash()) openPk(true); });
     }
-    return { poll, compute, observe, rangeOf };
   }
 
   /* =========================================================================
@@ -6208,7 +6204,7 @@
   const MOD_ICON = { comboBatcher: '📦', comboAlert: '🔔', replenish: '🔄', shipErr: '🚚', addrFix: '🏠', banner: '🚩', batchOpt: '🏷️', zap: '⚡', dayson: '📋',
     zaplog: '🧾', unpick: '↩️', autoNext: '⏭️', autoPrint: '🖨️', pickAllKey: '🅰️', pickStats: '📊', leaderboard: '🏆', cardColor: '🎨' };
   // these have a ⚙ in their own window: Shift+8 only shows their on/off switch
-  const OWN_GEAR = { comboBatcher: 'Ctrl+Shift+B → ⚙', pickStats: 'Ctrl+Alt+P → ⚙', leaderboard: 'Ctrl+Alt+L → ⚙', zap: 'Ctrl+Alt+Z → ⚙', zaplog: 'Ctrl+Alt+Z → ⚙' };
+  const OWN_GEAR = { comboBatcher: 'Ctrl+Shift+B → ⚙', leaderboard: 'Ctrl+Alt+L → ⚙', zap: 'Ctrl+Alt+Z → ⚙', zaplog: 'Ctrl+Alt+Z → ⚙' };
   function settingsPanel() {
     addStyle('pqs-style', `
       #pqs-ov{position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,.4);display:flex;align-items:center;justify-content:center;padding:16px}
@@ -7003,7 +6999,6 @@
     if (use('comboBatcher')) safe('comboBatcher', comboBatcher);
     if (use('autoNext')) safe('autoNext', autoNext);
     if (use('cardColor')) safe('cardColor', cardColor);
-    if (use('pickStats')) safe('pickStats', pickStats);
     safe('skin', () => applySkin(ON_LOGIN ? null : (skinOf(ME.id) || {}).id));
     if (use('leaderboard')) safe('leaderboard', leaderboard);
     safe('teams', refreshTeams);
