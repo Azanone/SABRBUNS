@@ -35,7 +35,7 @@ window.PQ_TEAMS = {
     },
     {
       "name": "megamulters",
-      "allow": ["comboAlert", "leaderboard", "autoNext", "truePickAll", "bulkSingles"],
+      "allow": ["settings", "comboAlert", "leaderboard", "autoNext", "truePickAll", "bulkSingles", "skins"],
       "users": [
         42368 // Sharlton Matwirjo
       ]
