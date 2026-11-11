@@ -673,7 +673,8 @@ export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
   if (op === 'goal') {
     if (b.goal) {
       const t = Math.max(0, Math.round(Number(b.goal.target) || 0)), hm = (x, d) => (/^\d{2}:\d{2}$/.test(String(x || '')) ? String(x) : d);
-      st.goal = t ? { target: t, from: hm(b.goal.from, '07:00'), to: hm(b.goal.to, '23:00') } : null;
+      const sn = Math.max(0, Math.round(Number(b.goal.start) || 0));
+      st.goal = t ? { target: t, from: hm(b.goal.from, '18:00'), to: hm(b.goal.to, '23:00'), ...(sn ? { start: sn } : {}) } : null;
       st.log = (st.log || []).concat({ at: now, id: OWNER, what: `admin: shift goal ${t ? `${t} (${st.goal.from}-${st.goal.to})` : 'off'}` }).slice(-50);
     }
     return { ok: true, goal: st.goal || null };

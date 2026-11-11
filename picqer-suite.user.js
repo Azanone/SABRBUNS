@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.78
+// @version      3.79
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.78';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.79';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5634,24 +5634,23 @@
         html.pq-dark #pq-goal .mut{color:#94a3b8}
         @media (max-width:700px){#pq-goal .mut{display:none}}
       `);
-      // goal = at most `target` picklists still open at `to` (e.g. 200 at 23:00)
+      // plan: at `from` there were `start` open (e.g. 700 at 18:00), at `to` max `target` (e.g. 200 at 23:00) → a straight line in between
       const now = new Date(), mins = now.getHours() * 60 + now.getMinutes();
       const hm = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
-      const z = hm(g.to || '23:00'), target = g.target, open = g.open;
+      const a = hm(g.from || '18:00'), z = hm(g.to || '23:00'), target = g.target, open = g.open, start = g.start;
+      const fromTxt = g.from || '18:00', toTxt = g.to || '23:00';
       const ss = g.samples || [];
-      // net change of open picklists per hour (new ones keep coming in): first vs last sample of the last ~60 min
       const recent = ss.filter((x) => Date.now() - x.at < 70 * 60000);
       const rate = recent.length >= 2 ? ((recent[0].n - recent[recent.length - 1].n) / Math.max(10, (recent[recent.length - 1].at - recent[0].at) / 60000)) * 60 : null; // + = going down
-      const hrsLeft = Math.max(0, (z - mins) / 60);
-      const need = open != null ? Math.max(0, open - target) / Math.max(0.25, hrsLeft) : null;
-      const proj = open != null && rate != null ? Math.round(open - rate * hrsLeft) : null;
-      const start = Math.max(g.start || 0, open || 0, target + 1);
-      const pct = open == null ? 0 : Math.min(100, Math.max(0, ((start - open) / Math.max(1, start - target)) * 100));
-      const toTxt = g.to || '23:00';
+      const rTxt = (r) => `${r >= 0 ? '−' : '+'}${int(Math.abs(Math.round(r)))}/h`;
+      const planned = start != null && mins >= a ? Math.round(start - (start - target) * Math.min(1, (mins - a) / Math.max(1, z - a))) : null; // where it should be now
+      const pct = open == null || start == null ? 0 : Math.min(100, Math.max(0, ((start - open) / Math.max(1, start - target)) * 100));
+      const mark = planned == null || start == null ? null : Math.min(100, Math.max(0, ((start - planned) / Math.max(1, start - target)) * 100));
+      const proj = open != null && rate != null && mins < z ? Math.round(open - rate * Math.max(0, (z - mins) / 60)) : null;
       let state = '';
       if (open != null && open <= target) state = '<span class="up">goal hit ✓</span>';
-      else if (proj != null && mins < z) state = proj <= target ? `<span class="up">on track · ~${int(Math.max(0, proj))} left at ${toTxt}</span>` : `<span class="dn">behind · ~${int(proj)} left at ${toTxt}</span>`;
-      const rTxt = (r) => `${r >= 0 ? '−' : '+'}${int(Math.abs(Math.round(r)))}/h`;
+      else if (mins < a) state = `<span class="mut">starts ${escHtml(fromTxt)}</span>`;
+      else if (planned != null && open != null) state = open <= planned ? `<span class="up">${int(planned - open)} ahead</span>` : `<span class="dn">${int(open - planned)} behind</span>`;
       if (!bar) {
         bar = document.createElement('div');
         bar.id = 'pq-goal';
@@ -5659,9 +5658,9 @@
         if (head && head.parentNode) head.parentNode.insertBefore(bar, head.nextSibling); else document.body.prepend(bar);
       }
       bar.title = ss.length ? ss.slice(-12).map((x) => `${new Date(x.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}  ${x.n} open`).join('\n') : 'counting the open picklists… (every 3 min)';
-      bar.innerHTML = `<b class="t">Shift goal</b><div class="gb"><i style="width:${pct.toFixed(1)}%"></i></div>
-        <span>${open == null ? 'counting…' : `<b>${int(open)}</b> open`} · goal ${int(target)} at ${escHtml(toTxt)}</span>
-        ${need != null && open > target && mins < z ? `<span class="mut">need ${rTxt(need)}</span>` : ''}${rate != null ? `<span class="mut">now ${rTxt(rate)}</span>` : ''}${state}`;
+      bar.innerHTML = `<b class="t">Shift goal</b><div class="gb"><i style="width:${pct.toFixed(1)}%"></i>${mark != null && mins < z ? `<em style="left:${mark.toFixed(1)}%"></em>` : ''}</div>
+        <span>${start != null ? `${int(start)} at ${escHtml(fromTxt)} → ` : ''}<b>${open == null ? '…' : int(open)}</b> now → ${int(target)} at ${escHtml(toTxt)}</span>
+        ${planned != null && mins < z ? `<span class="mut">should be ${int(planned)}</span>` : ''}${state}${rate != null ? `<span class="mut">${rTxt(rate)}${proj != null && open > target ? ` · ~${int(Math.max(0, proj))} at ${escHtml(toTxt)}` : ''}</span>` : ''}`;
     }
     function render() {
       safe('goal-bar', goalBar);
@@ -7198,7 +7197,7 @@
       ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><div class="ad-flags"><span>everyone</span>${flagSw('cardColor', 'Product colors')}${flagSw('skins', 'Skins')}</div><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-hook title="Discord: logs + end of shift report">🔔</button><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
         ${adm.needKey ? `<div class="ad-goal"><label>Admin key</label><input type="password" id="ad-key" placeholder="ADMIN_KEY from Cloudflare" style="width:260px" autocomplete="off"><button class="buy" data-adkey>Save on this PC</button></div>` : ''}
         ${adm.note ? `<div class="sh-note">${escHtml(adm.note)}</div>` : ''}
-        <div class="ad-goal"><label>Shift goal</label><input type="number" id="ad-gt" min="1" placeholder="open left" value="${adm.goal ? adm.goal.target : ''}" title="how many picklists may still be open at the end time"><span>open at</span><input type="hidden" id="ad-gf" value="${(adm.goal && adm.goal.from) || '07:00'}"><input type="time" id="ad-gz" value="${(adm.goal && adm.goal.to) || '23:00'}"><button class="buy" data-adg="save">Set</button>${adm.goal ? '<button data-adg="off">Off</button>' : '<small>no goal = no bar</small>'}</div>
+        <div class="ad-goal"><label>Shift goal</label><span>start</span><input type="time" id="ad-gf" value="${(adm.goal && adm.goal.from) || '18:00'}"><input type="number" id="ad-gs" min="0" placeholder="auto" title="open picklists at the start time (empty = counted by itself)" value="${adm.goal && adm.goal.start ? adm.goal.start : ''}"><span>→</span><input type="number" id="ad-gt" min="1" placeholder="goal" value="${adm.goal ? adm.goal.target : ''}" title="max open picklists at the end time"><span>at</span><input type="time" id="ad-gz" value="${(adm.goal && adm.goal.to) || '23:00'}"><button class="buy" data-adg="save">Set</button>${adm.goal ? '<button data-adg="off">Off</button>' : '<small>no goal = no bar</small>'}</div>
         ${adm.hookOpen ? `<div class="ad-hooks">
           <div class="ad-r"><label>Logs</label><input id="ad-hlog" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).log || '')}"><button data-adh="test-log">Test</button></div>
           <div class="ad-r"><label>Report</label><input id="ad-hrep" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).report || '')}"><input id="ad-hat" type="time" value="${escHtml((adm.hooks || {}).reportAt || '22:30')}"><button data-adh="test-report">Send now</button></div>
@@ -7224,11 +7223,11 @@
         adminPost('goal', '').then((j) => { if (!j.err) { adm.goal = j.goal; showAdmin(); } });
       });
       ov.querySelectorAll('[data-adg]').forEach((b) => (b.onclick = async () => {
-        const goal = b.dataset.adg === 'off' ? { target: 0 } : { target: +ov.querySelector('#ad-gt').value || 0, from: ov.querySelector('#ad-gf').value, to: ov.querySelector('#ad-gz').value };
+        const goal = b.dataset.adg === 'off' ? { target: 0 } : { target: +ov.querySelector('#ad-gt').value || 0, from: ov.querySelector('#ad-gf').value, to: ov.querySelector('#ad-gz').value, start: +ov.querySelector('#ad-gs').value || 0 };
         b.disabled = true;
         const j = await adminPost('goal', '', { goal }).catch((e) => ({ err: e.message }));
         if (!j.err) adm.goal = j.goal;
-        adm.note = j.err || (j.goal ? `shift goal: max ${int(j.goal.target)} open at ${j.goal.to} · everyone sees the bar within ~3 min` : 'shift goal off · bar gone everywhere');
+        adm.note = j.err || (j.goal ? `shift goal: ${j.goal.start ? int(j.goal.start) : 'counted'} at ${j.goal.from} → ${int(j.goal.target)} at ${j.goal.to} · everyone sees it within ~3 min` : 'shift goal off · bar gone everywhere');
         showAdmin();
       }));
       ov.querySelector('[data-ad-hook]').onclick = async () => {

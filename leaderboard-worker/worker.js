@@ -67,7 +67,14 @@ export class Game extends DurableObject {
     if (!b) return b;
     const today = amsNow().slice(0, 10), packed = ((st.hours[today] || {}).packed) || Array(24).fill(0);
     const oc = st.goal && st.goal.target ? (await this.ctx.storage.get('openCount')) || null : null;
-    const goal = st.goal && st.goal.target ? { ...st.goal, done: packed.reduce((n, v) => n + v, 0), perHour: packed, open: oc ? oc.n : null, openAt: oc ? oc.at : null, start: oc ? oc.start : null, samples: oc ? oc.samples.slice(-80) : [] } : null;
+    let goal = null;
+    if (st.goal && st.goal.target) {
+      // start = the count typed in Shift+9, else the first count at / after the start time (else the first one we have)
+      const ss = oc && oc.day === today ? oc.samples : [];
+      const fromAt = Date.parse(`${today}T${st.goal.from || '18:00'}:00`) - 3600000; // Amsterdam (winter) → UTC, close enough for picking a sample
+      const first = ss.find((x) => x.at >= fromAt) || null;
+      goal = { ...st.goal, open: oc ? oc.n : null, openAt: oc ? oc.at : null, start: st.goal.start || (first ? first.n : null), startAuto: !st.goal.start, samples: ss.slice(-40) };
+    }
     return { ...b, picks: await this.picks(), flags: st.flags || {}, goal };
   }
   // picking: which completed batches are new (not counted yet)
@@ -121,8 +128,8 @@ export class Game extends DurableObject {
       if (page.length < 100) break;
     }
     const now = Date.now(), day = amsNow().slice(0, 10);
-    o.samples = (o.samples || []).filter((x) => now - x.at < 4 * 3600000).concat({ at: now, n });
-    if (o.day !== day) { o.day = day; o.start = n; }
+    if (o.day !== day) { o.day = day; o.samples = []; }
+    o.samples = (o.samples || []).concat({ at: now, n }).slice(-500); // today, every 3 min
     o.at = now; o.n = n;
     await this.ctx.storage.put('openCount', o);
   }
