@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.76
+// @version      3.77
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.76';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.77';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -423,7 +423,9 @@
       if (!OWN_FILE) return true;
       try {
         // first caller that is not one of the fetch wrappers (the suite wraps fetch more than once)
-        const callers = String(new Error().stack).split('\n').slice(2).filter((l) => /^\s*at /.test(l) && !/at (window\.)?fetch \(/.test(l));
+        // Chrome: "    at fn (url:1:2)", Firefox / Zen: "fn@url:1:2". Skip this check itself and the fetch wrappers.
+        const callers = String(new Error().stack).split('\n').map((l) => l.trim())
+          .filter((l) => /:\d+:\d+\)?$/.test(l) && !/^(at )?fromSuite\b|fromSuite@|^at (window\.)?fetch \(|^(window\.)?fetch@|^async\*?(window\.)?fetch@/.test(l));
         return !callers.length || callers[0].includes(OWN_FILE);
       } catch (_) { return true; }
     };
