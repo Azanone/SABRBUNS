@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.70
+// @version      3.71
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.70';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.71';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -352,10 +352,22 @@
       return res;
     };
     fastFetch = (input, init) => gated(input, init, true);
+    // Only the suite's own calls wait in the gate. Picqer's own page (it calls /api/v1 too) always goes straight through,
+    // otherwise a busy batcher could make Picqer itself wait up to a minute.
+    const OWN_FILE = (() => { try { const m = String(new Error().stack).split('\n').map((l) => (l.match(/\(?((?:https?|chrome-extension|moz-extension|blob|file):[^\s)]+?|userscript[^\s)]*?|<anonymous>):\d+:\d+\)?\s*$/) || [])[1]).filter(Boolean); return m[0] || ''; } catch (_) { return ''; } })();
+    const fromSuite = () => {
+      if (!OWN_FILE) return true;
+      try {
+        // first caller that is not one of the fetch wrappers (the suite wraps fetch more than once)
+        const callers = String(new Error().stack).split('\n').slice(2).filter((l) => /^\s*at /.test(l) && !/at (window\.)?fetch \(/.test(l));
+        return !callers.length || callers[0].includes(OWN_FILE);
+      } catch (_) { return true; }
+    };
     window.fetch = async function (input, init) {
       let url = '';
       try { url = new URL(typeof input === 'string' ? input : input.url, location.href); } catch (_) {}
       if (!url || url.origin !== location.origin || !url.pathname.startsWith('/api/v1/')) return realFetch(input, init);
+      if (!fromSuite()) return realFetch(input, init); // Picqer itself: never wait
       return gated(input, init, false);
     };
   } catch (_) {}
