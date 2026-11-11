@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.71
+// @version      3.72
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.71';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.72';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -294,6 +294,40 @@
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
 
+  // ---------- diagnostics log (Ctrl+Alt+D): what was slow, what waited, what broke. Copy it and send it to Ahmad / Claude ----------
+  const DIAG_LS = 'pqsuite_diag_v1';
+  let diagBuf = null, diagT = null;
+  function diag(kind, text) {
+    try {
+      if (!diagBuf) diagBuf = lsGet(DIAG_LS, []) || [];
+      diagBuf.push([Date.now(), kind, String(text).slice(0, 300), location.pathname.slice(0, 60)]);
+      if (diagBuf.length > 600) diagBuf.splice(0, diagBuf.length - 600);
+      clearTimeout(diagT);
+      diagT = setTimeout(() => { const cur = lsGet(DIAG_LS, []) || []; const seen = new Set(cur.map((x) => x[0] + x[1] + x[2])); lsSet(DIAG_LS, cur.concat(diagBuf.filter((x) => !seen.has(x[0] + x[1] + x[2]))).slice(-600)); diagBuf = null; }, 1500);
+    } catch (_) {}
+  }
+  // barcode scanners "type" a few ms per key: a shortcut only counts as a lone key press (nothing right before or after)
+  const KEY_T = [];
+  window.addEventListener('keydown', (e) => { if (/^(Shift|Control|Alt|Meta|CapsLock)$/.test(e.key)) return; KEY_T.push(e.timeStamp); if (KEY_T.length > 40) KEY_T.shift(); }, true);
+  function loneKey(e, fn) {
+    const t = e.timeStamp;
+    if (KEY_T.some((x) => x < t && t - x < 100)) { diag('scan', `ignored ${e.shiftKey ? 'Shift+' : ''}${e.key} (scanner)`); return; }
+    setTimeout(() => { if (KEY_T.some((x) => x > t && x - t < 170)) diag('scan', `ignored ${e.shiftKey ? 'Shift+' : ''}${e.key} (scanner)`); else fn(); }, 180);
+  }
+  try {
+    const nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+    let lcp = 0;
+    new PerformanceObserver((l) => { const es = l.getEntries(); if (es.length) lcp = es[es.length - 1].startTime; }).observe({ type: 'largest-contentful-paint', buffered: true });
+    new PerformanceObserver((l) => l.getEntries().forEach((x) => { if (x.duration > 1000) diag('long', `page busy ${Math.round(x.duration)} ms (main thread blocked)`); })).observe({ type: 'longtask', buffered: true });
+    window.addEventListener('load', () => setTimeout(() => {
+      const n = (performance.getEntriesByType('navigation') || [])[0] || nav || {};
+      const msg = `load ${Math.round(n.loadEventStart || 0)} ms · html ${Math.round(n.responseEnd || 0)} ms · biggest paint ${Math.round(lcp)} ms`;
+      diag((n.loadEventStart || 0) > 8000 || lcp > 8000 ? 'SLOWPAGE' : 'page', msg);
+    }, 3000));
+    window.addEventListener('error', (e) => diag('jserr', `${e.message} @ ${String(e.filename || '').split('/').pop()}:${e.lineno}`));
+    window.addEventListener('unhandledrejection', (e) => { const r = e.reason; diag('jserr', `promise: ${(r && (r.message || r)) || '?'}`.slice(0, 200)); });
+  } catch (_) {}
+
   // ---------- API gate: all tabs on this PC together stay under Picqer's rate limit ----------
   //  every /api/v1 call from the suite waits for a slot (max API_PER_MIN a minute for the whole PC, a little gap between calls).
   //  Picqer says 429 (too many): every tab stops for a bit (Retry-After) and the call is tried again by itself.
@@ -323,6 +357,7 @@
     g.pause = Math.max(g.pause || 0, Date.now() + ms);
     lsSet(GATE, g);
     console.info(`[suite] Picqer says too many requests · all tabs wait ${Math.round(ms / 1000)} s`);
+    diag('pause', `all tabs pause ${Math.round(ms / 1000)} s (Picqer limit almost reached)`);
   }
   // fast = the combo batcher (you clicked, you are waiting): no per-minute cap or gap, only waits when Picqer
   // really says too many (429) or almost nothing is left. Background stuff keeps the cap.
@@ -337,11 +372,19 @@
   }
   try {
     const realFetch = window.fetch.bind(window);
+    const urlOf = (input) => { try { const u = new URL(typeof input === 'string' ? input : input.url, location.href); return u.pathname.replace('/api/v1', '') + (u.search.length > 60 ? u.search.slice(0, 60) + '…' : u.search); } catch (_) { return '?'; } };
     const gated = async (input, init, fast) => {
       let res;
       for (let i = 0; i < 4; i++) {
+        const w0 = performance.now();
         if (fast) await gateFastWait(); else await gateWait();
+        const waited = performance.now() - w0;
+        if (waited > 2000) diag('wait', `suite call waited ${Math.round(waited / 1000)} s in the line · ${urlOf(input)}`);
+        const f0 = performance.now();
         res = await realFetch(input, init);
+        const took = performance.now() - f0;
+        if (took > 4000) diag('slow', `suite call ${Math.round(took / 1000)} s · ${res.status} · ${urlOf(input)}`);
+        if (res.status === 429) diag('429', `Picqer: too many requests · ${urlOf(input)}`);
         // Picqer's limit (500 a minute) is shared by everyone on the same key: almost used up -> everyone here slows down first
         let left = NaN;
         try { left = parseInt(res.headers.get('X-RateLimit-Remaining'), 10); } catch (_) {}
@@ -367,7 +410,12 @@
       let url = '';
       try { url = new URL(typeof input === 'string' ? input : input.url, location.href); } catch (_) {}
       if (!url || url.origin !== location.origin || !url.pathname.startsWith('/api/v1/')) return realFetch(input, init);
-      if (!fromSuite()) return realFetch(input, init); // Picqer itself: never wait
+      if (!fromSuite()) { // Picqer itself: never wait (only timed for the log)
+        const f0 = performance.now();
+        const p = realFetch(input, init);
+        p.then((r) => { const took = performance.now() - f0; if (took > 4000) diag('picqer', `Picqer's own call ${Math.round(took / 1000)} s · ${r.status} · ${urlOf(input)}`); }).catch(() => {});
+        return p;
+      }
       return gated(input, init, false);
     };
   } catch (_) {}
@@ -1803,7 +1851,7 @@
     window.addEventListener('keydown', (e) => {
       if (e.ctrlKey || e.altKey || e.metaKey || isTyping(e)) return;
       if (document.getElementById('zaplog-ov') || document.getElementById('pqs-ov') || document.getElementById('ca-ov')) return;
-      if (e.key.toLowerCase() === HOTKEY) zapPicklist(document.getElementById('zap-btn'));
+      if (e.key.toLowerCase() === HOTKEY) loneKey(e, () => zapPicklist(document.getElementById('zap-btn')));
     });
     setTimeout(hint, 1000);
     ZL.loadUsers();
@@ -4879,16 +4927,19 @@
       const cb = document.getElementById('cb-overlay');
       if (cb && cb.style.display === 'flex') return;
       const k = (e.key || '').toLowerCase();
-      if (k === pickKey && can('truePickAll') && PID) {
-        if (isProcessing) return;
-        e.preventDefault();
-        truePickAll();
-      } else if (k === pickKey) {
+      if (k !== pickKey) return;
+      // a scanner typing an "a" in a barcode is not you pressing A
+      loneKey(e, () => {
+        if (can('truePickAll') && PID) {
+          if (isProcessing) return;
+          truePickAll();
+          return;
+        }
         const btn = document.querySelector('.pick-all-button');
         if (!btn) return;
         if (!can('pickAll') || btn.disabled || btn.dataset.pqLock) { setInfo('Pick alles is not for your team'); return; }
         btn.click();
-      }
+      });
     });
 
     if (!PID) return; // batch page, singles etc: only the A key
@@ -6901,7 +6952,7 @@
     const typing = (t) => t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName));
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key || '').toLowerCase() === 'l') { e.preventDefault(); if (document.getElementById('pq-lb-ov')) close('pq-lb-ov'); else showList(); return; }
-      if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Digit9' && isOwner() && URL_ && !typing(e.target)) { e.preventDefault(); openAdmin(); return; }
+      if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Digit9' && isOwner() && URL_ && !typing(e.target)) { loneKey(e, openAdmin); return; }
       if (e.ctrlKey && e.altKey && !e.shiftKey && e.code === 'KeyP' && use('pickStats')) { e.preventDefault(); if (document.getElementById('pq-pk-ov')) close('pq-pk-ov'); else openPk(false); return; }
       if (e.key === 'Escape') {
         const rv = document.querySelector('.iv-rev.open');
@@ -7723,10 +7774,11 @@
       if (e.key === 'Escape' && document.getElementById('pqs-ov')) { close(); return; }
       if (isTyping(e) || e.ctrlKey || e.altKey || e.metaKey) return;
       if ((e.shiftKey && e.code === 'Digit8') || e.key === '*') {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        if (!can('settings') && !can('colors')) { toast(`No access · team ${teamName()} · ${ME.name || 'unknown'}${ME.id ? ' #' + ME.id : ''}`); return; }
-        open();
+        loneKey(e, () => {
+          if (document.getElementById('pqs-ov')) return;
+          if (!can('settings') && !can('colors')) { toast(`No access · team ${teamName()} · ${ME.name || 'unknown'}${ME.id ? ' #' + ME.id : ''}`); return; }
+          open();
+        });
       }
     }, true);
   }
@@ -7739,8 +7791,8 @@
   window.__pqSuiteTimes = window.__pqSuiteTimes || {};
   const safe = (name, fn) => {
     const t = performance.now();
-    try { return fn(); } catch (e) { console.warn(`[pq-suite] ${name} crashed`, e); }
-    finally { window.__pqSuiteTimes[name] = Math.round((performance.now() - t) * 10) / 10; }
+    try { return fn(); } catch (e) { console.warn(`[pq-suite] ${name} crashed`, e); diag('crash', `${name}: ${(e && e.message) || e}`); }
+    finally { const ms = Math.round((performance.now() - t) * 10) / 10; window.__pqSuiteTimes[name] = ms; if (ms > 300) diag('init', `${name} took ${Math.round(ms)} ms to start`); }
   };
   const use = (id) => can(id) && on(id);
 
@@ -7819,9 +7871,42 @@
     if (!e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.code !== 'KeyR' || e.repeat) return;
     const t = e.target;
     if (t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName))) return; // typing a capital R
-    e.preventDefault();
-    hardUpdate();
+    loneKey(e, hardUpdate); // a scanner typing an R is not you pressing Shift+R
   }, true);
+  // Ctrl+Alt+D: the log
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey && e.altKey && !e.shiftKey && e.code === 'KeyD')) return;
+    e.preventDefault();
+    diagPanel();
+  }, true);
+  function diagPanel() {
+    const old = document.getElementById('pq-diag');
+    if (old) { old.remove(); return; }
+    const rows = (lsGet(DIAG_LS, []) || []).concat(diagBuf || []);
+    const fmtT = (t) => new Date(t).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const head = `Picqer Suite ${SUITE_VERSION} · ${ME.name || '?'} #${ME.id || '?'} · team ${typeof teamName === 'function' ? teamName() : '?'} · ${navigator.userAgent.match(/Chrome\/[\d.]+/) || ''} · ${new Date().toLocaleString('nl-NL')}`;
+    const text = [head, ...rows.map((r) => `${fmtT(r[0])}  ${r[1].padEnd(8)} ${r[2]}  [${r[3]}]`)].join('\n');
+    const ov = document.createElement('div');
+    ov.id = 'pq-diag';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML = `<div style="width:min(900px,100%);max-height:85vh;display:flex;flex-direction:column;gap:10px;background:#0f172a;color:#e2e8f0;border-radius:14px;padding:16px;font:500 12.5px system-ui,sans-serif;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <div style="display:flex;align-items:center;gap:8px"><b style="font-size:15px">Log</b><span style="color:#94a3b8">${rows.length} lines · slow loads, waits, errors · Copy and send it</span><span style="flex:1"></span>
+      <button data-d="copy" style="padding:7px 14px;border-radius:8px;border:0;background:#6366f1;color:#fff;font-weight:700;cursor:pointer">Copy</button>
+      <button data-d="clear" style="padding:7px 12px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;cursor:pointer">Clear</button>
+      <button data-d="x" style="padding:7px 10px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;cursor:pointer">✕</button></div>
+      <textarea readonly style="flex:1;min-height:50vh;background:#020617;color:#cbd5e1;border:1px solid #1e293b;border-radius:10px;padding:10px;font:12px/1.5 ui-monospace,Consolas,monospace;white-space:pre;resize:none"></textarea></div>`;
+    const ta = ov.querySelector('textarea');
+    ta.value = text;
+    ov.querySelector('[data-d="x"]').onclick = () => ov.remove();
+    ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+    ov.querySelector('[data-d="clear"]').onclick = () => { diagBuf = []; lsSet(DIAG_LS, []); ta.value = head; };
+    ov.querySelector('[data-d="copy"]').onclick = async (e) => {
+      try { await navigator.clipboard.writeText(ta.value); } catch (_) { ta.select(); document.execCommand('copy'); }
+      e.currentTarget.textContent = 'Copied ✓';
+    };
+    document.body.appendChild(ov);
+    ta.scrollTop = ta.scrollHeight;
+  }
   function teamsToast(msg) {
     const t = document.createElement('div');
     t.textContent = msg;
