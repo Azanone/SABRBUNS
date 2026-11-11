@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.80
+// @version      3.81
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.80';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.81';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5660,9 +5660,16 @@
       if (host && bar.parentNode !== host) { const hh = document.querySelector('.layout-header'); if (hh) bar.style.setProperty('--pq-hh', hh.offsetHeight + 'px'); host.prepend(bar); }
       else if (!host && !bar.parentNode) document.body.prepend(bar);
       bar.title = ss.length ? ss.slice(-12).map((x) => `${new Date(x.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}  ${x.n} open`).join('\n') : 'counting the open picklists… (every 3 min)';
+      const info = [
+        start != null ? `start: ${int(start)} open at ${fromTxt}` : `start: counting at ${fromTxt}`,
+        `goal: max ${int(target)} open at ${toTxt}`,
+        planned != null && mins < z ? `should be at ${int(planned)} now` : '',
+        rate != null ? `pace: ${rTxt(rate)}` : '',
+        proj != null && open > target ? `at this pace ~${int(Math.max(0, proj))} at ${toTxt}` : '',
+        'the dark line on the bar = where it should be now',
+      ].filter(Boolean).join('\n');
       bar.innerHTML = `<b class="t">Shift goal</b><div class="gb"><i style="width:${pct.toFixed(1)}%"></i>${mark != null && mins < z ? `<em style="left:${mark.toFixed(1)}%"></em>` : ''}</div>
-        <span>${start != null ? `${int(start)} at ${escHtml(fromTxt)} → ` : ''}<b>${open == null ? '…' : int(open)}</b> now → ${int(target)} at ${escHtml(toTxt)}</span>
-        ${planned != null && mins < z ? `<span class="mut">should be ${int(planned)}</span>` : ''}${state}${rate != null ? `<span class="mut">${rTxt(rate)}${proj != null && open > target ? ` · ~${int(Math.max(0, proj))} at ${escHtml(toTxt)}` : ''}</span>` : ''}`;
+        <span><b>${open == null ? '…' : int(open)}</b> → ${int(target)}</span>${state}${helpBtn(info)}`;
     }
     function render() {
       safe('goal-bar', goalBar);
