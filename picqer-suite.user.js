@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.75
+// @version      3.76
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.75';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.76';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -7144,19 +7144,25 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden && (!data || Date.now() - data.at > POLL)) poll(); });
 
     // ---------- Shift+9 (only Ahmad): give / take coins, crates, items, skins, pass, XP ----------
-    let adm = { who: null, q: '', p: null, note: '', log: null, flags: null, hooks: null, hookOpen: false, goal: undefined };
+    let adm = { who: null, q: '', p: null, note: '', log: null, flags: null, hooks: null, hookOpen: false, goal: undefined, needKey: false };
     async function adminPost(op, target, extra = {}) {
       const key = lsGet('pqsuite_admin_key', '');
       const r = await fetch(`${URL_}/admin`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Admin-Key': key } : {}) }, body: JSON.stringify({ by: ME_ID, op, target, ...extra }) });
       const j = await r.json().catch(() => ({ err: `HTTP ${r.status}` }));
-      if (r.status === 403) {
-        const k = prompt('Admin key (ADMIN_KEY of the worker in Cloudflare). Saved on this PC.', key || '');
-        if (k && k !== key) { lsSet('pqsuite_admin_key', k.trim()); return adminPost(op, target, extra); }
-      }
+      // wrong / no key on this PC: ask for it in the panel itself (no browser prompt, those can be blocked or hide behind)
+      if (r.status === 403) { adm.needKey = true; if (document.getElementById('pq-adm-ov')) showAdmin(); return { err: 'admin key needed on this PC' }; }
+      adm.needKey = false;
       return j;
     }
     const admItems = () => Object.keys(ITEM_ICON);
     function showAdmin() {
+      try { showAdminInner(); } catch (e) {
+        diag('crash', `admin panel: ${e && e.message}`);
+        const ov = overlay('pq-adm-ov');
+        ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><h2>Admin</h2><div class="sh-note">⚠ ${escHtml((e && e.message) || String(e))} · Ctrl+Alt+D → Copy and send it</div></div>`;
+      }
+    }
+    function showAdminInner() {
       const ov = overlay('pq-adm-ov');
       ov.classList.add('sh');
       const ppl = ((tot && tot.list) || []).slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -7180,6 +7186,7 @@
       const fl = adm.flags || {};
       const flagSw = (k, t) => `<label class="ad-flag"><input type="checkbox" data-adf="${k}" ${fl[k] === false ? '' : 'checked'} ${adm.flags ? '' : 'disabled'}>${t}</label>`;
       ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><div class="ad-flags"><span>everyone</span>${flagSw('cardColor', 'Product colors')}${flagSw('skins', 'Skins')}</div><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-hook title="Discord: logs + end of shift report">🔔</button><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
+        ${adm.needKey ? `<div class="ad-goal"><label>Admin key</label><input type="password" id="ad-key" placeholder="ADMIN_KEY from Cloudflare" style="width:260px" autocomplete="off"><button class="buy" data-adkey>Save on this PC</button></div>` : ''}
         ${adm.note ? `<div class="sh-note">${escHtml(adm.note)}</div>` : ''}
         <div class="ad-goal"><label>Shift goal</label><input type="number" id="ad-gt" min="0" placeholder="picklists" value="${adm.goal ? adm.goal.target : ''}"><span>from</span><input type="time" id="ad-gf" value="${(adm.goal && adm.goal.from) || '07:00'}"><span>to</span><input type="time" id="ad-gz" value="${(adm.goal && adm.goal.to) || '23:00'}"><button class="buy" data-adg="save">Set</button>${adm.goal ? '<button data-adg="off">Off</button>' : '<small>no goal = no bar</small>'}</div>
         ${adm.hookOpen ? `<div class="ad-hooks">
@@ -7197,6 +7204,15 @@
         adm.note = j.err || `${b.parentNode.textContent.trim()} ${b.checked ? 'on' : 'OFF'} for everyone · every PC within ~30 s`;
         showAdmin();
       }));
+      ov.querySelector('[data-adkey]')?.addEventListener('click', () => {
+        const k = (ov.querySelector('#ad-key').value || '').trim();
+        if (!k) return;
+        lsSet('pqsuite_admin_key', k);
+        adm.needKey = false; adm.note = 'key saved on this PC';
+        showAdmin();
+        adminPost('flags', '').then((j) => { if (j.flags) { adm.flags = j.flags; showAdmin(); } });
+        adminPost('goal', '').then((j) => { if (!j.err) { adm.goal = j.goal; showAdmin(); } });
+      });
       ov.querySelectorAll('[data-adg]').forEach((b) => (b.onclick = async () => {
         const goal = b.dataset.adg === 'off' ? { target: 0 } : { target: +ov.querySelector('#ad-gt').value || 0, from: ov.querySelector('#ad-gf').value, to: ov.querySelector('#ad-gz').value };
         b.disabled = true;
