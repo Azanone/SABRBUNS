@@ -8,7 +8,7 @@
 //  allow : "*" = everything, or a list of:
 //          settings comboBatcher comboAlert replenish shipErr addrFix
 //          banner batchOpt zap dayson unpick pickStats leaderboard
-//          autoNext cardColor colors pickAll truePickAll bulkSingles
+//          autoNext cardColor colors pickAll truePickAll bulkSingles skins
 //  leftovers: everyone who is in no team
 // =====================================================================
 window.PQ_TEAMS = {
@@ -27,11 +27,11 @@ window.PQ_TEAMS = {
     },
     {
       "name": "shiftlead",
-      "allow": ["settings", "comboBatcher", "replenish", "batchOpt", "zap", "dayson", "unpick", "pickStats", "colors"],
+      "allow": ["settings", "comboBatcher", "replenish", "batchOpt", "zap", "dayson", "unpick", "pickStats", "colors", "skins"],
       "users": [
         18089 // Rodney Huijgen
       ]
     }
   ],
-  "leftovers": { "allow": ["comboAlert", "leaderboard", "bulkSingles"] }
+  "leftovers": { "allow": ["comboAlert", "leaderboard", "bulkSingles", "skins"] }
 };

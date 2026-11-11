@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.69
+// @version      3.70
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,11 +54,11 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.69';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.70';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
-    leftovers: { allow: ['comboAlert', 'shipErr', 'banner', 'autoNext', 'cardColor', 'pickAll', 'bulkSingles'] },
+    leftovers: { allow: ['comboAlert', 'shipErr', 'banner', 'autoNext', 'cardColor', 'pickAll', 'bulkSingles', 'skins'] },
   };
   const okAllow = (a) => a === '*' || (Array.isArray(a) && a.every((f) => typeof f === 'string'));
   function validTeams(d) {
@@ -156,6 +156,7 @@
     pickAll: 'Picqer "Pick alles" buttons',
     truePickAll: 'True pick all: A picks every product of the picklist',
     bulkSingles: 'Picqer "Verwerk in bulk"',
+    skins: 'Skins / themes (looks of Picqer)',
   };
   const FEATURES = Object.keys(FEATURE_INFO);
   const VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '';
@@ -5162,7 +5163,7 @@
   let skinNow = EARLY_SKIN, skinBuilt = false;
   window.addEventListener('pq-flags', () => { skinBuilt = false; applySkin(ON_LOGIN ? null : (skinOf(ME.id) || {}).id); }); // skins switched off / on for everyone
   function applySkin(id) {
-    id = SKIN_LOOK[id] && !flagOff('skins') ? id : null;
+    id = SKIN_LOOK[id] && !flagOff('skins') && can('skins') ? id : null; // off for everyone (Shift+9) or not for this team
     // the early skin (from the last page) can be from an older version: rebuild it once per page
     if (skinNow === id && skinBuilt) { if (id && SKIN_LOOK[id].dark) skinFx(SKIN_LOOK[id].dark.fx); return; }
     skinNow = id;
@@ -6452,7 +6453,7 @@
         items: `<b>Items</b>${Object.entries(p.items || {}).map(([k, d]) => `<div class="ii-r">${ITEM_ICON[k] || ''} ${escHtml(d.name)}<span>${escHtml(d.desc)}</span></div>`).join('')}<p>freeze / skin off: same person again after ${int(p.cooldown || 120)} min · a shield blocks 1</p>`,
         streak: `<b>Streak</b><p>${(p.streak || {}).goal || 100} points in a day (pack + pick)</p><p>+50 coins × day, max 500 · day 5 uncommon crate · day 10 rare</p><p>days off don't break it, a worked day under the goal does</p><p>best: ${(p.streak || {}).best || 0}</p>`,
         trade: '<b>Trade</b><p>pick someone · they accept · both put things in · both agree</p><p>changing anything = agree again</p>',
-        pass: S ? `<b>${escHtml(S.name)}</b><p>XP = packing + picking points · ${int(S.per)} XP per level</p><p>rewards come in by themselves · bought later? you get every level you already reached</p><p>ends ${escHtml(S.ends.split('-').reverse().join('-'))} · level 25 = ${escHtml(nameOfSkin('eclipse'))}, only from the pass</p>` : '',
+        pass: S ? `<b>${escHtml(S.name)}</b><p>20 XP per multi · 13 per single · 10 per pick point · ${int(S.per)} XP per level</p><p>rewards come in by themselves · bought later? you get every level you already reached</p><p>ends ${escHtml(S.ends.split('-').reverse().join('-'))} · level 25 = ${escHtml(nameOfSkin('eclipse'))}, only from the pass</p>` : '',
         crate: `<b>Skin crate</b>${((p.crate || {}).odds || []).map((o) => `<div class="ii-r"><i style="background:${RARITY[o.id] || '#94a3b8'}"></i>${escHtml(nameOfSkin(o.id))}<span>${String(o.pct).replace('.', ',')}%</span></div>`).join('')}<p>already have it: ¼ of its price back</p>`,
         skins: '<b>Skins</b><p>change Picqer for your account · dark skins make all of it dark</p><p>★ limited · DROP = only from drop crates · PASS = only from the pass</p>',
         coins: '<b>Coins</b><p>1 per packing point · 1 per picking point · +20 a minute as king</p><p>boost and double event: x2 each · frozen: 0</p>',
@@ -6933,10 +6934,10 @@
           ${p.effects && p.effects.frozenUntil > Date.now() ? '<span class="bad">frozen</span>' : ''}${p.effects && p.effects.boostUntil > Date.now() ? `<span class="good">boost ${leftTxt(p.effects.boostUntil)}</span>` : ''}</div>
         <div class="ad-rows">
           <div class="ad-r"><label>Coins</label><input type="number" id="ad-coins" value="1000" min="1"><button class="buy" data-ad="coins">Give</button><button data-ad="coins-">Take</button></div>
-          <div class="ad-r"><label>Crate</label><select id="ad-tier">${opt(tiers)}</select><input type="number" id="ad-cn" value="1" min="1"><button class="buy" data-ad="crate">Give</button></div>
-          <div class="ad-r"><label>Item</label><select id="ad-item">${opt(admItems().map((k) => [k, itemDef(k).name]))}</select><input type="number" id="ad-in" value="1" min="1"><button class="buy" data-ad="item">Give</button></div>
+          <div class="ad-r"><label>Crate</label><select id="ad-tier">${opt(tiers)}</select><input type="number" id="ad-cn" value="1" min="1"><button class="buy" data-ad="crate">Give</button><button data-ad="uncrate">Take</button></div>
+          <div class="ad-r"><label>Item</label><select id="ad-item">${opt(admItems().map((k) => [k, itemDef(k).name]))}</select><input type="number" id="ad-in" value="1" min="1"><button class="buy" data-ad="item">Give</button><button data-ad="unitem">Take</button></div>
           <div class="ad-r"><label>Skin</label><select id="ad-skin">${opt(skins)}</select><button class="buy" data-ad="skin">Give</button><button data-ad="unskin">Take</button></div>
-          <div class="ad-r"><label>Pass</label><button class="buy" data-ad="pass" ${p.pass && p.pass.owned ? 'disabled' : ''}>Give pass</button><input type="number" id="ad-xp" value="1000"><button data-ad="xp">+ XP</button></div>
+          <div class="ad-r"><label>Pass</label>${p.pass && p.pass.owned ? '<button data-ad="unpass">Take pass</button>' : '<button class="buy" data-ad="pass">Give pass</button>'}<input type="number" id="ad-xp" value="1000"><button data-ad="xp">+ XP</button></div>
           <div class="ad-r"><label>Effects</label><button data-ad="clear">Unfreeze</button><input type="number" id="ad-bm" value="30"><button data-ad="boost">Boost min</button></div>
         </div>`;
       const fl = adm.flags || {};
@@ -6966,8 +6967,8 @@
       const val = (id) => (ov.querySelector('#' + id) || {}).value;
       ov.querySelectorAll('[data-ad]').forEach((b) => (b.onclick = async () => {
         const k = b.dataset.ad;
-        const body = k === 'coins' ? { n: +val('ad-coins') } : k === 'coins-' ? { n: -Math.abs(+val('ad-coins')) } : k === 'crate' ? { what: val('ad-tier'), n: +val('ad-cn') }
-          : k === 'item' ? { what: val('ad-item'), n: +val('ad-in') } : k === 'skin' || k === 'unskin' ? { what: val('ad-skin') } : k === 'xp' ? { n: +val('ad-xp') } : k === 'boost' ? { n: +val('ad-bm') } : {};
+        const body = k === 'coins' ? { n: +val('ad-coins') } : k === 'coins-' ? { n: -Math.abs(+val('ad-coins')) } : k === 'crate' || k === 'uncrate' ? { what: val('ad-tier'), n: +val('ad-cn') }
+          : k === 'item' || k === 'unitem' ? { what: val('ad-item'), n: +val('ad-in') } : k === 'skin' || k === 'unskin' ? { what: val('ad-skin') } : k === 'xp' ? { n: +val('ad-xp') } : k === 'boost' ? { n: +val('ad-bm') } : {};
         b.disabled = true;
         const j = await adminPost(k === 'coins-' ? 'coins' : k, adm.who, body).catch((e) => ({ err: e.message }));
         if (j.profile) adm.p = j.profile;

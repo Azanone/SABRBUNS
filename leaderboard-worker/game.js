@@ -34,6 +34,8 @@ export const SKINS = [
   { id: 'eclipse', name: 'Eclipse', price: 40000, passOnly: true },
 ];
 // battle pass: pay once per season, XP = packing + picking points, rewards come by themselves at every level
+// pass XP: 20 per multi, 13 per single, picking 10 per pick point (same ratio as the points)
+export const XP_MULTI = 20, XP_SINGLE = 13, XP_PICK = 10;
 export const SEASON = {
   id: 1, name: 'Season 1', ends: '2026-12-31', price: 10000, per: 1000,
   levels: [
@@ -156,6 +158,7 @@ export function giftAll(st) {
 export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rnd = Math.random }) {
   ensure(st);
   giftAll(st);
+  xpTimes10(st, now, rnd);
   const skip = new Set(proxies.map(String));
   const by = new Map();
   // the chart: every closed picklist of the warehouse per hour (like Picqer's dashboard), kept for months
@@ -186,7 +189,7 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rn
     t.n++; t.multis += pt.multi; t.singles += pt.single; t.points = r3(t.points + pt.pts);
     const a = acct(st, id);
     earn(st, id, pt.pts, now); a.picklists++;
-    passXp(st, id, pt.pts, now, today, rnd);
+    passXp(st, id, pt.multi * XP_MULTI + pt.single * XP_SINGLE, now, today, rnd);
     a.points = r3(a.points + pt.pts);
     rollDrop(st, id, 1, now, rnd);
     if (d === today) streakCheck(st, id, today, now, rnd);
@@ -355,7 +358,7 @@ export function pickTick(st, batches, { now, today, proxies = [], rnd = Math.ran
     a.pickPoints = r3((a.pickPoints || 0) + pt.points);
     a.batches = (a.batches || 0) + 1;
     earn(st, id, pt.points, now);
-    passXp(st, id, pt.points, now, today, rnd);
+    passXp(st, id, pt.points * XP_PICK, now, today, rnd);
     st.precent.push({ id, at: now, points: pt.points });
     rollDrop(st, id, 3, now, rnd);
     if (d === today) streakCheck(st, id, today, now, rnd);
@@ -622,6 +625,12 @@ function passCatchUp(st, id, now, rnd) {
   const lv = Math.min(SEASON.levels.length, Math.floor(p.xp / SEASON.per));
   while (p.got < lv) passGive(st, id, ++p.got, now, rnd);
 }
+// one time: XP that was counted as 1 per point becomes x10 (the new 20 / 13 per picklist)
+export function xpTimes10(st, now, rnd = Math.random) {
+  if (st.xp10) return;
+  for (const [id, a] of Object.entries(st.acct)) if (a.pass && a.pass.s === SEASON.id && a.pass.xp) { a.pass.xp = r3(a.pass.xp * 10); passCatchUp(st, id, now, rnd); }
+  st.xp10 = true;
+}
 export function passXp(st, id, pts, now, today, rnd = Math.random) {
   if (!(pts > 0) || String(today) > SEASON.ends) return;
   const p = passOf(acct(st, id));
@@ -667,6 +676,17 @@ export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
   else if (op === 'item') { if (!ITEMS[b.what]) return { err: 'item?' }; a.inv = a.inv || []; for (let i = 0; i < Math.max(1, n); i++) a.inv.push({ uid: `${(now + i).toString(36)}a${Math.floor(rnd() * 1e5).toString(36)}`, kind: 'item', item: b.what, at: now }); note(`${Math.max(1, n)} ${b.what}`); }
   else if (op === 'skin') { if (!SKINS.find((x) => x.id === b.what)) return { err: 'skin?' }; if (!a.owned.includes(b.what)) a.owned.push(b.what); note(`skin ${b.what}`); }
   else if (op === 'unskin') { a.owned = a.owned.filter((x) => x !== b.what); if (a.skin === b.what) a.skin = null; note(`took skin ${b.what}`); }
+  else if (op === 'uncrate' || op === 'unitem') {
+    const want = Math.max(1, n), inv = a.inv || [];
+    let gone = 0;
+    for (let i = 0; i < inv.length && gone < want;) {
+      const x = inv[i];
+      if (op === 'uncrate' ? x.kind === 'crate' && x.tier === b.what : x.kind === 'item' && x.item === b.what) { inv.splice(i, 1); gone++; } else i++;
+    }
+    if (!gone) return { err: `they have no ${b.what}` };
+    note(`took ${gone} ${b.what}${op === 'uncrate' ? ' crate' : ''}`);
+  }
+  else if (op === 'unpass') { const p = passOf(a); p.owned = false; note('took battle pass'); }
   else if (op === 'pass') { const p = passOf(a); p.owned = true; passCatchUp(st, target, now, rnd); note('battle pass'); }
   else if (op === 'xp') { if (!n) return { err: 'amount?' }; const p = passOf(a); p.xp = Math.max(0, r3(p.xp + n)); passCatchUp(st, target, now, rnd); note(`${n} XP`); }
   else if (op === 'clear') { a.frozenUntil = 0; a.skinOffUntil = 0; note('cleared freeze / skin off'); }
