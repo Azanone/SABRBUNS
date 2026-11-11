@@ -23,7 +23,8 @@ window.PQ_TEAMS = {
         36510, // Sedat Ozbasi
         39213, // Ali Al- Turaim
         32651, // Egehan Akali
-        22610 // Jari Bezemer
+        22610, // Jari Bezemer
+        42368 // Sharlton Matwirjo
       ]
     },
     {
@@ -37,7 +38,6 @@ window.PQ_TEAMS = {
       "name": "megamulters",
       "allow": ["settings", "comboBatcher", "comboAlert", "batchOpt", "leaderboard", "autoNext", "cardColor", "colors", "pickAll", "truePickAll", "bulkSingles", "skins"],
       "users": [
-        42368 // Sharlton Matwirjo
       ]
     }
   ],
