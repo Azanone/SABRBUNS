@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.79
+// @version      3.80
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.79';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.80';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5622,7 +5622,7 @@
       let bar = document.getElementById('pq-goal');
       if (!g || !g.target) { bar?.remove(); return; }
       addStyle('pq-goal-style', `
-        #pq-goal{height:30px;display:flex;align-items:center;gap:14px;padding:0 24px;background:#fff;border-bottom:1px solid #e2e8f0;font:500 12.5px system-ui,sans-serif;color:#0f172a;position:relative;z-index:5}
+        #pq-goal{min-height:30px;box-sizing:border-box;min-width:0;max-width:100%;display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:4px 24px;background:#fff;border-bottom:1px solid #e2e8f0;font:500 12.5px system-ui,sans-serif;color:#0f172a;position:sticky;top:var(--pq-hh,52px);z-index:5}
         #pq-goal b.t{font-weight:700;white-space:nowrap}
         #pq-goal .gb{flex:1;height:8px;border-radius:999px;background:#e2e8f0;position:relative;overflow:hidden;min-width:80px}
         #pq-goal .gb i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:#4f46e5;transition:width .6s}
@@ -5654,9 +5654,11 @@
       if (!bar) {
         bar = document.createElement('div');
         bar.id = 'pq-goal';
-        const head = document.querySelector('.layout-header');
-        if (head && head.parentNode) head.parentNode.insertBefore(bar, head.nextSibling); else document.body.prepend(bar);
       }
+      // body is a css grid (header / nav + content): a loose child there blows up the nav column → put it on top of the content
+      const host = document.querySelector('.layout-content');
+      if (host && bar.parentNode !== host) { const hh = document.querySelector('.layout-header'); if (hh) bar.style.setProperty('--pq-hh', hh.offsetHeight + 'px'); host.prepend(bar); }
+      else if (!host && !bar.parentNode) document.body.prepend(bar);
       bar.title = ss.length ? ss.slice(-12).map((x) => `${new Date(x.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}  ${x.n} open`).join('\n') : 'counting the open picklists… (every 3 min)';
       bar.innerHTML = `<b class="t">Shift goal</b><div class="gb"><i style="width:${pct.toFixed(1)}%"></i>${mark != null && mins < z ? `<em style="left:${mark.toFixed(1)}%"></em>` : ''}</div>
         <span>${start != null ? `${int(start)} at ${escHtml(fromTxt)} → ` : ''}<b>${open == null ? '…' : int(open)}</b> now → ${int(target)} at ${escHtml(toTxt)}</span>
