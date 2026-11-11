@@ -66,7 +66,8 @@ export class Game extends DurableObject {
     const st = await this.load(), b = st.board;
     if (!b) return b;
     const today = amsNow().slice(0, 10), packed = ((st.hours[today] || {}).packed) || Array(24).fill(0);
-    const goal = st.goal && st.goal.target ? { ...st.goal, done: packed.reduce((n, v) => n + v, 0), perHour: packed } : null;
+    const oc = st.goal && st.goal.target ? (await this.ctx.storage.get('openCount')) || null : null;
+    const goal = st.goal && st.goal.target ? { ...st.goal, done: packed.reduce((n, v) => n + v, 0), perHour: packed, open: oc ? oc.n : null, openAt: oc ? oc.at : null, start: oc ? oc.start : null, samples: oc ? oc.samples.slice(-80) : [] } : null;
     return { ...b, picks: await this.picks(), flags: st.flags || {}, goal };
   }
   // picking: which completed batches are new (not counted yet)
@@ -103,8 +104,28 @@ export class Game extends DurableObject {
     try { await this.picksDone(); } catch (e) { console.log('picks', e.message); }
     await this.live();
     try { await this.report(); } catch (e) { console.log('report', e.message); }
+    try { await this.openCount(); } catch (e) { console.log('open count', e.message); }
   }
   // completed batches → pick points + coins (new ones only, max 15 details per round)
+  // shift goal = how many picklists may still be open at the end time: count the open ones every 3 min (only with a goal)
+  async openCount() {
+    const st = await this.load();
+    if (!st.goal || !st.goal.target) return;
+    const o = (await this.ctx.storage.get('openCount')) || { samples: [] };
+    if (o.at && Date.now() - o.at < 3 * 60000) return;
+    const w = await warehouse(this.env);
+    let n = 0;
+    for (let off = 0; off < 20000; off += 100) {
+      const page = (await picqer(this.env, `/picklists?status=new${w ? `&idwarehouse=${w.id}` : ''}&offset=${off}`)) || [];
+      n += page.filter((p) => p.status === 'new').length;
+      if (page.length < 100) break;
+    }
+    const now = Date.now(), day = amsNow().slice(0, 10);
+    o.samples = (o.samples || []).filter((x) => now - x.at < 4 * 3600000).concat({ at: now, n });
+    if (o.day !== day) { o.day = day; o.start = n; }
+    o.at = now; o.n = n;
+    await this.ctx.storage.put('openCount', o);
+  }
   async picksDone() {
     const env = this.env, w = await warehouse(env);
     const list = (await picqer(env, `/picklists/batches?status=completed${w ? `&idwarehouse=${w.id}` : ''}`)) || [];
