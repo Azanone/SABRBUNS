@@ -108,6 +108,7 @@ export function earn(st, id, amount, now) {
 // maybe a crate drops (rolls = how many tries) · pity: PITY rolls in a row without rare or better = a rare
 function giveCrate(st, id, tier, now, rnd, pity, quiet) {
   const a = acct(st, id), t = TIERS.find((x) => x.id === tier);
+  if (!quiet) a.found = { ...(a.found || {}), [tier]: ((a.found || {})[tier] || 0) + 1 };
   a.inv = a.inv || [];
   const uid = `${now.toString(36)}${Math.floor(rnd() * 1e6).toString(36)}`;
   a.inv.push({ uid, kind: 'crate', tier, at: now });
@@ -136,6 +137,7 @@ export function streakCheck(st, id, today, now, rnd = Math.random) {
   const prev = worked[worked.length - 1];
   a.streak = (prev ? prev === a.streakDay : !!a.streakDay) ? (a.streak || 0) + 1 : 1;
   a.streakDay = today;
+  qCount(a, 'streak', 1);
   a.streakBest = Math.max(a.streakBest || 0, a.streak);
   const coins = Math.min(500, 50 * a.streak);
   a.coins = r3(a.coins + coins);
@@ -221,6 +223,8 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rn
   for (const d of Object.keys(st.pdays).sort().slice(0, -8)) delete st.pdays[d];
   if (st.event && st.event.until <= now) st.event = null;
   st.feed = (st.feed || []).filter((x) => now - x.at < 6 * 3600000);
+  for (const id of Object.keys(st.acct)) { questCheck(st, id, today, now, rnd); achCheck(st, id, now, today); }
+  people.forEach((p) => { const bd = badgesOf(st.acct[p.id]); if (bd) p.badges = bd; });
   st.board = { at: now, min, wh, people, feed: st.feed, event: st.event ? { until: st.event.until, by: st.event.by } : null, king: st.king ? { id: st.king.id, since: st.king.since, min: Math.floor((now - st.king.since) / 60000) } : null };
   return st.board;
 }
@@ -238,7 +242,7 @@ function totalPoints(st, id) {
 export function totals(st) {
   return Object.keys(st.acct).map((id) => {
     const a = st.acct[id];
-    return { id, points: totalPoints(st, id), picklists: a.picklists || 0, pickPoints: a.pickPoints || 0, batches: a.batches || 0, kingTotal: a.kingTotal || 0, kingBest: a.kingBest || 0, coins: a.coins || 0, balance: r3(a.coins - a.spent) };
+    return { id, badges: badgesOf(a), points: totalPoints(st, id), picklists: a.picklists || 0, pickPoints: a.pickPoints || 0, batches: a.batches || 0, kingTotal: a.kingTotal || 0, kingBest: a.kingBest || 0, coins: a.coins || 0, balance: r3(a.coins - a.spent) };
   }).filter((x) => x.points > 0 || x.picklists > 0 || x.balance > 0 || x.pickPoints > 0).sort((x, y) => y.balance - x.balance || y.points - x.points);
 }
 
@@ -258,6 +262,8 @@ export function profile(st, id, today, now = Date.now()) {
     effects: { frozenUntil: a.frozenUntil || 0, skinOffUntil: a.skinOffUntil || 0, boostUntil: a.boostUntil || 0, shieldUntil: a.shieldUntil || 0 },
     event: st.event && st.event.until > now ? st.event : null,
     pass: passView(a),
+    quests: questView(st, id, today),
+    ach: achView(a),
     social: socialView(a),
     streak: { n: a.streak || 0, day: a.streakDay || null, best: a.streakBest || 0, goal: STREAK_GOAL, today: r3(dayTotal(st, today, id)) },
     pity: { dry: a.dry || 0, at: PITY }, cooldown: HIT_COOLDOWN, trades: tradesFor(st, id, now),
@@ -373,7 +379,7 @@ export function pickBoard(st, now, today) {
   const hour = {};
   for (const x of st.precent) if (now - x.at < 3600000) hour[x.id] = r3((hour[x.id] || 0) + x.points);
   const ids = new Set([...Object.keys(day), ...Object.keys(hour)]);
-  const people = [...ids].map((id) => ({ id, ...(day[id] || { batches: 0, locations: 0, items: 0, points: 0 }), hour: hour[id] || 0 }))
+  const people = [...ids].map((id) => ({ id, ...(day[id] || { batches: 0, locations: 0, items: 0, points: 0 }), hour: hour[id] || 0, badges: badgesOf(st.acct[id]) }))
     .sort((a, b) => b.points - a.points || b.hour - a.hour);
   return { at: now, day: today, people };
 }
@@ -397,6 +403,8 @@ export function openDrop(st, id, uid, now, rnd = Math.random) {
   if (i < 0) return { err: 'no such crate' };
   const c = a.inv[i];
   a.inv.splice(i, 1);
+  a.opened = (a.opened || 0) + 1;
+  qCount(a, 'opened', 1);
   const it = pick(rnd, LOOT[c.tier] || LOOT.common);
   let got;
   if (it[0] === 'coins') {
@@ -526,6 +534,7 @@ export function tradeOp(st, id, op, b, now) {
       for (const s of o.skins) { A.owned = A.owned.filter((x) => x !== s); if (A.skin === s) A.skin = null; if (!B.owned.includes(s)) B.owned.push(s); }
     }
     t.status = 'done';
+    for (const x of [t.from, t.to]) acct(st, x).trades = (acct(st, x).trades || 0) + 1;
     t.ended = now;
     st.log = (st.log || []).concat({ at: now, id: t.from, what: `traded with ${t.to}` }).slice(-50);
     return { ok: true, done: true };
@@ -660,6 +669,12 @@ export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
   ensure(st);
   target = String(target || '');
   if (op === 'log') return { ok: true, log: (st.log || []).slice(-50).reverse() };
+  // Discord webhooks: logs (slow pages etc) and the end of shift report (+ time, Amsterdam)
+  if (op === 'hooks') {
+    st.hooks = st.hooks || {};
+    if (b.hooks) for (const k of ['log', 'report', 'reportAt']) if (typeof b.hooks[k] === 'string') st.hooks[k] = b.hooks[k].trim();
+    return { ok: true, hooks: { log: st.hooks.log || '', report: st.hooks.report || '', reportAt: st.hooks.reportAt || '22:30' } };
+  }
   // switches for everyone (false = off on every PC)
   if (op === 'flags') {
     const f = { ...(st.flags || {}) };
@@ -744,4 +759,128 @@ export function chatRead(st, id, other) {
   const a = st.acct[String(id)];
   if (a && a.unread && a.unread[other]) { const u = { ...a.unread }; delete u[other]; a.unread = u; return true; }
   return false;
+}
+
+// ---------- quests: 3 a day + 3 a week (same for everyone), done = pass XP by itself ----------
+export const QUESTS = {
+  daily: {
+    pack: [{ id: 'd_multi', name: 'Pack 40 multis', goal: 40, stat: 'multis' }, { id: 'd_close', name: 'Close 80 picklists', goal: 80, stat: 'n' }, { id: 'd_pts', name: '100 packing points', goal: 100, stat: 'points' }],
+    pick: [{ id: 'd_batch', name: 'Pick 5 batches', goal: 5, stat: 'batches' }, { id: 'd_loc', name: 'Pick 120 locations', goal: 120, stat: 'locations' }, { id: 'd_ppts', name: '400 pick points', goal: 400, stat: 'ppoints' }],
+    any: [{ id: 'd_streak', name: 'Hit your streak goal', goal: 1, stat: 'streak' }, { id: 'd_crate', name: 'Open a crate', goal: 1, stat: 'opened' }],
+    xp: 300,
+  },
+  weekly: {
+    pack: [{ id: 'w_multi', name: 'Pack 300 multis', goal: 300, stat: 'multis' }, { id: 'w_close', name: 'Close 600 picklists', goal: 600, stat: 'n' }],
+    pick: [{ id: 'w_batch', name: 'Pick 35 batches', goal: 35, stat: 'batches' }, { id: 'w_loc', name: 'Pick 900 locations', goal: 900, stat: 'locations' }],
+    any: [{ id: 'w_streak', name: 'Streak goal on 4 days', goal: 4, stat: 'streak' }, { id: 'w_crate', name: 'Open 3 crates', goal: 3, stat: 'opened' }],
+    xp: 2000,
+  },
+};
+const hashStr = (t) => { let h = 2166136261; for (const c of t) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0; return h; };
+export function weekOf(day) { const d = new Date(day + 'T12:00:00Z'); const wd = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - wd); return d.toISOString().slice(0, 10); }
+function questsFor(kind, key) {
+  const Q = QUESTS[kind], h = hashStr(kind + key);
+  return ['pack', 'pick', 'any'].map((g, i) => Q[g][(h >>> (i * 5)) % Q[g].length]).map((q) => ({ ...q, xp: Q.xp }));
+}
+// counters that don't live in the day stats (crates opened, streak goal hit): per day and per week
+function qCount(a, stat, n) {
+  const t = new Date(), day = new Date(t.getTime() + 3600000).toISOString().slice(0, 10); // close enough to Amsterdam for counting
+  a.qc = a.qc || {};
+  if (a.qc.day !== day) a.qc = { ...a.qc, day, d: {} };
+  if (a.qc.week !== weekOf(day)) a.qc = { ...a.qc, week: weekOf(day), w: {} };
+  a.qc.d[stat] = (a.qc.d[stat] || 0) + n;
+  a.qc.w[stat] = (a.qc.w[stat] || 0) + n;
+}
+function qStat(st, id, stat, days, counter) {
+  if (stat === 'opened' || stat === 'streak') return counter[stat] || 0;
+  let n = 0;
+  for (const d of days) {
+    const p = ((st.days[d] || {})[id]) || {}, q = (((st.pdays || {})[d] || {})[id]) || {};
+    n += stat === 'ppoints' ? q.points || 0 : stat in p ? p[stat] || 0 : q[stat] || 0;
+  }
+  return n;
+}
+function questList(st, id, today) {
+  const a = st.acct[id] || {}, qc = a.qc || {};
+  const wk = weekOf(today), wdays = Object.keys(st.days).concat(Object.keys(st.pdays || {})).filter((d, i, arr) => arr.indexOf(d) === i && d >= wk && d <= today);
+  const dc = qc.day === today ? qc.d || {} : {}, wc = qc.week === wk ? qc.w || {} : {};
+  return [
+    ...questsFor('daily', today).map((q) => ({ ...q, per: 'daily', key: `d:${today}:${q.id}`, prog: qStat(st, id, q.stat, [today], dc) })),
+    ...questsFor('weekly', wk).map((q) => ({ ...q, per: 'weekly', key: `w:${wk}:${q.id}`, prog: qStat(st, id, q.stat, wdays, wc) })),
+  ];
+}
+export function questCheck(st, id, today, now, rnd = Math.random) {
+  const a = st.acct[id];
+  if (!a) return;
+  a.qdone = a.qdone || {};
+  for (const q of questList(st, id, today)) {
+    if (a.qdone[q.key] || q.prog < q.goal) continue;
+    a.qdone[q.key] = now;
+    passXp(st, id, q.xp, now, today, rnd);
+    a.news = (a.news || []).concat({ at: now + 2, kind: 'quest', name: q.name, xp: q.xp, per: q.per }).slice(-20);
+  }
+  const keep = Object.keys(a.qdone).sort((x, y) => a.qdone[y] - a.qdone[x]).slice(0, 30);
+  if (keep.length < Object.keys(a.qdone).length) a.qdone = Object.fromEntries(keep.map((k) => [k, a.qdone[k]]));
+}
+export function questView(st, id, today) {
+  const a = st.acct[id] || {};
+  return questList(st, id, today).map((q) => ({ id: q.id, name: q.name, per: q.per, goal: q.goal, xp: q.xp, prog: Math.min(q.goal, Math.round(q.prog * 10) / 10), done: !!(a.qdone || {})[q.key] }));
+}
+
+// ---------- achievements: unlocked once, the rarest 3 show as badges next to your name ----------
+export const ACH = [
+  { id: 'crate1', icon: '📦', name: 'First crate', desc: 'open a drop crate', test: (a) => (a.opened || 0) >= 1 },
+  { id: 'pack100', icon: '🥉', name: 'Packer', desc: 'close 100 picklists', test: (a) => (a.picklists || 0) >= 100 },
+  { id: 'pick10', icon: '⛏️', name: 'Picker', desc: 'pick 10 batches', test: (a) => (a.batches || 0) >= 10 },
+  { id: 'trade1', icon: '🤝', name: 'Trader', desc: 'finish a trade', test: (a) => (a.trades || 0) >= 1 },
+  { id: 'streak7', icon: '🔥', name: 'On fire', desc: '7 day streak', test: (a) => (a.streakBest || 0) >= 7 },
+  { id: 'king60', icon: '👑', name: 'King', desc: '60 min king in total', test: (a) => (a.kingTotal || 0) >= 60 },
+  { id: 'pack1k', icon: '🥈', name: 'Pro packer', desc: 'close 1.000 picklists', test: (a) => (a.picklists || 0) >= 1000 },
+  { id: 'pick100', icon: '⚒️', name: 'Pro picker', desc: 'pick 100 batches', test: (a) => (a.batches || 0) >= 100 },
+  { id: 'skins10', icon: '🎨', name: 'Collector', desc: 'own 10 skins', test: (a) => (a.owned || []).length >= 10 },
+  { id: 'rich', icon: '💰', name: 'Rich', desc: 'earn 50.000 coins', test: (a) => (a.coins || 0) >= 50000 },
+  { id: 'epic', icon: '🎁', name: 'Epic find', desc: 'find an epic crate', test: (a) => ((a.found || {}).epic || 0) >= 1 },
+  { id: 'pass25', icon: '🎟️', name: 'Season 1', desc: 'pass level 25', test: (a) => !!a.pass && a.pass.s === 1 && Math.floor((a.pass.xp || 0) / SEASON.per) >= 25 },
+  { id: 'streak30', icon: '☄️', name: 'Unstoppable', desc: '30 day streak', test: (a) => (a.streakBest || 0) >= 30 },
+  { id: 'pack5k', icon: '🥇', name: 'Legend packer', desc: 'close 5.000 picklists', test: (a) => (a.picklists || 0) >= 5000 },
+  { id: 'pick500', icon: '🏆', name: 'Legend picker', desc: 'pick 500 batches', test: (a) => (a.batches || 0) >= 500 },
+  { id: 'legend', icon: '💎', name: 'Legendary', desc: 'find a legendary crate', test: (a) => ((a.found || {}).legendary || 0) >= 1 },
+];
+export function achCheck(st, id, now) {
+  const a = st.acct[id];
+  if (!a) return;
+  a.ach = a.ach || {};
+  for (const x of ACH) {
+    if (a.ach[x.id] || !x.test(a)) continue;
+    a.ach[x.id] = now;
+    a.news = (a.news || []).concat({ at: now + 3, kind: 'ach', icon: x.icon, name: x.name, desc: x.desc }).slice(-20);
+  }
+}
+export function badgesOf(a) {
+  if (!a || !a.ach) return '';
+  return ACH.filter((x) => a.ach[x.id]).slice(-3).reverse().map((x) => x.icon).join('');
+}
+export function achView(a) { return ACH.map((x) => ({ id: x.id, icon: x.icon, name: x.name, desc: x.desc, at: (a.ach || {})[x.id] || 0 })); }
+
+// ---------- end of shift report (Discord) ----------
+export function shiftReport(st, today, names = {}) {
+  const nm = (id) => names[id] || `#${id}`;
+  const day = st.days[today] || {}, pday = (st.pdays || {})[today] || {}, h = (st.hours[today] || {}).packed || [];
+  const packers = Object.entries(day).map(([id, r]) => ({ id, ...r })).sort((x, y) => y.points - x.points);
+  const pickers = Object.entries(pday).map(([id, r]) => ({ id, ...r })).sort((x, y) => y.points - x.points);
+  const n = packers.reduce((t, r) => t + r.n, 0), mu = packers.reduce((t, r) => t + r.multis, 0), si = packers.reduce((t, r) => t + r.singles, 0);
+  const bat = pickers.reduce((t, r) => t + r.batches, 0), pp = pickers.reduce((t, r) => t + r.points, 0);
+  const busiest = h.reduce((b, v, i) => (v > (h[b] || 0) ? i : b), 0);
+  const fmtN = (x) => (Math.round(x * 10) / 10).toLocaleString('nl-NL');
+  const medal = (i) => ['🥇', '🥈', '🥉'][i] || `${i + 1}.`;
+  const max = Math.max(1, ...h);
+  const hours = h.map((v, i) => [i, v]).filter(([, v]) => v > 0).map(([i, v]) => `${String(i).padStart(2, '0')} ${'█'.repeat(Math.max(1, Math.round((v / max) * 18)))} ${v}`).join('\n');
+  return [
+    `**Shift report · ${today.split('-').reverse().join('-')}**`,
+    `📦 **${fmtN(n)}** picklists packed · ${fmtN(mu)} multi · ${fmtN(si)} single${n ? ` · busiest ${String(busiest).padStart(2, '0')}:00 (${h[busiest]})` : ''}`,
+    `⛏️ **${fmtN(bat)}** batches picked · ${fmtN(pp)} pick points`,
+    packers.length ? `\n**Packers**\n${packers.slice(0, 5).map((r, i) => `${medal(i)} ${nm(r.id)} · ${fmtN(r.points)} pts · ${r.n} closed`).join('\n')}` : '',
+    pickers.length ? `\n**Pickers**\n${pickers.slice(0, 5).map((r, i) => `${medal(i)} ${nm(r.id)} · ${fmtN(r.points)} pts · ${r.batches} batches`).join('\n')}` : '',
+    hours ? `\n**Per hour**\n\`\`\`\n${hours}\n\`\`\`` : '',
+  ].filter(Boolean).join('\n').slice(0, 1990);
 }

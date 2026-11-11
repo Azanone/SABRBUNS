@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.73
+// @version      3.74
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.73';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.74';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -302,10 +302,28 @@
     try {
       if (!diagBuf) diagBuf = lsGet(DIAG_LS, []) || [];
       diagBuf.push([Date.now(), kind, String(text).slice(0, 300), location.pathname.slice(0, 60)]);
+      if (kind === 'SLOWPAGE' || kind === 'crash' || (kind === 'long' && /busy (\d{4,})/.test(text) && +RegExp.$1 > 5000)) diagSend();
       if (diagBuf.length > 600) diagBuf.splice(0, diagBuf.length - 600);
       clearTimeout(diagT);
       diagT = setTimeout(() => { const cur = lsGet(DIAG_LS, []) || []; const seen = new Set(cur.map((x) => x[0] + x[1] + x[2])); lsSet(DIAG_LS, cur.concat(diagBuf.filter((x) => !seen.has(x[0] + x[1] + x[2]))).slice(-600)); diagBuf = null; }, 1500);
     } catch (_) {}
+  }
+  // something was really slow / broke: the last lines go to Ahmad's Discord by themselves (max 1 per 10 min per PC)
+  let diagSendT = null;
+  function diagSend() {
+    if (diagSendT) return;
+    diagSendT = setTimeout(() => {
+      diagSendT = null;
+      try {
+        const last = +lsGet('pqsuite_diag_sent', 0) || 0;
+        const url = (lsGet('pqsuite_lb_url_v1', '') || '').replace(/\/+$/, '') || 'https://sabrbuns.nitroxylazanone.workers.dev';
+        if (Date.now() - last < 10 * 60000 || !ME.id) return;
+        lsSet('pqsuite_diag_sent', Date.now());
+        const rows = (lsGet(DIAG_LS, []) || []).concat(diagBuf || []).slice(-35);
+        const lines = rows.map((r) => `${new Date(r[0]).toLocaleTimeString('nl-NL')} ${r[1]} ${r[2]} [${r[3]}]`).join('\n');
+        fetch(`${url}/diag`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ME.id, name: ME.name, ver: SUITE_VERSION, lines }), keepalive: true }).catch(() => {});
+      } catch (_) {}
+    }, 4000);
   }
   // barcode scanners "type" a few ms per key: a shortcut only counts as a lone key press (nothing right before or after)
   const KEY_T = [];
@@ -2958,7 +2976,7 @@
       single: 'Picklists with exactly the same products, per shop. Create batch = 1 batch of that combo.',
       grouped: 'Tick combos, put them in order, Create MEGAMULTI → 1 batch with every ticked combo after each other, named MEGAMULTI and given to who you pick. A comment marks every switch to the next combo.',
       opt: 'Auto batch: add people and turn it on. When someone has picked everything of their batch, they get the next one by themselves (fewest different products, BE pick-up last). Named BELGIE / MIX / NON BELGIE.\nEfficiency = picklists per different product (SKU) in their batches today. Higher = less walking.',
-      iso: 'Picklists that are alone in their batch or not batched at all.',
+      iso: 'Picklists with a container that are not in a batch, picklists that are half picked, and picklists parked (ZAP / DAYSON / error person) for more than a day.',
     };
     function showTab(name) {
       tab = ['single', 'grouped', 'opt', 'iso'].includes(name) ? name : 'single';
@@ -3156,7 +3174,15 @@
         list.sort((a, b) => String(a.pl.created || '').localeCompare(String(b.pl.created || '')));
         [...new Set(list.map((x) => x.pl.idfulfilment_customer))].sort((a, b) => shopName(a).localeCompare(shopName(b)))
           .forEach((s, i) => isoColor.set(s, colorOf.get(s) || PALETTE[i % PALETTE.length]));
-        isoData = { list, nOpen: open.length, nInBatch: inBatch, nChecked: k, nFree: free.length, stopped: isoStop, wh: wid ? whNameOf(wid) : '' };
+        // half picked (something picked, not everything) and parked (zap / dayson / error person) for more than a day
+        const tot = (pl) => +(pl.totalproducts ?? pl.total_products ?? 0) || (pl.products || []).reduce((n, p) => n + (+p.amount || 0), 0);
+        const got = (pl) => +(pl.totalpicked ?? pl.total_picked ?? 0) || (pl.products || []).reduce((n, p) => n + (+p.amount_picked || 0), 0);
+        const ageMs = (pl) => Date.now() - Date.parse(String(pl.updated || pl.created || '').replace(' ', 'T'));
+        const half = open.filter((pl) => { const g = got(pl), t = tot(pl); return g > 0 && g < t; })
+          .sort((a, b) => ageMs(b) - ageMs(a)).map((pl) => ({ pl, got: got(pl), tot: tot(pl) }));
+        const parked = open.filter((pl) => pl.assigned_to_iduser != null && SKIP_USERS.includes(String(pl.assigned_to_iduser)) && ageMs(pl) > 86400000)
+          .sort((a, b) => ageMs(b) - ageMs(a));
+        isoData = { list, half, parked, nOpen: open.length, nInBatch: inBatch, nChecked: k, nFree: free.length, stopped: isoStop, wh: wid ? whNameOf(wid) : '' };
         isoAt = Date.now();
         if (bad) isoErr = `${bad} picklist${bad === 1 ? '' : 's'} could not be checked (${badMsg})`;
       } catch (e) {
@@ -3199,6 +3225,16 @@
               }).join('')}</section>`;
           }).join('');
         }
+      }
+      if (isoData && !isoBusy) {
+        const pRow = (pl, extra) => `<div class="cb-row cb-isorow"><div class="cb-items"><div><a href="/picklists/${pl.idpicklist}" target="_blank"><b>${esc(pl.picklistid || pl.idpicklist)}</b></a> · ${esc(shopName(pl.idfulfilment_customer))}</div>
+          <small>${extra}${pl.created ? ` · made ${ageOf(pl.created)} ago` : ''}${pl.assigned_to_iduser ? ` · ${esc(userName(pl.assigned_to_iduser))}` : ''}${pl.idpicklist_batch ? ' · in a batch' : ''}</small></div>
+          <a class="cb-go" href="/picklists/${pl.idpicklist}" target="_blank">Open</a></div>`;
+        const half = isoData.half || [], parked = isoData.parked || [];
+        html += `<section class="cb-card" style="--c:#f97316;--t:#f9731614"><header class="cb-card-hd"><span class="cb-dot"></span><b>Half picked</b><small>${half.length} · something picked, not everything</small></header>
+          ${half.map((x) => pRow(x.pl, `<b>${x.got}/${x.tot}</b> picked`)).join('') || '<div class="cb-empty">none</div>'}</section>`;
+        html += `<section class="cb-card" style="--c:#64748b;--t:#64748b14"><header class="cb-card-hd"><span class="cb-dot"></span><b>Parked for more than a day</b><small>${parked.length} · ZAP / DAYSON / error person</small></header>
+          ${parked.map((pl) => pRow(pl, 'parked')).join('') || '<div class="cb-empty">none</div>'}</section>`;
       }
       $iso.innerHTML = html;
     }
@@ -5400,6 +5436,7 @@
           .sort((a, b) => b.points - a.points || b.n - a.n);
         const plist = (pickPeople || []).filter((r) => !proxies.has(String(r.id))).map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}` }));
         data = { at: Date.now(), wh: norm(whName || ''), list, king, via: via || 'Picqer', err: '', picks: plist };
+        idleCheck(plist);
       } catch (e) {
         data = { ...(data || { list: [] }), at: Date.now(), err: e.message };
       }
@@ -5696,7 +5733,7 @@
           if (prev === null || r.balance !== prev) rank = i + 1;
           prev = r.balance;
           return `<div class="lb-row click t-${rank === 1 ? 'gold' : 'none'}${r.id === ME_ID ? ' me' : ''}${ql && !low(r.name).includes(ql) ? ' hide' : ''}" data-n="${escHtml(low(r.name))}" data-who="${escHtml(r.id)}" title="Click for everything about ${escHtml(r.name)}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
-            <span class="nm">${escHtml(r.name)}<small>${int(r.picklists)} closed · ${fmt(r.points)} pts${r.pickPoints ? ` · ${fmt(r.pickPoints)} pick pts` : ''}${r.kingTotal ? ` · king ${int(r.kingTotal)} min` : ''}</small></span>
+            <span class="nm">${escHtml(r.name)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small>${int(r.picklists)} closed · ${fmt(r.points)} pts${r.pickPoints ? ` · ${fmt(r.pickPoints)} pick pts` : ''}${r.kingTotal ? ` · king ${int(r.kingTotal)} min` : ''}</small></span>
             <span class="v">${int(r.balance)}<small>coins</small></span></div>`;
         }).join('') : `<div class="lb-empty">${URL_ ? (tot ? 'Nobody has coins yet' : 'Loading…') : ''}</div>`);
       } else body = packHtml();
@@ -5750,18 +5787,19 @@
       return `<div class="sh-skin${on ? ' on' : ''}${own ? ' own' : ''}" style="--r:${RARITY[s.id] || '#94a3b8'}">
         ${s.limit ? `<em class="sh-ltd">★ ${s.left || 0}/${s.limit}</em>` : s.passOnly ? '<em class="sh-only pass">PASS</em>' : s.crateOnly ? '<em class="sh-only">DROP</em>' : ''}
         <div class="sh-sw" style="background:${look.bg}">${on ? '<span>✓</span>' : ''}</div>
-        <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b></div>${btn}</div>`;
+        <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b></div><button class="sh-try" data-try="${s.id}" title="try it on for 10 sec">👁</button>${btn}</div>`;
     }
     function spinHtml(p) {
       if (!p.crate) return '';
       const odds = p.crate.odds || [];
+      const list = `<div class="sp-list">${odds.slice().sort((a, b) => a.pct - b.pct).map((o) => `<div class="sp-it" style="--r:${RARITY[o.id] || '#94a3b8'}"><i style="background:${(SKIN_LOOK[o.id] || {}).bg || '#334155'}"></i><b>${escHtml(nameOfSkin(o.id))}</b><small>${String(o.pct).replace('.', ',')}%</small>${(p.owned || []).includes(o.id) ? '<em>✓</em>' : ''}<button class="sh-try" data-try="${o.id}" title="try it on for 10 sec">👁</button></div>`).join('')}</div>`;
       return `<div class="sh-crate sp-card">
         <div class="sp-name"><b>Skin crate</b>${ii('crate')}</div>
         <div class="cr-win"><div class="cr-strip">${odds.slice().reverse().concat(odds).map((o) => reelCard(o.id)).join('')}</div><div class="cr-mark"></div></div>
         <div class="cr-res"></div>
         <div class="cr-btns"><button class="buy sp-go" data-crate ${p.balance < p.crate.price ? 'disabled' : ''}>🪙 ${int(p.crate.price)}</button></div>
         <small>${int(p.crates || 0)} opened</small>
-      </div>`;
+      </div>${list}`;
     }
     const reelCard = (id) => { const look = SKIN_LOOK[id] || { bg: '#334155' }; return `<div class="cr-it" style="--r:${RARITY[id] || '#94a3b8'}"><div class="cr-sw" style="background:${look.bg}"></div><b>${escHtml(nameOfSkin(id))}</b></div>`; };
     function statsHtml(p) {
@@ -5774,6 +5812,7 @@
           ${tile((p.kingTotal || 0) + ' min', 'king in total')}${tile((p.kingBest || 0) + ' min', 'longest king streak')}${tile(int(p.coins), 'coins earned in total')}${tile(int(p.crates || 0), 'skin crates opened')}
           ${tile('🔥 ' + ((p.streak || {}).n || 0), 'day streak')}${tile((p.streak || {}).best || 0, 'best streak')}${tile(`${fmt((p.streak || {}).today)} / ${(p.streak || {}).goal || 100}`, 'streak goal today')}${tile(`${int((p.pity || {}).dry)} / ${int((p.pity || {}).at || 3000)}`, 'rolls to a sure rare crate')}
         </div>
+        ${(p.ach || []).length ? `<h3>Achievements <small>${(p.ach || []).filter((x) => x.at).length}/${(p.ach || []).length}</small></h3><div class="ac-grid">${(p.ach || []).map((x) => `<div class="ac${x.at ? ' on' : ''}" title="${escHtml(x.desc)}${x.at ? ' · ' + new Date(x.at).toLocaleDateString('nl-NL') : ''}"><span>${escHtml(x.icon)}</span><b>${escHtml(x.name)}</b><small>${escHtml(x.desc)}</small></div>`).join('')}</div>` : ''}
         <h3>Last days ${ii('coins')}</h3>
         <div class="pf-week">${(p.week || []).map((w) => `<div title="${escHtml(w.day)} · ${fmt(w.points)} pts · ${w.n} closed"><i style="height:${Math.round(((w.points || 0) / maxW) * 48)}px"></i>${escHtml(w.day.slice(8, 10))}</div>`).join('')}</div>`;
     }
@@ -5806,6 +5845,7 @@
       ov.querySelectorAll('[data-pt]').forEach((b) => (b.onclick = () => { pfTab = b.dataset.pt; aimUid = null; showProfile(); }));
       if (pfTab === 'inv') wireInv(ov);
       if (pfTab === 'set') wireSet(ov);
+      ov.querySelectorAll('[data-try]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); trySkin(b.dataset.try); }));
       if (pfTab === 'pass') wirePass(ov);
       if (pfTab === 'chat') wireChat(ov); else chatWatch(false);
       wireInfo(ov);
@@ -6145,6 +6185,33 @@
       .sh .ch-in button{width:40px;border-radius:10px;border:0;background:#6366f1;color:#fff;font:800 15px system-ui,sans-serif;cursor:pointer}
       .pq-drop.feed .dp-t span{display:block;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       @media (max-width:640px){.sh .ch-wrap{grid-template-columns:1fr;height:auto}.sh .ch-right{height:380px}}
+      .pq-lbx .lb-bd{font-style:normal;font-size:12px;margin-left:5px;letter-spacing:1px}
+      .sh .sh-skin{position:relative}
+      .sh .sh-try{position:absolute;top:6px;right:6px;width:26px;height:22px;border-radius:7px;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:12px;cursor:pointer;padding:0;margin:0}
+      .sh .sh-skin .sh-try{margin:0}
+      .sh .sp-list{max-width:640px;margin:10px auto 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px}
+      .sh .sp-it{position:relative;display:flex;align-items:center;gap:8px;padding:7px 38px 7px 8px;border:1px solid var(--line);border-left:3px solid var(--r);border-radius:9px;background:var(--soft);font:600 12.5px system-ui,sans-serif}
+      .sh .sp-it i{width:36px;height:22px;border-radius:5px;flex:none;border:1px solid rgba(0,0,0,.15)}
+      .sh .sp-it b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .sh .sp-it small{color:var(--mut);font-variant-numeric:tabular-nums}
+      .sh .sp-it em{font-style:normal;color:#10b981;font-weight:800}
+      .sh .sp-it .sh-try{top:50%;transform:translateY(-50%);right:6px;background:var(--bg);color:var(--fg);border:1px solid var(--line)}
+      #pq-try{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483005;display:flex;align-items:center;gap:10px;padding:9px 10px 9px 16px;border-radius:999px;background:#0f172a;color:#fff;font:600 13px system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+      #pq-try button{border:0;border-radius:999px;padding:6px 12px;background:#6366f1;color:#fff;font:700 12px system-ui,sans-serif;cursor:pointer}
+      .sh .qs{margin:14px 0 6px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--soft);display:flex;flex-direction:column;gap:7px}
+      .sh .qs-h{display:flex;align-items:center;gap:8px;margin-top:2px}
+      .sh .qs-h b{font:800 13px system-ui,sans-serif} .sh .qs-h small{color:var(--mut);font-size:11px}
+      .sh .qs-r{display:grid;grid-template-columns:minmax(0,1.4fr) 1fr auto auto;align-items:center;gap:10px;font:600 12.5px system-ui,sans-serif}
+      .sh .qs-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .sh .qs-bar{height:6px;border-radius:999px;background:var(--line);overflow:hidden}
+      .sh .qs-bar i{display:block;height:100%;background:linear-gradient(90deg,#10b981,#34d399);border-radius:999px}
+      .sh .qs-p{color:var(--mut);font-size:11.5px;font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+      .sh .qs-x{color:#e4ae39;font:800 11.5px system-ui,sans-serif;min-width:44px;text-align:right}
+      .sh .qs-r.done{opacity:.55} .sh .qs-r.done .qs-n{color:#10b981}
+      .sh .ac-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+      .sh .ac{display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px;padding:10px 8px;border:1px solid var(--line);border-radius:12px;background:var(--soft);opacity:.4;filter:grayscale(1)}
+      .sh .ac.on{opacity:1;filter:none;border-color:#e4ae39;background:color-mix(in srgb,#e4ae39 8%,var(--bg))}
+      .sh .ac span{font-size:24px} .sh .ac b{font:700 12px system-ui,sans-serif} .sh .ac small{color:var(--mut);font-size:10.5px}
       .sh .sh-only{position:absolute;top:6px;left:6px;z-index:1;font-style:normal;font:800 9.5px system-ui,sans-serif;letter-spacing:.05em;color:#fff;background:linear-gradient(90deg,#d32ce6,#eb4b4b);padding:2px 7px;border-radius:999px}
       .pq-lbx .pk-idle{color:#f97316;font-weight:700} .pq-lbx .pk-idle.bad{color:#ef4444}
       .pq-lb-ov .lb-row .nm small b{font-weight:600}
@@ -6268,6 +6335,21 @@
       } else if (x.kind === 'streak') {
         el.style.setProperty('--r', '#f97316');
         el.innerHTML = `<div class="dp-box">🔥</div><div class="dp-t"><small>streak goal hit</small><b>Day ${int(x.n)} streak</b><span>+${int(x.coins)} coins${x.tier ? ` · ${escHtml(tierName(x.tier))} crate` : ''}</span></div>`;
+      } else if (x.kind === 'idle') {
+        el.style.setProperty('--r', '#f97316');
+        el.classList.add('feed');
+        el.innerHTML = `<div class="dp-box">💤</div><div class="dp-t"><small>idle ${int(x.min)} min</small><b>${escHtml(x.name)}</b>${x.batch ? `<span>batch ${int(x.batch.items)}/${int(x.batch.total)}</span>` : ''}</div>`;
+        open = null;
+        el.addEventListener('click', () => openPk(false));
+      } else if (x.kind === 'quest') {
+        el.style.setProperty('--r', '#10b981');
+        el.innerHTML = `<div class="dp-box">✅</div><div class="dp-t"><small>${x.per === 'weekly' ? 'weekly' : 'daily'} quest done</small><b>${escHtml(x.name)}</b><span>+${int(x.xp)} XP</span></div>`;
+        open = 'pass';
+      } else if (x.kind === 'ach') {
+        el.style.setProperty('--r', '#e4ae39');
+        el.classList.add('t-legendary');
+        el.innerHTML = `<div class="dp-box">${escHtml(x.icon)}</div><div class="dp-t"><small>achievement</small><b>${escHtml(x.name)}</b><span>${escHtml(x.desc)}</span></div>`;
+        open = 'stats';
       } else if (x.kind === 'chat' || x.kind === 'freq') {
         el.style.setProperty('--r', '#6366f1');
         el.classList.add('feed');
@@ -6451,6 +6533,23 @@
     }
 
 
+    // ---------- idle alert (people with the picker dashboard): a picker didn't collect anything for 6 min ----------
+    const IDLE_MIN = 6, LS_IDLE = 'pqsuite_idle_seen_v1';
+    function idleCheck(list) {
+      if (!can('pickStats') || C.idleAlert === false) return;
+      const seen = lsGet(LS_IDLE, null) || {};
+      let changed = false;
+      for (const r of list || []) {
+        const L = r.live;
+        if (!L || L.idleMin == null || L.idleMin < IDLE_MIN || L.idleMin >= 60 || !L.last) continue;
+        const key = `${r.id}:${L.last}`;
+        if (seen[key]) continue;
+        seen[key] = Date.now(); changed = true;
+        newsQ.push({ kind: 'idle', id: r.id, name: r.name, min: L.idleMin, batch: L.batch, at: Date.now() });
+      }
+      if (changed) { for (const k of Object.keys(seen)) if (Date.now() - seen[k] > 4 * 3600000) delete seen[k]; lsSet(LS_IDLE, seen); showNews(); }
+    }
+
     // ---------- live feed: everyone sees epic + legendary drops (turn off in 🪙 → ⚙) ----------
     const LS_FEED = 'pqsuite_feed_seen_v1';
     function feedCheck(feed) {
@@ -6474,6 +6573,25 @@
     }
 
 
+    // ---------- 👁 try a skin for 10 sec (only on your screen) ----------
+    let tryT = null;
+    function trySkin(id) {
+      if (flagOff('skins') || !can('skins')) return toast('skins are off right now');
+      clearInterval(tryT);
+      document.getElementById('pq-try')?.remove();
+      close('pq-pf-ov');
+      skinBuilt = false;
+      applySkin(id);
+      let left = 10;
+      const pill = document.createElement('div');
+      pill.id = 'pq-try';
+      pill.innerHTML = `<span>👁 ${escHtml(nameOfSkin(id))} · <b>${left}</b></span><button>stop</button>`;
+      document.body.appendChild(pill);
+      const stop = () => { clearInterval(tryT); pill.remove(); skinBuilt = false; applySkin(prof ? prof.skin : (skinOf(ME_ID) || {}).id); openProfile(pfTab); };
+      pill.querySelector('button').onclick = stop;
+      tryT = setInterval(() => { left--; const b = pill.querySelector('b'); if (b) b.textContent = left; if (left <= 0) stop(); }, 1000);
+    }
+
     // ---------- 🎟 battle pass ----------
     const rewardIc = (r) => (r.coins ? '🪙' : r.crate ? TIER_ICON[r.crate] || '📦' : r.item ? ITEM_ICON[r.item] || '❔' : r.skin ? `<i class="bp-sw" style="background:${(SKIN_LOOK[r.skin] || {}).bg || '#334155'}"></i>` : '');
     const rewardTxt = (r) => (r.coins ? `${int(r.coins)} coins` : r.crate ? `${tierName(r.crate)} crate` : r.item ? itemDef(r.item).name : r.skin ? `${nameOfSkin(r.skin)} skin` : '');
@@ -6486,10 +6604,22 @@
       return `<div class="bp-head"><div class="bp-name"><b>${escHtml(S.name)}</b>${ii('pass')}<small>${days}d</small></div>
           ${P.owned ? '<span class="bp-own">✓</span>' : `<button class="buy bp-buy" data-bp ${p.balance < S.price ? 'disabled' : ''}>🪙 ${int(S.price)}</button>`}</div>
         <div class="bp-lv"><span class="bp-n">${lv}</span><div class="bp-bar"><i style="width:${lv >= n ? 100 : Math.round((into / S.per) * 100)}%"></i></div><span class="bp-x">${lv >= n ? 'max' : `${int(into)} / ${int(S.per)}`}</span></div>
+        ${questsHtml(p)}
         <div class="bp-track${P.owned ? '' : ' locked'}">${S.levels.map((r, i) => {
           const L = i + 1, got = P.owned && L <= P.got, reached = L <= lv;
           return `<div class="bp-t${got ? ' got' : ''}${reached && !got ? ' reach' : ''}${L === lv + 1 ? ' next' : ''}${r.skin ? ' big' : ''}" title="${L} · ${escHtml(rewardTxt(r))}" style="--r:${rewardCol(r)}"><small>${L}</small><div class="bp-ic">${rewardIc(r)}</div><em>${r.coins ? int(r.coins) : ''}</em></div>`;
         }).join('')}</div>`;
+    }
+    function questsHtml(p) {
+      const qs = p.quests || [];
+      if (!qs.length) return '';
+      const now = new Date(), endDay = new Date(now); endDay.setHours(24, 0, 0, 0);
+      const wd = (now.getDay() + 6) % 7, endWeek = new Date(now); endWeek.setDate(now.getDate() + (7 - wd)); endWeek.setHours(0, 0, 0, 0);
+      const hl = (t) => { const m = Math.max(0, Math.round((t - now) / 60000)); return m >= 1440 ? `${Math.floor(m / 1440)}d` : m >= 60 ? `${Math.floor(m / 60)}h` : `${m}m`; };
+      const row = (q) => `<div class="qs-r${q.done ? ' done' : ''}"><span class="qs-n">${q.done ? '✓ ' : ''}${escHtml(q.name)}</span><div class="qs-bar"><i style="width:${Math.round((q.prog / q.goal) * 100)}%"></i></div><span class="qs-p">${q.done ? '' : `${fmt(q.prog)}/${int(q.goal)}`}</span><span class="qs-x">+${int(q.xp)}</span></div>`;
+      const d = qs.filter((q) => q.per === 'daily'), w = qs.filter((q) => q.per === 'weekly');
+      return `<div class="qs"><div class="qs-h"><b>Daily</b><small>${hl(endDay)}</small>${ii('quests')}</div>${d.map(row).join('')}
+        <div class="qs-h"><b>Weekly</b><small>${hl(endWeek)}</small></div>${w.map(row).join('')}</div>`;
     }
     function wirePass(ov) {
       ov.querySelector('[data-bp]')?.addEventListener('click', async (e) => {
@@ -6516,6 +6646,7 @@
         drops: `<b>Drop crates</b>${odds}<p>1 roll per packed picklist · 3 per picked batch</p><p>${int((p.pity || {}).at || 3000)} rolls without rare = sure rare · you're at ${int((p.pity || {}).dry)}</p>`,
         items: `<b>Items</b>${Object.entries(p.items || {}).map(([k, d]) => `<div class="ii-r">${ITEM_ICON[k] || ''} ${escHtml(d.name)}<span>${escHtml(d.desc)}</span></div>`).join('')}<p>freeze / skin off: same person again after ${int(p.cooldown || 120)} min · a shield blocks 1</p>`,
         streak: `<b>Streak</b><p>${(p.streak || {}).goal || 100} points in a day (pack + pick)</p><p>+50 coins × day, max 500 · day 5 uncommon crate · day 10 rare</p><p>days off don't break it, a worked day under the goal does</p><p>best: ${(p.streak || {}).best || 0}</p>`,
+        quests: '<b>Quests</b><p>3 a day, 3 a week, the same for everyone: 1 packing, 1 picking, 1 extra</p><p>done = XP for the pass by itself (also without the pass)</p><p>daily resets at midnight, weekly on Monday</p>',
         trade: '<b>Trade</b><p>pick someone · they accept · both put things in · both agree</p><p>changing anything = agree again</p>',
         pass: S ? `<b>${escHtml(S.name)}</b><p>20 XP per multi · 13 per single · 10 per pick point · ${int(S.per)} XP per level</p><p>rewards come in by themselves · bought later? you get every level you already reached</p><p>ends ${escHtml(S.ends.split('-').reverse().join('-'))} · level 25 = ${escHtml(nameOfSkin('eclipse'))}, only from the pass</p>` : '',
         crate: `<b>Skin crate</b>${((p.crate || {}).odds || []).map((o) => `<div class="ii-r"><i style="background:${RARITY[o.id] || '#94a3b8'}"></i>${escHtml(nameOfSkin(o.id))}<span>${String(o.pct).replace('.', ',')}%</span></div>`).join('')}<p>already have it: ¼ of its price back</p>`,
@@ -6658,7 +6789,7 @@
     // ---------- ⚙ settings tab in the panel (per account, synced like Shift+8) ----------
     function setHtml() {
       const row = (k, t) => `<label class="iv-set"><span>${t}</span><input type="checkbox" data-set="${k}" ${C[k] !== false ? 'checked' : ''}></label>`;
-      return `<div class="iv-sets">${row('feed', 'Live drops')}${row('trades', 'Trade requests')}${row('widget', 'Rank card')}${can('chat') ? row('chatPop', 'Chat popups') : ''}</div>`;
+      return `<div class="iv-sets">${row('feed', 'Live drops')}${row('trades', 'Trade requests')}${row('widget', 'Rank card')}${can('chat') ? row('chatPop', 'Chat popups') : ''}${can('pickStats') ? row('idleAlert', 'Idle alert (6 min)') : ''}</div>`;
     }
     function wireSet(ov) {
       ov.querySelectorAll('[data-set]').forEach((b) => (b.onchange = () => { C[b.dataset.set] = b.checked; saveCfg(CFG); }));
@@ -6888,7 +7019,7 @@
       const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
       return `<div class="lb-meta">last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
         ${list.length ? list.map((r) => `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.king ? '👑' : '#' + r.rank}</span>
-          <span class="nm">${escHtml(r.name)}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single${r.king && r.kingMin != null ? ` · king ${r.kingMin} min` : ''}</small></span>
+          <span class="nm">${escHtml(r.name)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single${r.king && r.kingMin != null ? ` · king ${r.kingMin} min` : ''}</small></span>
           <span class="v">${fmt(r.points)}<small>pts</small></span></div>`).join('') : `<div class="lb-empty">Nobody closed a picklist in the last ${mins} min</div>`}
         <div class="lb-legend"><span class="t-blue"><i></i>46+</span><span class="t-turq"><i></i>38+</span><span class="t-dgreen"><i></i>30+</span><span class="t-green"><i></i>21+</span><span class="t-orange"><i></i>14+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 21+ · +20 coins a minute</span></div>`;
     }
@@ -6900,14 +7031,14 @@
       const row = (r) => {
         const L = r.live, bt = L.batch;
         return `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.rank === 1 ? '🏆' : '#' + r.rank}</span>
-          <span class="nm">${escHtml(r.name)}<small><b class="${idleCls(r)}">${idleTxt(r)}</b> · ${int(L.locs15)} locations · ${int(L.items15)} products in 15 min${bt ? ` · batch ${int(bt.items)}/${int(bt.total)}` : ''}</small></span>
+          <span class="nm">${escHtml(r.name)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small><b class="${idleCls(r)}">${idleTxt(r)}</b> · ${int(L.locs15)} locations · ${int(L.items15)} products in 15 min${bt ? ` · batch ${int(bt.items)}/${int(bt.total)}` : ''}</small></span>
           <span class="v">${fmt(L.m15)}<small>pts · 15 min · ${fmt(r.points)} today</small></span></div>`;
       };
       return `<div class="lb-meta">picking now · 3 per location + 0,2 per product collected · color = last 15 min · ${hm}${picksErr ? ' · ⚠ ' + escHtml(picksErr) : ''}</div>
         ${act.length ? act.map(row).join('') : `<div class="lb-empty">${picks ? 'Nobody collected anything in the last hour' : picksErr ? '' : 'Loading…'}</div>`}
         <div class="lb-legend"><span class="t-blue"><i></i>75+</span><span class="t-turq"><i></i>60+</span><span class="t-dgreen"><i></i>45+</span><span class="t-green"><i></i>30+</span><span class="t-orange"><i></i>18+</span><span class="t-red"><i></i>less</span><span>pick points in the last 15 min · idle = nothing collected</span></div>
         ${rest.length ? `<h3 class="pk-h">Not picking right now <small>completed today</small></h3>${rest.map((r) => `<div class="lb-row t-none pk-off${r.id === ME_ID ? ' me' : ''}"><span class="r">–</span>
-          <span class="nm">${escHtml(r.name)}<small>${int(r.batches)} batch${r.batches === 1 ? '' : 'es'} · ${int(r.locations)} locations · ${int(r.items)} products${r.live && r.live.last ? ` · last pick ${new Date(r.live.last).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}` : ''}</small></span>
+          <span class="nm">${escHtml(r.name)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small>${int(r.batches)} batch${r.batches === 1 ? '' : 'es'} · ${int(r.locations)} locations · ${int(r.items)} products${r.live && r.live.last ? ` · last pick ${new Date(r.live.last).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}` : ''}</small></span>
           <span class="v">${fmt(r.points)}<small>pts today</small></span></div>`).join('')}` : ''}`;
     }
     function showPk(refresh) {
@@ -6971,7 +7102,7 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden && (!data || Date.now() - data.at > POLL)) poll(); });
 
     // ---------- Shift+9 (only Ahmad): give / take coins, crates, items, skins, pass, XP ----------
-    let adm = { who: null, q: '', p: null, note: '', log: null, flags: null };
+    let adm = { who: null, q: '', p: null, note: '', log: null, flags: null, hooks: null, hookOpen: false };
     async function adminPost(op, target, extra = {}) {
       const key = lsGet('pqsuite_admin_key', '');
       const r = await fetch(`${URL_}/admin`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Admin-Key': key } : {}) }, body: JSON.stringify({ by: ME_ID, op, target, ...extra }) });
@@ -7006,8 +7137,12 @@
         </div>`;
       const fl = adm.flags || {};
       const flagSw = (k, t) => `<label class="ad-flag"><input type="checkbox" data-adf="${k}" ${fl[k] === false ? '' : 'checked'} ${adm.flags ? '' : 'disabled'}>${t}</label>`;
-      ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><div class="ad-flags"><span>everyone</span>${flagSw('cardColor', 'Product colors')}${flagSw('skins', 'Skins')}</div><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
+      ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><div class="ad-flags"><span>everyone</span>${flagSw('cardColor', 'Product colors')}${flagSw('skins', 'Skins')}</div><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-hook title="Discord: logs + end of shift report">🔔</button><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
         ${adm.note ? `<div class="sh-note">${escHtml(adm.note)}</div>` : ''}
+        ${adm.hookOpen ? `<div class="ad-hooks">
+          <div class="ad-r"><label>Logs</label><input id="ad-hlog" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).log || '')}"><button data-adh="test-log">Test</button></div>
+          <div class="ad-r"><label>Report</label><input id="ad-hrep" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).report || '')}"><input id="ad-hat" type="time" value="${escHtml((adm.hooks || {}).reportAt || '22:30')}"><button data-adh="test-report">Send now</button></div>
+          <div class="ad-r"><label></label><button class="buy" data-adh="save">Save</button></div></div>` : ''}
         ${adm.log ? `<div class="ad-log">${adm.log.map((x) => `<div><span>${new Date(x.at).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>${escHtml(x.what.replace(/→ (\d+)$/, (m, id) => '→ ' + ((ppl.find((y) => y.id === id) || {}).name || '#' + id)))}${x.id && x.id !== '32247' && !/^admin/.test(x.what) ? ` · ${escHtml((ppl.find((y) => y.id === String(x.id)) || {}).name || '#' + x.id)}` : ''}</div>`).join('') || '–'}</div>` : ''}
         <div class="ad-body"><div class="ad-left"><input class="iv-q ad-q" placeholder="Search…" value="${escHtml(adm.q)}"><div class="iv-ppl">${ppl.map((r) => `<button data-adw="${escHtml(r.id)}" data-n="${escHtml(low(r.name))}" class="${ql && !low(r.name).includes(ql) ? 'hide' : ''}${r.id === adm.who ? ' on' : ''}">${escHtml(r.name)}<small>${int(r.balance)}</small></button>`).join('') || '<div class="iv-empty">…</div>'}</div></div>
         <div class="ad-right">${right}</div></div></div>`;
@@ -7017,6 +7152,20 @@
         const j = await adminPost('flags', '', { flags: { [b.dataset.adf]: b.checked } }).catch((e) => ({ err: e.message }));
         if (j.flags) { adm.flags = j.flags; lsSet(LS_FLAGS, j.flags); window.dispatchEvent(new Event('pq-flags')); }
         adm.note = j.err || `${b.parentNode.textContent.trim()} ${b.checked ? 'on' : 'OFF'} for everyone · every PC within ~30 s`;
+        showAdmin();
+      }));
+      ov.querySelector('[data-ad-hook]').onclick = async () => {
+        adm.hookOpen = !adm.hookOpen;
+        if (adm.hookOpen && !adm.hooks) { const j = await adminPost('hooks', ''); adm.hooks = j.hooks || {}; adm.note = j.err || ''; }
+        showAdmin();
+      };
+      ov.querySelectorAll('[data-adh]').forEach((b) => (b.onclick = async () => {
+        const hooks = { log: ov.querySelector('#ad-hlog').value, report: ov.querySelector('#ad-hrep').value, reportAt: ov.querySelector('#ad-hat').value || '22:30' };
+        b.disabled = true;
+        let j = await adminPost('hooks', '', { hooks }).catch((e) => ({ err: e.message }));
+        if (!j.err && b.dataset.adh !== 'save') j = await adminPost('hooks', '', { test: b.dataset.adh === 'test-report' ? 'report' : 'log' }).catch((e) => ({ err: e.message }));
+        if (j.hooks) adm.hooks = j.hooks;
+        adm.note = j.err || (b.dataset.adh === 'save' ? 'saved ✓' : 'sent ✓ · check Discord');
         showAdmin();
       }));
       ov.querySelector('[data-ad-log]').onclick = async () => { if (adm.log) { adm.log = null; return showAdmin(); } const j = await adminPost('log', ''); adm.log = j.log || []; adm.note = j.err || ''; showAdmin(); };
@@ -7054,6 +7203,8 @@
       .ad-flags{display:flex;align-items:center;gap:10px;margin-left:14px;padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:var(--soft);font:600 12px system-ui,sans-serif}
       .ad-flags span{color:var(--mut)}
       .ad-flag{display:flex;align-items:center;gap:5px;cursor:pointer}
+      .ad-hooks{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
+      .ad-hooks .ad-r input:not([type=time]){flex:1;width:auto}
       .ad-q{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:500 13px system-ui,sans-serif;margin-bottom:8px;outline:none}
       .ad-body{display:grid;grid-template-columns:240px 1fr;gap:18px;margin-top:14px}
       .ad-left .iv-ppl{max-height:420px}
