@@ -9,7 +9,7 @@
 //          settings comboBatcher comboAlert replenish shipErr addrFix
 //          banner batchOpt zap dayson unpick pickStats leaderboard
 //          autoNext cardColor colors pickAll truePickAll bulkSingles
-//          skins chat
+//          skins chat beCounter
 //  leftovers: everyone who is in no team
 // =====================================================================
 window.PQ_TEAMS = {
@@ -29,7 +29,7 @@ window.PQ_TEAMS = {
     },
     {
       "name": "shiftlead",
-      "allow": ["settings", "comboBatcher", "replenish", "batchOpt", "zap", "dayson", "unpick", "pickStats", "colors", "skins"],
+      "allow": ["settings", "comboBatcher", "replenish", "batchOpt", "zap", "dayson", "unpick", "pickStats", "colors", "skins", "beCounter"],
       "users": [
         18089 // Rodney Huijgen
       ]

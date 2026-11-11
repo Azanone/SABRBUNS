@@ -14,6 +14,7 @@ import { newState, tick, profile, buy, equip, paint, grant, totals, crate, pickT
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
+const BE_TAG = 'BE Pick-up'; // the Picqer tag the shift leaders' counter counts (open picklists)
 const cors = (h = {}) => ({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key', ...h });
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: cors({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }) });
 const PROXIES_DEFAULT = '36135,29011,33549';
@@ -112,7 +113,26 @@ export class Game extends DurableObject {
     await this.live();
     try { await this.report(); } catch (e) { console.log('report', e.message); }
     try { await this.openCount(); } catch (e) { console.log('open count', e.message); }
+    try { await this.beCount(); } catch (e) { console.log('be count', e.message); }
   }
+  // BE Pick-up: open picklists with that tag, every cycle (15 s) from 06:00 until 23:00 (Amsterdam), for the shift leaders' counter
+  async beCount() {
+    const hm = amsNow().slice(11, 16);
+    if (hm >= '23:00' || hm < '06:00') return;
+    const w = await warehouse(this.env);
+    let n = 0;
+    for (let off = 0; off < 5000; off += 100) {
+      const page = (await picqer(this.env, `/picklists?status=new&tag=${encodeURIComponent(BE_TAG)}${w ? `&idwarehouse=${w.id}` : ''}&offset=${off}`)) || [];
+      n += page.filter((p) => p.status === 'new').length;
+      if (page.length < 100) break;
+    }
+    const o = (await this.ctx.storage.get('beCount')) || {};
+    const now = Date.now(), day = amsNow().slice(0, 10);
+    if (o.day !== day) { o.day = day; o.peak = 0; }
+    o.prev = o.n == null ? n : o.n; o.n = n; o.at = now; o.peak = Math.max(o.peak || 0, n);
+    await this.ctx.storage.put('beCount', o);
+  }
+  async be() { const o = (await this.ctx.storage.get('beCount')) || null; return o && Date.now() - o.at < 5 * 60000 ? { n: o.n, prev: o.prev, peak: o.peak, at: o.at } : { n: null }; }
   // completed batches → pick points + coins (new ones only, max 15 details per round)
   // shift goal = how many picklists may still be open at the end time: count the open ones every 3 min (only with a goal)
   async openCount() {
@@ -393,6 +413,7 @@ export default {
         }
         return json((await game(env).getSettings(id)) || { cfg: null, at: 0 });
       }
+      if (url.pathname === '/be') return json(await game(env).be());
       if (url.pathname === '/profile') {
         const id = url.searchParams.get('id');
         if (!/^\d+$/.test(id || '')) return json({ err: 'id needed' }, 400);

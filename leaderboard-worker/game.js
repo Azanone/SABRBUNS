@@ -52,8 +52,8 @@ export const SKINS = [
   { id: 'starlight', name: 'Starlight', price: 6000 },
   { id: 'retro', name: 'Retro', price: 6000 },
   { id: 'twilight', name: 'Twilight', price: 6500 },
-  { id: 'hanami', name: 'Hanami', price: 7000 },
-  { id: 'obsidian', name: 'Obsidian', price: 7000 },
+  { id: 'hanami', name: 'Hanami', price: 7000, crateOnly: true },
+  { id: 'obsidian', name: 'Obsidian', price: 7000, crateOnly: true },
   { id: 'sapphire', name: 'Sapphire', price: 7000 },
   { id: 'plasma', name: 'Plasma', price: 7500 },
   { id: 'rosegold', name: 'Rose Gold', price: 8000 },
@@ -67,7 +67,7 @@ export const SKINS = [
   { id: 'neon', name: 'Neon', price: 20000 },
   { id: 'stormcell', name: 'Storm Cell', price: 20000 },
   { id: 'circuit', name: 'Circuit', price: 20000 },
-  { id: 'abyss', name: 'Abyss', price: 20000 },
+  { id: 'abyss', name: 'Abyss', price: 20000, crateOnly: true },
   { id: 'coderain', name: 'Code Rain', price: 22000 },
   { id: 'synthwave', name: 'Synthwave', price: 22000 },
   { id: 'carbon', name: 'Carbon', price: 25000 },
@@ -78,7 +78,7 @@ export const SKINS = [
   { id: 'milkyway', name: 'Milky Way', price: 40000 },
   { id: 'supernova', name: 'Supernova', price: 45000 },
   { id: 'borealis', name: 'Borealis', price: 45000 },
-  { id: 'singularity', name: 'Singularity', price: 50000 },
+  { id: 'singularity', name: 'Singularity', price: 50000, crateOnly: true },
   { id: 'diamond', name: 'Diamond', price: 60000 },
   // a color, not a skin: paints any animated skin red and black (like Brawlhalla colors). Still only 10 people can own it.
   { id: 'voidescent', name: 'Voidescent', price: 50000, limit: 10, color: true },
@@ -129,12 +129,14 @@ const LOOT = {
   common: [['coins', 60, 50, 150], ['boost', 20], ['shield', 20]],
   uncommon: [['coins', 45, 200, 500], ['boost', 15], ['shield', 10], ['freeze', 15], ['skinoff', 15]],
   rare: [['coins', 35, 800, 2000], ['freeze', 15], ['skinoff', 15], ['double', 20], ['skin:phantom', 15]],
-  epic: [['coins', 30, 3000, 6000], ['double', 25], ['skin:phantom', 20], ['skin:inferno', 25]],
-  legendary: [['coins', 25, 10000, 20000], ['double', 15], ['skin:inferno', 30], ['skin:celestial', 30]],
+  epic: [['coins', 30, 3000, 6000], ['double', 25], ['skin:phantom', 20], ['skin:inferno', 25], ['skin:hanami', 12], ['skin:obsidian', 12]],
+  legendary: [['coins', 25, 10000, 20000], ['double', 15], ['skin:inferno', 30], ['skin:celestial', 30], ['skin:abyss', 15], ['skin:singularity', 10]],
 };
 // crate: pay, spin, get a skin. Weights per rarity (blue 275 · purple 190 · pink 105 · red ~40 · gold 12 · Voidescent 5).
 // Already have it? You get a quarter of its shop price back in coins.
 const W = (w, ids) => ids.map((id) => [id, w]);
+// pity: 49 spins in a row without red or gold (weight 40 or less) = the 50th is red or gold for sure
+export const CRATE_PITY = 50, RARE_W = 40;
 export const CRATE = {
   price: 2000, back: 0.25,
   odds: [
@@ -355,29 +357,32 @@ function cratePool(st, a) {
 }
 function crateInfo(st, a) {
   const pool = cratePool(st, a), tot = pool.reduce((n, [, w]) => n + w, 0);
-  return { price: CRATE.price, odds: pool.map(([id, w]) => ({ id, pct: Math.round((w / tot) * 10000) / 100 })) };
+  return { price: CRATE.price, odds: pool.map(([id, w]) => ({ id, pct: Math.round((w / tot) * 10000) / 100 })), pity: { dry: a.cdry || 0, at: CRATE_PITY } };
 }
 export function crate(st, id, rnd = Math.random) {
   id = String(id);
   const a = acct(st, id);
   if (a.coins - a.spent < CRATE.price) return { err: `not enough coins (${Math.floor(a.coins - a.spent)} of ${CRATE.price})` };
-  const pool = cratePool(st, a), tot = pool.reduce((n, [, w]) => n + w, 0);
-  let x = rnd() * tot, won = pool[pool.length - 1][0];
-  for (const [s, w] of pool) { if (x < w) { won = s; break; } x -= w; }
+  const all = cratePool(st, a), rare = all.filter(([, w]) => w <= RARE_W);
+  const pity = (a.cdry || 0) >= CRATE_PITY - 1 && rare.length > 0;
+  const pool = pity ? rare : all, tot = pool.reduce((n, [, w]) => n + w, 0);
+  let x = rnd() * tot, won = pool[pool.length - 1][0], ww = pool[pool.length - 1][1];
+  for (const [s, w] of pool) { if (x < w) { won = s; ww = w; break; } x -= w; }
   a.spent += CRATE.price;
   a.crates = (a.crates || 0) + 1;
+  a.cdry = ww <= RARE_W ? 0 : (a.cdry || 0) + 1;
   const sk = SKINS.find((s) => s.id === won);
   const dup = a.owned.includes(won);
   let back = 0;
   if (dup) { back = Math.round(sk.price * CRATE.back); a.coins = r3(a.coins + back); } else a.owned.push(won);
-  return { ok: true, won, dup, back };
+  return { ok: true, won, dup, back, pity };
 }
 
 export function buy(st, id, skin) {
   id = String(id);
   const s = SKINS.find((x) => x.id === skin);
   if (!s) return { err: 'no such skin' };
-  if (s.crateOnly && !acct(st, id).owned.includes(skin)) return { err: `${s.name} only comes out of drop crates` };
+  if (s.crateOnly && !acct(st, id).owned.includes(skin)) return { err: `${s.name} only comes out of crates` };
   if (s.passOnly && !acct(st, id).owned.includes(skin)) return { err: `${s.name} only comes from the battle pass` };
   const a = acct(st, id);
   if (!a.owned.includes(skin)) {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.83
+// @version      3.84
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.83';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.84';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -158,6 +158,7 @@
     bulkSingles: 'Picqer "Verwerk in bulk"',
     skins: 'Skins / themes (looks of Picqer)',
     chat: 'Chat with friends (🪙 panel)',
+    beCounter: 'BE Pick-up counter in the header (until 23:00)',
   };
   const FEATURES = Object.keys(FEATURE_INFO);
   const VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '';
@@ -613,6 +614,7 @@
     pickStats: 'Ctrl+Alt+P: who is picking right now (last 15 min, idle time), who packs, and charts per hour for any day.',
     leaderboard: 'Packing points (multi 2, single 1,334) of the last 15 min. Your rank bottom right, Ctrl+Alt+L for everyone. Points are coins for the shop, crates and the pass (🪙 at the top).',
     cardColor: 'A colored bar per product code on picklists, so look-alike products are easy to tell apart.',
+    beCounter: 'In the header next to the coins: how many open picklists have the tag BE Pick-up. Counts down live (every 15 sec), gone after 23:00.',
   };
   function addStyle(id, css) {
     if (document.getElementById(id)) return;
@@ -5309,8 +5311,7 @@
     hanami: { anim: true, art: true, accent: '#f9a8d4',
       bg: 'radial-gradient(3.5px 2px at 24% 30%,#f472b6 98%,transparent),radial-gradient(3px 2px at 38% 72%,#ec4899 98%,transparent),radial-gradient(3.5px 2px at 47% 22%,#f9a8d4 98%,transparent),radial-gradient(3px 2px at 58% 64%,#f472b6 98%,transparent),radial-gradient(3.5px 2px at 67% 36%,#ec4899 98%,transparent),radial-gradient(260px 60px at 60% 0,rgba(249,168,212,.2),transparent 70%),linear-gradient(90deg,#14040d,#300a21 60%,#360d26)',
       dark: { th: 330, ah: 327, as: '87%', fx: 'none', glow: true, onAcc: '#2a0618' },
-      css: `${FX} .a1{display:block;inset:0;opacity:.8;background-image:radial-gradient(3px 2px at 20% 20%,#f9a8d4 98%,transparent),radial-gradient(3.5px 2px at 70% 70%,#f472b6 98%,transparent);background-size:160px 52px}
-        ${live('.a1', 'pqkPetal 4s linear both')}` },
+      css: `${FX} .a1{display:block;inset:0;opacity:.8;background-image:radial-gradient(3px 2px at 20% 20%,#f9a8d4 98%,transparent),radial-gradient(3.5px 2px at 70% 70%,#f472b6 98%,transparent);background-size:160px 52px;animation:pqkPetal 4s linear infinite}` },
     // purple (still)
     blueprint: { sky: true, accent: '#60a5fa',
       bg: 'linear-gradient(rgba(191,219,254,.14) 1px,transparent 1px) 0 0/14px 14px,linear-gradient(90deg,rgba(191,219,254,.14) 1px,transparent 1px) 0 0/14px 14px,linear-gradient(rgba(191,219,254,.34) 1px,transparent 1px) 0 0/70px 70px,linear-gradient(90deg,rgba(191,219,254,.34) 1px,transparent 1px) 0 0/70px 70px,linear-gradient(90deg,#06183a,#0b2c66)',
@@ -5914,7 +5915,7 @@
       .sh .cr-win::before{left:0;background:linear-gradient(90deg,#05050a,transparent)}
       .sh .cr-win::after{right:0;background:linear-gradient(-90deg,#05050a,transparent)}
       .sh .cr-strip{position:absolute;left:0;top:12px;display:flex;will-change:transform}
-      .sh .cr-strip.go{transition:transform 6.2s cubic-bezier(.06,.62,.1,1)}
+      .sh .cr-strip.go{transition:transform 7s cubic-bezier(.1,.66,.08,1)}
       .sh .cr-it{width:104px;height:102px;margin-right:8px;flex:none;border-radius:9px;background:#13131c;border-bottom:4px solid var(--r);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;box-shadow:inset 0 -26px 34px -26px var(--r)}
       .sh .cr-sw{width:78px;height:40px;border-radius:7px;border:1px solid rgba(255,255,255,.12)}
       .sh .cr-it b{color:#f1f5f9;font:700 11.5px system-ui}
@@ -5946,6 +5947,34 @@
     if (C.widget !== false) document.body.appendChild(box);
 
     // ---------- shift goal: thin bar under Picqer's header (only when Ahmad set a goal, Shift+9) ----------
+    // ---------- BE Pick-up counter (team feature, until 23:00): open picklists with that tag, counts down live ----------
+    async function beTick() {
+      let el = document.getElementById('pq-be');
+      if (!can('beCounter') || !URL_ || new Date().getHours() >= 23) { el?.remove(); return; }
+      let j = null;
+      try { j = await (await fetch(`${URL_}/be`, { credentials: 'omit', cache: 'no-store' })).json(); } catch (_) {}
+      if (!j || j.n == null) { el?.remove(); return; }
+      addStyle('pq-be-style', `
+        #pq-be{display:inline-flex;align-items:center;gap:7px;margin-right:10px;padding:4px 11px;border-radius:999px;background:rgba(255,255,255,.12);color:inherit;font:600 12px system-ui,sans-serif;white-space:nowrap}
+        #pq-be b{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums;display:inline-block}
+        #pq-be.dn b{animation:pqBeDn 1.4s ease} #pq-be.up b{animation:pqBeUp 1.4s ease}
+        @keyframes pqBeDn{0%{color:#4ade80;transform:translateY(-4px)}100%{transform:none}}
+        @keyframes pqBeUp{0%{color:#fb7185;transform:translateY(4px)}100%{transform:none}}`);
+      if (!el || !el.isConnected) {
+        const nav = document.querySelector('.layout-header-navigation');
+        if (!nav) return;
+        el = el || document.createElement('div');
+        el.id = 'pq-be';
+        nav.prepend(el);
+      }
+      const was = el.dataset.n == null ? null : +el.dataset.n;
+      el.dataset.n = j.n;
+      el.title = `open picklists with the tag BE Pick-up · most today ${j.peak || j.n}`;
+      el.innerHTML = `<span>BE Pick-up</span><b>${int(j.n)}</b>`;
+      if (was != null && was !== j.n) { el.classList.remove('dn', 'up'); void el.offsetWidth; el.classList.add(j.n < was ? 'dn' : 'up'); }
+    }
+    setInterval(() => { if (!document.hidden) beTick(); }, 15000);
+    setTimeout(beTick, 1500);
     function goalBar() {
       const g = data && data.goal;
       let bar = document.getElementById('pq-goal');
@@ -6164,7 +6193,7 @@
       return j;
     }
     // ---------- 🪙 panel: Inventory (drop crates, items) · Stats · Shop (skins left, skin crate right, CS-style reel) ----------
-    let pfTab = 'inv', spinning = false;
+    let pfTab = 'inv', spinning = false, shopF = 'all';
     const nameOfSkin = (id) => ((prof && prof.skins) || []).find((x) => x.id === id)?.name || id;
     // a color card (Voidescent): buy it, turn it on / off, try it on your skin
     function colorCard(p, s) {
@@ -6183,13 +6212,14 @@
       if (!SKIN_LOOK[s.id]) return `<div class="sh-skin"><div class="sh-sw" style="background:repeating-linear-gradient(135deg,#334155 0 8px,#3f4b5f 8px 16px)"></div><div class="sh-in"><b>${escHtml(s.name)}</b><small>update the script</small></div></div>`;
       const worn = 'mySkin' in p ? p.mySkin : p.skin;
       const own = (p.owned || []).includes(s.id), on = worn === s.id, look = SKIN_LOOK[s.id];
+      const spinIds = new Set(((p.crate || {}).odds || []).map((o) => o.id));
       const btn = on ? '<button data-pf="off">Take off</button>' : own ? `<button class="wear" data-pf="wear" data-s="${s.id}">Wear</button>`
         : s.passOnly ? '<button disabled>🎟 Pass</button>'
-        : s.crateOnly ? '<button disabled>📦 Drops</button>'
+        : s.crateOnly ? `<button disabled>📦 ${spinIds.has(s.id) ? 'Crates' : 'Drops'}</button>`
         : s.limit && !s.left ? '<button disabled>Sold out</button>'
         : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>${int(s.price)}</button>`;
       return `<div class="sh-skin${on ? ' on' : ''}${own ? ' own' : ''}" style="--r:${RARITY[s.id] || '#94a3b8'}">
-        ${s.limit ? `<em class="sh-ltd">★ ${s.left || 0}/${s.limit}</em>` : s.passOnly ? '<em class="sh-only pass">PASS</em>' : s.crateOnly ? '<em class="sh-only">DROP</em>' : ''}
+        ${s.limit ? `<em class="sh-ltd">★ ${s.left || 0}/${s.limit}</em>` : s.passOnly ? '<em class="sh-only pass">PASS</em>' : s.crateOnly ? `<em class="sh-only">${spinIds.has(s.id) ? 'CRATE' : 'DROP'}</em>` : ''}
         <div class="sh-sw" style="background:${swOf(s.id)}">${on ? '<span>✓</span>' : ''}</div>
         <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}${animated(look) ? ' <i class="sh-anim" title="animated · can get a color">✦</i>' : ''}</b></div><button class="sh-try" data-try="${s.id}" title="try it on for 10 sec">👁</button>${btn}</div>`;
     }
@@ -6202,7 +6232,7 @@
         <div class="cr-win"><div class="cr-strip">${odds.slice().reverse().concat(odds).map((o) => reelCard(o.id)).join('')}</div><div class="cr-mark"></div></div>
         <div class="cr-res"></div>
         <div class="cr-btns"><button class="buy sp-go" data-crate ${p.balance < p.crate.price ? 'disabled' : ''}>🪙 ${int(p.crate.price)}</button></div>
-        <small>${int(p.crates || 0)} opened</small>
+        <small>${int(p.crates || 0)} opened${p.crate.pity ? ` · red or gold for sure within ${int(Math.max(1, p.crate.pity.at - p.crate.pity.dry))} spins` : ''}</small>
       </div>${list}`;
     }
     const reelCard = (id) => `<div class="cr-it" style="--r:${RARITY[id] || '#94a3b8'}"><div class="cr-sw" style="background:${swOf(id)}"></div><b>${escHtml(nameOfSkin(id))}</b></div>`;
@@ -6242,7 +6272,16 @@
         ${note ? `<div class="sh-note">${escHtml(note)}</div>` : ''}
         ${pfTab === 'inv' ? invHtml(p) : pfTab === 'chat' && can('chat') ? chatHtml(p) : pfTab === 'pass' ? passHtml(p) : pfTab === 'spin' ? spinHtml(p) : pfTab === 'stats' ? statsHtml(p) : pfTab === 'set' ? setHtml() : (() => {
           const notMine = (p.skins || []).filter((s) => !(p.owned || []).includes(s.id));
-          return `<h3>Skins ${ii('skins')}</h3>${notMine.length ? `<div class="sh-grid">${notMine.map((s) => skinCard(p, s)).join('')}</div>` : '<div class="iv-empty">you own every skin</div>'}`;
+          if (!notMine.length) return `<h3>Skins ${ii('skins')}</h3><div class="iv-empty">you own every skin</div>`;
+          const G = [['color', 'Colors'], ['#e4ae39', 'Gold'], ['#eb4b4b', 'Red'], ['#d32ce6', 'Pink'], ['#8847ff', 'Purple'], ['#4b69ff', 'Blue']];
+          const keyOf = (s) => (s.color ? 'color' : RARITY[s.id] || '#4b69ff');
+          const fits = (s) => shopF === 'all' || (shopF === 'anim' ? animated(SKIN_LOOK[s.id]) : keyOf(s) === shopF);
+          const chips = [['all', 'All'], ['anim', '✦ Animated'], ...G.filter(([k]) => notMine.some((s) => keyOf(s) === k))]
+            .map(([k, t]) => `<button class="sh-chip${shopF === k ? ' on' : ''}" data-sf="${k}">${k[0] === '#' ? `<i style="background:${k}"></i>` : ''}${t}</button>`).join('');
+          const sec = (t, col, list) => (list.length ? `<div class="sh-gh">${col ? `<i style="background:${col}"></i>` : ''}<b>${t}</b><small>${list.length}</small></div><div class="sh-grid">${list.sort((a, b) => a.price - b.price).map((s) => skinCard(p, s)).join('')}</div>` : '');
+          const body = G.map(([k, t]) => sec(t, k[0] === '#' ? k : '', notMine.filter((s) => !s.crateOnly && !s.passOnly && keyOf(s) === k && fits(s)))).join('')
+            + sec('Only from crates or the pass', '', notMine.filter((s) => (s.crateOnly || s.passOnly) && fits(s)));
+          return `<h3>Skins ${ii('skins')}</h3><div class="sh-chips">${chips}</div>${body || '<div class="iv-empty">nothing here</div>'}`;
         })()}
       </div>`;
       ov.querySelector('[data-pf-close]').onclick = () => close('pq-pf-ov');
@@ -6261,6 +6300,7 @@
         const c = b.dataset.pc === 'on' ? b.dataset.s : null;
         try { const j = await change('color', c); showProfile(j.err || (c ? `${nameOfSkin(c)} on ✓` : 'color off')); } catch (e) { showProfile('could not reach the middle stop'); }
       }));
+      ov.querySelectorAll('[data-sf]').forEach((b) => (b.onclick = () => { shopF = b.dataset.sf; showProfile(); }));
       if (pfTab === 'pass') wirePass(ov);
       if (pfTab === 'chat') wireChat(ov); else chatWatch(false);
       wireInfo(ov);
@@ -6300,8 +6340,11 @@
       const tot = odds.reduce((n, o) => n + o.pct, 0) || 1;
       const pick = () => { let x = Math.random() * tot; for (const o of odds) { if (x < o.pct) return o.id; x -= o.pct; } return odds[0] ? odds[0].id : j.won; };
       const N = 60, WIN = 52, W = 112;
-      const tease = odds.filter((o) => ['#e4ae39', '#eb4b4b'].includes(RARITY[o.id])).map((o) => o.id);
-      const items = Array.from({ length: N }, (_, i) => (i === WIN ? j.won : (i === WIN - 1 || i === WIN + 2) && tease.length ? tease[Math.floor(Math.random() * tease.length)] : pick()));
+      // a tease only now and then (1 in 4 spins): 1 red (gold is rare) just before or just after where it stops. Otherwise only what the odds give.
+      const reds = odds.filter((o) => RARITY[o.id] === '#eb4b4b').map((o) => o.id), golds = odds.filter((o) => RARITY[o.id] === '#e4ae39').map((o) => o.id);
+      const tPos = Math.random() < 0.25 ? (Math.random() < 0.5 ? WIN + 1 : WIN - 1) : -1;
+      const tId = () => { const l = golds.length && Math.random() < 0.2 ? golds : reds; return l.length ? l[Math.floor(Math.random() * l.length)] : pick(); };
+      const items = Array.from({ length: N }, (_, i) => (i === WIN ? j.won : i === tPos ? tId() : pick()));
       const winEl = box.querySelector('.cr-win');
       const old = box.querySelector('.cr-strip');
       const strip = document.createElement('div');
@@ -6347,7 +6390,7 @@
       requestAnimationFrame(() => requestAnimationFrame(() => {
         strip.style.transform = `translate3d(${-stop}px,0,0)`;
         strip.addEventListener('transitionend', finish, { once: true });
-        setTimeout(finish, 7500); // tab in the background: still finish
+        setTimeout(finish, 8300); // tab in the background: still finish
       }));
     }
     async function openProfile(tab) {
@@ -6604,6 +6647,15 @@
       .pq-lbx .lb-bd{font-style:normal;font-size:12px;margin-left:5px;letter-spacing:1px}
       .sh .sh-skin{position:relative}
       .sh .sh-anim{font-style:normal;font-size:11px;color:#ff4d6d;vertical-align:1px}
+      .sh .sh-chips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}
+      .sh .sh-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--soft);color:var(--fg);border-radius:999px;padding:5px 12px;font:600 12px system-ui,sans-serif;cursor:pointer;margin:0}
+      .sh .sh-chip.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+      .sh .sh-chip i{width:9px;height:9px;border-radius:3px;display:block}
+      .sh .sh-gh{display:flex;align-items:center;gap:8px;margin:18px 0 8px;font:700 12.5px system-ui,sans-serif}
+      .sh .sh-gh i{width:10px;height:10px;border-radius:3px;display:block}
+      .sh .sh-gh small{color:var(--mut);font-weight:600}
+      .sh .sh-skin .sh-try{opacity:0;transition:opacity .15s}
+      .sh .sh-skin:hover .sh-try,.sh .sh-skin .sh-try:focus-visible{opacity:1}
       .sh .sh-color{box-shadow:0 0 0 1px rgba(255,0,52,.35),0 0 18px rgba(255,0,52,.16)}
       .sh .sh-try{position:absolute;top:6px;right:6px;width:26px;height:22px;border-radius:7px;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:12px;cursor:pointer;padding:0;margin:0}
       .sh .sh-skin .sh-try{margin:0}
@@ -6953,8 +7005,8 @@
     }
 
 
-    // ---------- idle alert (people with the picker dashboard): a picker didn't collect anything for 6 min ----------
-    const IDLE_MIN = 6, LS_IDLE = 'pqsuite_idle_seen_v1';
+    // ---------- idle alert (people with the picker dashboard): a picker didn't collect anything for 7 min ----------
+    const IDLE_MIN = 7, LS_IDLE = 'pqsuite_idle_seen_v1';
     function idleCheck(list) {
       if (!can('pickStats') || C.idleAlert === false) return;
       const seen = lsGet(LS_IDLE, null) || {};
@@ -7070,7 +7122,7 @@
         trade: '<b>Trade</b><p>pick someone · they accept · both put things in · both agree</p><p>changing anything = agree again</p>',
         pass: S ? `<b>${escHtml(S.name)}</b><p>20 XP per multi · 13 per single · 10 per pick point · ${int(S.per)} XP per level</p><p>rewards come in by themselves · bought later? you get every level you already reached</p><p>ends ${escHtml(S.ends.split('-').reverse().join('-'))} · level 25 = ${escHtml(nameOfSkin('eclipse'))}, only from the pass</p>` : '',
         crate: `<b>Skin crate</b>${((p.crate || {}).odds || []).map((o) => `<div class="ii-r"><i style="background:${RARITY[o.id] || '#94a3b8'}"></i>${escHtml(nameOfSkin(o.id))}<span>${String(o.pct).replace('.', ',')}%</span></div>`).join('')}<p>already have it: ¼ of its price back</p>`,
-        skins: '<b>Skins</b><p>change Picqer for your account · dark skins make all of it dark</p><p>✦ = animated, can get a color · ★ limited · DROP = only from drop crates · PASS = only from the pass</p>',
+        skins: '<b>Skins</b><p>change Picqer for your account · dark skins make all of it dark</p><p>✦ = animated, can get a color · ★ limited · CRATE = skin crate or drop crates · DROP = only from drop crates · PASS = only from the pass</p>',
         colors: '<b>Colors</b><p>a color paints your animated skin (✦) in its own colors, the art and movement stay</p><p>Voidescent: red and black with stars · only 10 people can have it · on / off any time</p>',
         coins: '<b>Coins</b><p>1 per packing point · 1 per picking point · +20 a minute as king</p><p>boost and double event: x2 each · frozen: 0</p>',
       };
@@ -7210,7 +7262,7 @@
     // ---------- ⚙ settings tab in the panel (per account, synced like Shift+8) ----------
     function setHtml() {
       const row = (k, t) => `<label class="iv-set"><span>${t}</span><input type="checkbox" data-set="${k}" ${C[k] !== false ? 'checked' : ''}></label>`;
-      return `<div class="iv-sets">${row('feed', 'Live drops')}${row('trades', 'Trade requests')}${row('widget', 'Rank card')}${can('chat') ? row('chatPop', 'Chat popups') : ''}${can('pickStats') ? row('idleAlert', 'Idle alert (6 min)') : ''}</div>`;
+      return `<div class="iv-sets">${row('feed', 'Live drops')}${row('trades', 'Trade requests')}${row('widget', 'Rank card')}${can('chat') ? row('chatPop', 'Chat popups') : ''}${can('pickStats') ? row('idleAlert', 'Idle alert (7 min)') : ''}</div>`;
     }
     function wireSet(ov) {
       ov.querySelectorAll('[data-set]').forEach((b) => (b.onchange = () => { C[b.dataset.set] = b.checked; saveCfg(CFG); }));
@@ -7823,6 +7875,19 @@
       .pqs-swatch{width:14px;height:14px;border-radius:4px;border:1px solid rgba(0,0,0,.15);flex:none}
       #pqs-card input[type=color]{width:40px;height:32px;padding:0 2px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;flex:none}
       .pqs-out{display:none;width:100%;height:170px;margin-top:10px;font:12px ui-monospace,Menlo,Consolas,monospace;border:1px solid #d1d5db;border-radius:8px;padding:8px;box-sizing:border-box;white-space:pre}
+      html.pq-dark #pqs-card{--pb:hsl(var(--th),10%,9%);--ps:hsl(var(--th),10%,13%);--pl:hsl(var(--th),10%,20%);--pt:hsl(var(--th),10%,93%);--pm:hsl(var(--th),8%,64%);background:var(--pb);color:var(--pt);color-scheme:dark}
+      html.pq-dark #pqs-card :is(label,td,th,p,li,b,h4,.t,.n,.pqs-tname,.pqs-who b,.pqs-f label,.hd > div > b){color:var(--pt)}
+      html.pq-dark #pqs-card :is(small,.pqs-who,.pqs-tab,.pqs-top .h,.pqs-top .car,.pqs-sec,.pqs-sec h4,.pqs-all,.pqs-empty,.pqs-src,.ft span,.hd small){color:var(--pm)}
+      html.pq-dark #pqs-card .pqs-tab.on{color:var(--pt);border-color:var(--pt)}
+      html.pq-dark #pqs-card :is(.hd,.pqs-tabs,.pqs-mod,.ft,.pqs-grid th,.pqs-grid td,.pqs-person,.pqs-crow,.pqs-people,.pqs-clist,.pqs-gridwrap,.pqs-gh){border-color:var(--pl)}
+      html.pq-dark #pqs-card :is(.ft,.pqs-note,.pqs-grid th,.pqs-gh){background:var(--ps);color:var(--pt)}
+      html.pq-dark #pqs-card :is(input[type=text],input[type=number],input:not([type]),select,textarea,input[type=color],.pqs-b:not(.p)){background:var(--ps);border-color:var(--pl);color:var(--pt)}
+      html.pq-dark #pqs-card .pqs-sw span{background:var(--pl)}
+      html.pq-dark #pqs-card .pqs-sw input:checked+span{background:#2563eb}
+      html.pq-dark #pqs-card .pqs-help{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.35);color:#bfdbfe}
+      html.pq-dark #pqs-card .pqs-help code{background:rgba(59,130,246,.22);color:#dbeafe}
+      html.pq-dark #pqs-card a{color:#93c5fd}
+      html.pq-dark #pqs-card .pqs-dirty{color:#fbbf24}
       .pqs-toast{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:2147483647;background:#111827;color:#fff;padding:9px 14px;border-radius:8px;
         font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.25)}`);
 
