@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.82
+// @version      3.83
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -32,7 +32,7 @@
       const put = (id, css) => { const st = document.createElement('style'); st.id = id; st.textContent = css; (document.head || r).appendChild(st); };
       if (l.vars) {
         r.classList.add('pq-dark');
-        if (l.cls) r.classList.add(l.cls);
+        if (l.cls) String(l.cls).split(' ').filter(Boolean).forEach((c) => r.classList.add(c));
         for (const [k, v] of Object.entries(l.vars)) r.style.setProperty(k, v);
         const d = JSON.parse(localStorage.getItem('pqsuite_dark_css_v1') || 'null');
         put('pq-skin-dark', (d && d.css) || '');
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.82';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.83';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5108,6 +5108,13 @@
   //  The middle stop (Cloudflare worker) asks Picqer once a minute for everyone and keeps today, coins,
   //  the king and the skins. Without it every PC asks Picqer itself (then no king, coins or skins).
   // =====================================================================
+  // skins 2.0 helpers: art sits in the header from the middle (the skins were drawn on a 1200 px wide header)
+  const XC = (dx) => `calc(50% ${dx < 0 ? '-' : '+'} ${Math.abs(dx)}px)`;
+  const FX = '#pq-void-fx', SKY = '#pq-sky';
+  const live = (sel, anim) => `${FX}.live ${sel}{animation:${anim}}`;
+  const liveSky = (sel, anim) => `html.pq-live ${SKY} ${sel}{animation:${anim}}`;
+  const SPARK = 'clip-path:polygon(50% 0,60% 40%,100% 50%,60% 60%,50% 100%,40% 60%,0 50%,40% 40%)';
+  const GLYPHS = 'ｱ7ｶ0ﾐ1ﾂ9ｦ4ﾘ8ｹ2ﾈ5ﾅ3ﾑ6ﾁｸ0ﾜ1ﾔ7ﾙ9ﾓ2ｴ8ﾎ4ﾃ6ｼ0ﾏ3ﾗ5ﾊ1ｲ7ｾ9ﾛ2ﾇ8ｳ4ﾋ6ﾌ0ﾍ3ｺ5ﾕ1ﾖ7ｿ9ｻ2ﾄ8ｷ4ﾆ6ﾒ0ｽ3ﾀ5ｵ1ﾉ7ﾝ9';
   // dark: the whole of Picqer goes dark in the skin's colors (th = tint hue, ah/as = accent hue/saturation)
   const SKIN_LOOK = {
     midnight: { bg: 'linear-gradient(90deg,#070b16,#111a33)', accent: '#6366f1', dark: { th: 228, ah: 239, as: '84%', fx: 'none' } },
@@ -5116,7 +5123,8 @@
     sunset: { bg: 'linear-gradient(90deg,#7c2d12,#be185d)', accent: '#f97316' },
     carbon: { bg: 'repeating-linear-gradient(135deg,#141416 0 6px,#1c1c20 6px 12px)', accent: '#a1a1aa', dark: { th: 240, ah: 240, as: '6%', fx: 'full' } },
     aurora: { bg: 'radial-gradient(circle at 25% 20%,rgba(139,92,246,.45),transparent 50%),linear-gradient(90deg,#120f2e,#0b2a33 55%,#062a22)', accent: '#8b5cf6', dark: { th: 252, ah: 258, as: '90%', fx: 'full' } },
-    voidescent: { bg: 'radial-gradient(circle at 50% 50%,transparent 18%,rgba(255,0,52,.6) 21%,transparent 30%),radial-gradient(circle at 50% 50%,#000 20%,transparent 21%),linear-gradient(90deg,#08080b,#1d040b)', accent: '#ff0034', dark: { th: 345, ah: 348, as: '100%', fx: 'full', stars: true } },
+    // Voidescent is a color now (Eclipse in red was the old skin): it paints any animated skin red and black
+    voidescent: { color: true, bg: 'radial-gradient(circle at 50% 50%,transparent 18%,rgba(255,0,52,.6) 21%,transparent 30%),radial-gradient(circle at 50% 50%,#000 20%,transparent 21%),linear-gradient(90deg,#08080b,#1d040b)', accent: '#ff0034', dark: { th: 345, ah: 348, as: '100%', fx: 'full', stars: true } },
     sakura: { bg: 'linear-gradient(90deg,#831843,#db2777)', accent: '#ec4899' },
     arctic: { bg: 'linear-gradient(90deg,#1e3a5f,#3b82f6)', accent: '#38bdf8' },
     emerald: { bg: 'linear-gradient(90deg,#03140e,#06281c)', accent: '#10b981', dark: { th: 160, ah: 160, as: '84%', fx: 'none' } },
@@ -5130,11 +5138,241 @@
     inferno: { bg: 'radial-gradient(circle at 20% 85%,rgba(239,68,68,.6),transparent 50%),radial-gradient(circle at 70% 25%,rgba(251,146,60,.38),transparent 45%),linear-gradient(90deg,#0f0302,#2b0703)', accent: '#ef4444', line: '#fb923c', dark: { th: 5, ah: 10, as: '92%', fx: 'full', onAcc: '#1a0402' } },
     eclipse: { bg: 'radial-gradient(circle at 50% 50%,transparent 18%,rgba(251,191,36,.55) 21%,transparent 30%),radial-gradient(circle at 50% 50%,#000 20%,transparent 21%),linear-gradient(90deg,#05040a,#14101f)', accent: '#fbbf24', line: '#fde68a', dark: { th: 260, ah: 45, as: '95%', fx: 'full', stars: true, onAcc: '#1a1200' } },
     celestial: { bg: 'radial-gradient(circle at 25% 30%,rgba(250,204,21,.38),transparent 45%),radial-gradient(circle at 75% 65%,rgba(99,102,241,.42),transparent 50%),linear-gradient(90deg,#03051a,#0d1240)', accent: '#facc15', line: '#fde68a', dark: { th: 232, ah: 48, as: '96%', fx: 'full', stars: true, onAcc: '#1a1400' } },
+    // ===== skins 2.0 (from the skin lab) · ✦ anim = moves in bursts, so it can get the Voidescent color =====
+    // sw = the little preview in the shop (when the header art sits in the middle of the header)
+    // gold
+    supernova: { anim: true, art: true, accent: '#ffb347',
+      bg: `radial-gradient(circle at ${XC(120)} 26px,rgba(255,244,214,.95) 0,rgba(255,179,71,.65) 10px,rgba(255,94,58,.3) 30px,transparent 90px),linear-gradient(90deg,#0a0502,#2a1206 60%,#2f1306)`,
+      sw: 'radial-gradient(circle at 68% 50%,#fff4d6 0,#ffb347 10%,rgba(255,94,58,.45) 26%,transparent 50%),repeating-conic-gradient(from 0deg at 68% 50%,rgba(255,214,150,.4) 0 3deg,transparent 3deg 15deg),linear-gradient(90deg,#0a0502,#2f1306)',
+      dark: { th: 25, ah: 33, as: '100%', fx: 'sweep', stars: true, onAcc: '#1a0d00' },
+      css: `${FX} .a1{display:block;left:${XC(-40)};top:-134px;width:320px;height:320px;border-radius:50%;background:repeating-conic-gradient(from 0deg,rgba(255,214,150,.6) 0 2deg,transparent 2deg 15deg);-webkit-mask:radial-gradient(circle,#000 6%,transparent 60%);mask:radial-gradient(circle,#000 6%,transparent 60%)}
+        ${FX} .a2{display:block;left:${XC(90)};top:-4px;width:60px;height:60px;border-radius:50%;border:2px solid rgba(255,224,178,.85);opacity:0}
+        ${live('.a1', 'pqkSpin45 4s cubic-bezier(.4,0,.2,1) both')}${live('.a2', 'pqkRing 4s ease-out both')}` },
+    singularity: { anim: true, art: true, accent: '#b388ff',
+      bg: `radial-gradient(ellipse 260px 60px at ${XC(144)} 26px,rgba(179,136,255,.25),transparent 70%),linear-gradient(90deg,#030208,#0e0820 60%,#160b30)`,
+      sw: 'radial-gradient(circle at 62% 50%,#000 0 11%,rgba(225,213,255,.95) 12.5%,transparent 15%),radial-gradient(ellipse 42% 12% at 62% 50%,#ffc08a,#b388ff 55%,transparent 72%),linear-gradient(90deg,#030208,#160b30)',
+      dark: { th: 262, ah: 265, as: '100%', fx: 'sweep', stars: true, onAcc: '#12052a' },
+      css: `${FX} .a1{display:block;left:${XC(34)};top:-84px;width:220px;height:220px;border-radius:50%;background:conic-gradient(from 0deg,#ffd29a,#ff7a59,#b388ff,#5b3cc4,#b388ff,#ff7a59,#ffd29a);-webkit-mask:radial-gradient(circle,transparent 25%,#000 27%,#000 46%,transparent 68%);mask:radial-gradient(circle,transparent 25%,#000 27%,#000 46%,transparent 68%);transform:rotate(-12deg) scaleY(.22)}
+        ${FX} .a2{display:block;left:${XC(127)};top:9px;width:34px;height:34px;border-radius:50%;background:#000;box-shadow:0 0 0 2px rgba(225,213,255,.9),0 0 14px 4px rgba(179,136,255,.7),0 0 40px 10px rgba(179,136,255,.25)}
+        ${FX} .a3{display:block;left:${XC(114)};top:-4px;width:60px;height:60px;border-radius:50%;border:3px solid transparent;border-top-color:rgba(255,196,150,.9);border-bottom-color:rgba(179,136,255,.45);filter:blur(.6px);transform:rotate(-12deg)}
+        ${live('.a1', 'pqkDisk 4s cubic-bezier(.4,0,.2,1) both')}` },
+    dragonfire: { anim: true, art: true, sky: true, accent: '#ff6b1a',
+      bg: 'radial-gradient(circle at 50% 0,transparent 0 9px,rgba(255,200,87,.27) 9.5px 10.5px,transparent 11px) 0 0/20px 12px,radial-gradient(circle at 50% 0,transparent 0 9px,rgba(255,200,87,.27) 9.5px 10.5px,transparent 11px) 10px 6px/20px 12px,radial-gradient(ellipse at 30% 140%,rgba(255,107,26,.55),transparent 60%),linear-gradient(90deg,#160302,#3a0904 55%,#4a1004)',
+      dark: { th: 8, ah: 22, as: '100%', fx: 'sweep', glow: true, onAcc: '#1a0700' },
+      css: `${FX} .a1{display:block;left:0;right:0;top:0;height:200%;opacity:0;background-image:radial-gradient(2px 2px at 10% 80%,#ffb347,transparent),radial-gradient(1.5px 1.5px at 24% 62%,#ff6b1a,transparent),radial-gradient(2px 2px at 38% 92%,#ffd27a,transparent),radial-gradient(1.5px 1.5px at 51% 70%,#ff8c42,transparent),radial-gradient(2px 2px at 63% 86%,#ffb347,transparent),radial-gradient(1.5px 1.5px at 77% 66%,#ff6b1a,transparent),radial-gradient(2px 2px at 90% 90%,#ffd27a,transparent)}
+        ${SKY} .s1{display:block;left:0;right:0;bottom:0;height:55%;background:radial-gradient(ellipse at 55% 135%,rgba(255,107,26,.2),transparent 62%)}
+        ${live('.a1', 'pqkRise 4s ease-out both')}` },
+    milkyway: { anim: true, sky: true, accent: '#e0e7ff',
+      bg: 'linear-gradient(172deg,transparent 18%,rgba(224,231,255,.1) 36%,rgba(255,214,240,.24) 47%,rgba(8,10,28,.65) 50%,rgba(224,231,255,.22) 53%,rgba(200,210,255,.08) 66%,transparent 82%),linear-gradient(90deg,#03040c,#0b1030 60%,#121a44)',
+      dark: { th: 232, ah: 228, as: '100%', fx: 'sweep', stars: true, hstars: true, onAcc: '#0b1020' },
+      css: `${SKY} .s1{display:block;inset:-20%;background:linear-gradient(125deg,transparent 30%,rgba(199,210,254,.07) 42%,rgba(244,200,255,.1) 48%,rgba(0,0,0,.3) 50%,rgba(199,210,254,.09) 53%,transparent 66%)}` },
+    borealis: { anim: true, art: true, sky: true, accent: '#4ade80',
+      bg: 'linear-gradient(90deg,#020a10,#06202a 55%,#0a1f33)',
+      sw: 'repeating-linear-gradient(90deg,rgba(74,222,128,0) 0,rgba(74,222,128,.55) 8px,rgba(45,212,191,.35) 14px,rgba(167,139,250,0) 22px,rgba(167,139,250,.3) 30px,rgba(74,222,128,0) 38px),linear-gradient(90deg,#020a10,#0a1f33)',
+      dark: { th: 205, ah: 142, as: '76%', fx: 'none', stars: true, onAcc: '#03190b' },
+      css: `${FX} .a1{display:block;left:-10%;width:120%;top:-14px;height:90px;background:repeating-linear-gradient(90deg,rgba(74,222,128,0) 0,rgba(74,222,128,.6) 14px,rgba(45,212,191,.4) 26px,rgba(167,139,250,0) 44px,rgba(167,139,250,.35) 60px,rgba(74,222,128,0) 78px);-webkit-mask:linear-gradient(180deg,#000 10%,transparent 75%);mask:linear-gradient(180deg,#000 10%,transparent 75%);filter:blur(5px);transform-origin:50% 0}
+        ${FX} .a2{display:block;left:-10%;width:120%;top:-10px;height:70px;background:repeating-linear-gradient(90deg,rgba(45,212,191,0) 0,rgba(45,212,191,.35) 30px,rgba(74,222,128,0) 70px,rgba(192,132,252,.25) 100px,rgba(45,212,191,0) 130px);-webkit-mask:linear-gradient(180deg,#000,transparent 80%);mask:linear-gradient(180deg,#000,transparent 80%);filter:blur(8px);transform-origin:50% 0}
+        ${SKY} .s1{display:block;left:0;right:0;top:0;height:50%;background:radial-gradient(ellipse at 30% -20%,rgba(74,222,128,.16),transparent 60%),radial-gradient(ellipse at 78% -30%,rgba(167,139,250,.15),transparent 55%)}
+        ${live('.a1', 'pqkWave 4s ease-in-out both')}${live('.a2', 'pqkWave 4s ease-in-out reverse both')}` },
+    diamond: { anim: true, art: true, accent: '#e0f2fe',
+      bg: `conic-gradient(from 210deg at ${XC(-300)} 26px,rgba(255,255,255,.14) 0 30deg,transparent 30deg 60deg,rgba(186,230,253,.13) 60deg 100deg,transparent 100deg 160deg,rgba(255,255,255,.08) 160deg 200deg,transparent 200deg),conic-gradient(from 30deg at ${XC(160)} 20px,rgba(255,255,255,.12) 0 40deg,transparent 40deg 90deg,rgba(186,230,253,.15) 90deg 130deg,transparent 130deg 220deg,rgba(255,255,255,.1) 220deg 260deg,transparent 260deg),linear-gradient(90deg,#0b1424,#1c2d4a 50%,#23375a)`,
+      sw: 'conic-gradient(from 210deg at 30% 50%,rgba(255,255,255,.2) 0 30deg,transparent 30deg 60deg,rgba(186,230,253,.18) 60deg 100deg,transparent 100deg 160deg,rgba(255,255,255,.12) 160deg 200deg,transparent 200deg),conic-gradient(from 30deg at 72% 40%,rgba(255,255,255,.16) 0 40deg,transparent 40deg 90deg,rgba(186,230,253,.2) 90deg 130deg,transparent 130deg),linear-gradient(90deg,#0b1424,#23375a)',
+      dark: { th: 215, ah: 199, as: '90%', fx: 'none', glow: true, onAcc: '#0b1220' },
+      css: `${FX} .a1{display:block;left:0;top:0;bottom:0;width:30%;background:linear-gradient(100deg,transparent 0,rgba(255,0,128,.38) 30%,rgba(255,200,0,.38) 40%,rgba(0,255,170,.38) 50%,rgba(0,170,255,.38) 60%,rgba(170,0,255,.38) 70%,transparent 100%);mix-blend-mode:screen;transform:translateX(-110%)}
+        ${FX} .a2,${FX} .a3{display:block;width:16px;height:16px;background:#fff;${SPARK};transform:scale(0);opacity:0}
+        ${FX} .a2{left:${XC(-228)};top:8px}${FX} .a3{left:${XC(180)};top:26px}
+        ${live('.a1', 'pqvSw 3.8s cubic-bezier(.45,0,.2,1) both')}${live('.a2', 'pqkSpark 4s ease-in-out both')}${live('.a3', 'pqkSpark 2.8s ease-in-out 1.2s both')}`,
+      page: 'html.pq-dark .card{box-shadow:0 0 0 1px hsl(215,14%,22%),inset 0 1px 0 rgba(255,255,255,.22),0 1px 4px rgba(0,0,0,.3)}' },
+    // red
+    synthwave: { anim: true, art: true, sky: true, accent: '#ff2fd0',
+      bg: 'linear-gradient(180deg,#14002e 0%,#2b0050 60%,#4a0a64 100%)',
+      sw: 'linear-gradient(180deg,transparent 62%,rgba(45,226,230,.55) 63% 65%,transparent 66%),radial-gradient(circle at 62% 100%,#ffd319 0,#ff8b2a 14%,#ff2975 26%,transparent 28%),linear-gradient(180deg,#14002e,#4a0a64)',
+      dark: { th: 285, ah: 313, as: '100%', fx: 'none', glow: true, onAcc: '#1f0019' },
+      css: `${FX} .a1{display:block;left:${XC(50)};top:8px;width:92px;height:92px;border-radius:50%;background:linear-gradient(180deg,#ffd319 0%,#ff8b2a 32%,#ff2975 62%,#8c1eff 100%);-webkit-mask:linear-gradient(180deg,#000 40%,transparent 40% 44%,#000 44% 54%,transparent 54% 60%,#000 60% 68%,transparent 68% 76%,#000 76%);mask:linear-gradient(180deg,#000 40%,transparent 40% 44%,#000 44% 54%,transparent 54% 60%,#000 60% 68%,transparent 68% 76%,#000 76%)}
+        ${FX} .a2{display:block;left:-20%;right:-20%;bottom:-2px;height:24px;border-top:1px solid rgba(255,47,208,.9);background:linear-gradient(90deg,rgba(45,226,230,.6) 1px,transparent 1px) 0 0/28px 100%,linear-gradient(180deg,rgba(45,226,230,.6) 1px,transparent 1px) 0 0/100% 7px;background-color:#1a0033;transform:perspective(60px) rotateX(40deg);transform-origin:50% 100%}
+        ${FX} .a3{display:block;left:${XC(16)};top:-34px;width:160px;height:120px;background:radial-gradient(closest-side,rgba(255,41,117,.5),transparent)}
+        ${SKY} .s1{display:block;left:0;right:0;bottom:0;height:38%;background:linear-gradient(90deg,rgba(45,226,230,.07) 1px,transparent 1px) 0 0/48px 100%,linear-gradient(180deg,transparent,rgba(255,47,208,.1));-webkit-mask:linear-gradient(180deg,transparent,#000);mask:linear-gradient(180deg,transparent,#000)}
+        ${live('.a2', 'pqkGrid 4s linear both')}` },
+    coderain: { anim: true, art: true, sky: true, accent: '#22ff88',
+      bg: 'linear-gradient(90deg,#010804,#03140a 60%,#052012)',
+      sw: 'repeating-linear-gradient(90deg,rgba(34,255,136,.5) 0 2px,transparent 2px 9px),linear-gradient(180deg,rgba(1,8,4,.1),#010804),linear-gradient(90deg,#010804,#052012)',
+      dark: { th: 140, ah: 142, as: '100%', fx: 'none', glow: true, onAcc: '#00170a' },
+      css: `${FX} .a1,${SKY} .s1{font:700 11px/17px ui-monospace,Menlo,Consolas,monospace;letter-spacing:1px;writing-mode:vertical-rl;text-orientation:upright;overflow:hidden;color:rgba(34,255,136,.6)}
+        ${FX} .a1::before{content:"${GLYPHS.repeat(3)}"}${SKY} .s1::before{content:"${GLYPHS.repeat(16)}"}
+        ${FX} .a1{display:block;left:0;right:0;top:-55px;height:107px;opacity:.35;text-shadow:0 0 6px rgba(34,255,136,.7);-webkit-mask:linear-gradient(90deg,transparent ${XC(-390)},#000 ${XC(-300)},#000 ${XC(160)},transparent ${XC(250)});mask:linear-gradient(90deg,transparent ${XC(-390)},#000 ${XC(-300)},#000 ${XC(160)},transparent ${XC(250)})}
+        ${SKY} .s1{display:block;inset:0;color:rgba(34,255,136,.06);font-size:14px;line-height:24px;letter-spacing:3px}
+        ${live('.a1', 'pqkFall 4s linear both')}` },
+    stormcell: { anim: true, art: true, sky: true, accent: '#c4b5fd',
+      bg: 'radial-gradient(ellipse 160px 40px at 20% 0,rgba(148,163,184,.25),transparent 70%),radial-gradient(ellipse 220px 46px at 55% 0,rgba(100,116,139,.32),transparent 70%),radial-gradient(ellipse 180px 40px at 88% 0,rgba(148,163,184,.22),transparent 70%),linear-gradient(90deg,#05060f,#0f1230 60%,#171a3d)',
+      sw: 'linear-gradient(105deg,transparent 46%,rgba(196,181,253,.3) 50%,transparent 54%) 0 0/8px 18px,radial-gradient(ellipse 60% 40% at 50% 0,rgba(148,163,184,.3),transparent 70%),linear-gradient(90deg,#05060f,#171a3d)',
+      dark: { th: 240, ah: 255, as: '92%', fx: 'none', glow: true, onAcc: '#140a2e' },
+      css: `${FX} .a1{display:block;inset:0;background:linear-gradient(105deg,transparent 46%,rgba(196,181,253,.26) 50%,transparent 54%) 0 0/12px 30px}
+        ${FX} .a2{display:block;left:${XC(-38)};top:0;width:28px;height:52px;background:linear-gradient(180deg,#fff,#ddd6fe);clip-path:polygon(55% 0,18% 54%,46% 54%,28% 100%,84% 40%,54% 40%,74% 0);opacity:0}
+        ${FX} .a3{display:block;inset:0;background:radial-gradient(ellipse 260px 60px at ${XC(-24)} 0,rgba(233,213,255,.55),transparent 70%);opacity:0}
+        ${SKY} .s1{display:block;inset:0;background:rgba(196,181,253,.06);opacity:0}
+        ${live('.a1', 'pqkDrop 4s linear both')}${live('.a2', 'pqkBolt 4s linear both')}${live('.a3', 'pqkBolt 4s linear both')}${liveSky('.s1', 'pqkBolt 4s linear both')}` },
+    toxic: { anim: true, art: true, accent: '#b6ff00',
+      bg: 'repeating-linear-gradient(135deg,#b6ff00 0 8px,#0b0f02 8px 16px) bottom/100% 4px no-repeat,radial-gradient(ellipse 320px 50px at 50% 120%,rgba(182,255,0,.28),transparent 70%),linear-gradient(90deg,#060801,#121a03 60%,#172003)',
+      dark: { th: 85, ah: 80, as: '100%', fx: 'none', glow: true, onAcc: '#0a1400' },
+      css: `${FX} .a1{display:block;left:0;right:0;top:0;height:200%;opacity:0;background-image:radial-gradient(circle at 12% 70%,transparent 3px,rgba(182,255,0,.55) 3.5px,transparent 4.5px),radial-gradient(circle at 28% 90%,transparent 2px,rgba(182,255,0,.5) 2.5px,transparent 3.5px),radial-gradient(circle at 41% 64%,transparent 4px,rgba(182,255,0,.45) 4.5px,transparent 5.5px),radial-gradient(circle at 66% 84%,transparent 2.5px,rgba(182,255,0,.55) 3px,transparent 4px),radial-gradient(circle at 79% 68%,transparent 3px,rgba(182,255,0,.5) 3.5px,transparent 4.5px),radial-gradient(circle at 93% 92%,transparent 2px,rgba(182,255,0,.5) 2.5px,transparent 3.5px)}
+        ${FX} .a2{display:block;left:${XC(4)};top:5px;width:40px;height:40px;border-radius:50%;opacity:.35;background:conic-gradient(from -30deg,#b6ff00 0 60deg,transparent 60deg 120deg,#b6ff00 120deg 180deg,transparent 180deg 240deg,#b6ff00 240deg 300deg,transparent 300deg);-webkit-mask:radial-gradient(circle,#000 0 4px,transparent 4.5px 7px,#000 7.5px 19px,transparent 19.5px);mask:radial-gradient(circle,#000 0 4px,transparent 4.5px 7px,#000 7.5px 19px,transparent 19.5px)}
+        ${live('.a1', 'pqkRise 4s ease-out both')}${live('.a2', 'pqkPulseO 4s ease-in-out both')}` },
+    bloodmoon: { anim: true, art: true, accent: '#ff2a2a',
+      bg: `radial-gradient(ellipse 280px 70px at ${XC(144)} 26px,rgba(255,42,42,.3),transparent 70%),linear-gradient(90deg,#070102,#1a0306 60%,#240408)`,
+      sw: 'radial-gradient(circle at 64% 50%,#ff8064 0,#c2001a 14%,#5c0010 22%,rgba(255,42,42,.35) 23%,transparent 40%),linear-gradient(90deg,#070102,#240408)',
+      dark: { th: 355, ah: 0, as: '100%', fx: 'sweep', stars: true, hstars: true, onAcc: '#fff' },
+      css: `${FX} .a1{display:block;left:${XC(110)};top:-8px;width:68px;height:68px;border-radius:50%;background:radial-gradient(circle at 30% 34%,rgba(0,0,0,.2) 0 5px,transparent 6px),radial-gradient(circle at 62% 58%,rgba(0,0,0,.22) 0 8px,transparent 9px),radial-gradient(circle at 44% 74%,rgba(0,0,0,.16) 0 4px,transparent 5px),radial-gradient(circle at 70% 28%,rgba(0,0,0,.14) 0 3px,transparent 4px),radial-gradient(circle at 36% 36%,#ff8064,#c2001a 55%,#5c0010);box-shadow:0 0 24px 6px rgba(255,42,42,.45),0 0 60px 16px rgba(255,42,42,.18)}
+        ${live('.a1', 'pqkGlow 4s ease-in-out both')}` },
+    frostbite: { anim: true, art: true, sky: true, accent: '#67e8f9',
+      bg: 'radial-gradient(circle at 0 0,rgba(224,242,254,.4),transparent 46px),radial-gradient(circle at 100% 100%,rgba(224,242,254,.28),transparent 50px),repeating-conic-gradient(from 0deg at 0 0,rgba(224,242,254,.09) 0 2deg,transparent 2deg 9deg),linear-gradient(90deg,#03101a,#082a3d 60%,#0b3349)',
+      dark: { th: 200, ah: 190, as: '95%', fx: 'none', glow: true, onAcc: '#031a1f' },
+      css: `${FX} .a1{display:block;left:0;right:0;top:-52px;height:104px;background-image:radial-gradient(1.6px 1.6px at 6% 20%,#fff,transparent),radial-gradient(1.2px 1.2px at 18% 70%,#e0f2fe,transparent),radial-gradient(2px 2px at 31% 40%,#fff,transparent),radial-gradient(1.2px 1.2px at 44% 85%,#fff,transparent),radial-gradient(1.6px 1.6px at 57% 15%,#e0f2fe,transparent),radial-gradient(2px 2px at 69% 60%,#fff,transparent),radial-gradient(1.2px 1.2px at 82% 30%,#fff,transparent),radial-gradient(1.6px 1.6px at 94% 75%,#e0f2fe,transparent);background-size:240px 52px}
+        ${SKY} .s1{display:block;left:0;right:0;top:-260px;height:calc(100% + 260px);opacity:.4;background-image:radial-gradient(2px 2px at 10% 20%,#fff,transparent),radial-gradient(1.5px 1.5px at 30% 60%,#e0f2fe,transparent),radial-gradient(2.5px 2.5px at 52% 35%,#fff,transparent),radial-gradient(1.5px 1.5px at 71% 80%,#fff,transparent),radial-gradient(2px 2px at 88% 12%,#e0f2fe,transparent);background-size:300px 260px}
+        ${live('.a1', 'pqkSnow 4s linear both')}${liveSky('.s1', 'pqkSnowP 4s linear both')}` },
+    hologram: { anim: true, art: true, accent: '#7df9ff',
+      bg: 'linear-gradient(90deg,#070a18,#121733 60%,#161b3d)',
+      sw: 'repeating-linear-gradient(0deg,rgba(255,255,255,.08) 0 1px,transparent 1px 3px),linear-gradient(110deg,rgba(255,159,243,.45),rgba(125,249,255,.45),rgba(184,255,159,.35),rgba(255,213,125,.35),rgba(255,159,243,.45)),linear-gradient(90deg,#070a18,#161b3d)',
+      dark: { th: 235, ah: 184, as: '100%', fx: 'none', glow: true, onAcc: '#04171a' },
+      css: `${FX} .a1{display:block;left:-60px;right:-60px;top:0;bottom:0;background:linear-gradient(90deg,rgba(255,159,243,.4),rgba(125,249,255,.4),rgba(184,255,159,.32),rgba(255,213,125,.32),rgba(255,159,243,.4)) 0 0/400px 100%;transform:skewX(-24deg);mix-blend-mode:screen;opacity:.55}
+        ${FX} .a2{display:block;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.07) 0 1px,transparent 1px 3px)}
+        ${live('.a1', 'pqkFoil 4s ease-in-out both')}`,
+      page: 'html.pq-dark .card{background-image:linear-gradient(90deg,#ff9ff3,#7df9ff,#b8ff9f,#ffd57d,#ff9ff3);background-size:calc(100% - 24px) 2px;background-position:12px 0;background-repeat:no-repeat}' },
+    circuit: { anim: true, art: true, accent: '#ffd166',
+      bg: 'linear-gradient(90deg,#03130c,#06261a 60%,#072c1f)',
+      sw: 'radial-gradient(circle at 60% 40%,#ffd166 0 2.5px,transparent 3px),linear-gradient(rgba(255,209,102,.55),rgba(255,209,102,.55)) 0 40%/60% 2px no-repeat,linear-gradient(rgba(255,209,102,.55),rgba(255,209,102,.55)) 60% 40%/2px 36% no-repeat,linear-gradient(rgba(255,209,102,.55),rgba(255,209,102,.55)) 100% 76%/40% 2px no-repeat,linear-gradient(90deg,#03130c,#072c1f)',
+      dark: { th: 155, ah: 44, as: '100%', fx: 'none', glow: true, onAcc: '#1a1200' },
+      css: `${FX} .a1{display:block;left:calc(50% - 600px);top:0;width:1200px;height:52px;background:radial-gradient(circle,#ffd166 0 2.5px,transparent 3px) 356px 10px/8px 8px no-repeat,radial-gradient(circle,#ffd166 0 2.5px,transparent 3px) 816px 4px/8px 8px no-repeat,radial-gradient(circle,#ffd166 0 2.5px,transparent 3px) 296px 41px/8px 8px no-repeat,radial-gradient(circle,#ffd166 0 2.5px,transparent 3px) 516px 19px/8px 8px no-repeat,repeating-linear-gradient(90deg,rgba(255,209,102,.6) 0 3px,transparent 3px 8px) 584px 6px/56px 4px no-repeat,repeating-linear-gradient(90deg,rgba(255,209,102,.6) 0 3px,transparent 3px 8px) 584px 42px/56px 4px no-repeat,linear-gradient(#0a1a12,#0a1a12) 580px 10px/64px 32px no-repeat,linear-gradient(rgba(255,209,102,.35),rgba(255,209,102,.35)) 578px 8px/68px 36px no-repeat,linear-gradient(rgba(255,209,102,.38),rgba(255,209,102,.38)) 0 13px/360px 2px no-repeat,linear-gradient(rgba(255,209,102,.38),rgba(255,209,102,.38)) 359px 13px/2px 26px no-repeat,linear-gradient(rgba(255,209,102,.38),rgba(255,209,102,.38)) 359px 37px/462px 2px no-repeat,linear-gradient(rgba(255,209,102,.38),rgba(255,209,102,.38)) 819px 7px/2px 32px no-repeat,linear-gradient(rgba(255,209,102,.38),rgba(255,209,102,.38)) 819px 7px/381px 2px no-repeat,linear-gradient(rgba(255,209,102,.25),rgba(255,209,102,.25)) 120px 44px/180px 2px no-repeat,linear-gradient(rgba(255,209,102,.25),rgba(255,209,102,.25)) 520px 22px/60px 2px no-repeat}
+        ${FX} .a2,${FX} .a3{display:block;width:8px;height:8px;border-radius:50%;background:#fff6d5;box-shadow:0 0 8px 3px #ffd166;opacity:0}
+        ${FX} .a2{left:calc(50% - 244px);top:34px;--dx:460px}${FX} .a3{left:calc(50% - 604px);top:10px;--dx:360px}
+        ${live('.a2', 'pqkPulse 4s cubic-bezier(.5,0,.5,1) both')}${live('.a3', 'pqkPulse 3.4s cubic-bezier(.5,0,.5,1) .5s both')}` },
+    abyss: { anim: true, art: true, sky: true, accent: '#2dd4bf',
+      bg: `radial-gradient(ellipse 240px 60px at ${XC(120)} 0,rgba(45,212,191,.22),transparent 70%),linear-gradient(180deg,#041526,#020b16)`,
+      sw: 'radial-gradient(ellipse 18% 30% at 62% 34%,rgba(204,251,241,.9),rgba(45,212,191,.35) 60%,transparent 75%),radial-gradient(1.5px 1.5px at 20% 70%,#99f6e4,transparent),radial-gradient(1.5px 1.5px at 40% 30%,#5eead4,transparent),radial-gradient(1.5px 1.5px at 85% 75%,#99f6e4,transparent),linear-gradient(180deg,#041526,#020b16)',
+      dark: { th: 215, ah: 173, as: '80%', fx: 'none', glow: true, onAcc: '#03211b' },
+      css: `${FX} .a1{display:block;left:0;right:0;top:0;height:200%;opacity:0;background-image:radial-gradient(1.5px 1.5px at 7% 78%,#99f6e4,transparent),radial-gradient(1px 1px at 19% 92%,#5eead4,transparent),radial-gradient(1.8px 1.8px at 33% 66%,#99f6e4,transparent),radial-gradient(1px 1px at 46% 88%,#5eead4,transparent),radial-gradient(1.5px 1.5px at 58% 74%,#ccfbf1,transparent),radial-gradient(1px 1px at 74% 95%,#5eead4,transparent),radial-gradient(1.8px 1.8px at 87% 70%,#99f6e4,transparent)}
+        ${FX} .a2{display:block;left:${XC(102)};top:5px;width:36px;height:22px;border-radius:50% 50% 30% 30%/90% 90% 22% 22%;background:radial-gradient(ellipse at 50% 30%,rgba(204,251,241,.95),rgba(45,212,191,.45) 60%,rgba(45,212,191,.15) 80%);box-shadow:0 0 16px 4px rgba(45,212,191,.4)}
+        ${FX} .a3{display:block;left:${XC(108)};top:24px;width:24px;height:30px;background:repeating-linear-gradient(90deg,rgba(153,246,228,.5) 0 1.5px,transparent 1.5px 6px);-webkit-mask:linear-gradient(180deg,#000,transparent);mask:linear-gradient(180deg,#000,transparent)}
+        ${SKY} .s1{display:block;inset:0;background-image:radial-gradient(1.5px 1.5px at 12% 30%,rgba(153,246,228,.35),transparent),radial-gradient(1px 1px at 38% 70%,rgba(94,234,212,.3),transparent),radial-gradient(2px 2px at 66% 20%,rgba(153,246,228,.25),transparent),radial-gradient(1px 1px at 84% 60%,rgba(94,234,212,.3),transparent);background-size:340px 300px}
+        ${SKY} .s2{display:block;left:0;right:0;top:0;height:45%;background:radial-gradient(ellipse at 60% -20%,rgba(45,212,191,.1),transparent 60%)}
+        ${live('.a1', 'pqkRise 4s ease-in-out both')}${live('.a2', 'pqkBob 4s ease-in-out both')}${live('.a3', 'pqkBob 4s ease-in-out both')}` },
+    // pink (a light sweep or a little movement)
+    retro: { anim: true, art: true, sky: true, accent: '#ffcc00',
+      bg: 'radial-gradient(circle at 30px 14px,#ffcc00 0 3px,transparent 3.5px) 0 0/260px 52px,radial-gradient(circle at 120px 34px,#00e0ff 0 2.5px,transparent 3px) 0 0/330px 52px,radial-gradient(circle at 60px 18px,transparent 0 4px,#ff4fa3 4.5px 6px,transparent 6.5px) 0 0/410px 52px,radial-gradient(circle at 200px 10px,#ff4fa3 0 2px,transparent 2.5px) 0 0/290px 52px,radial-gradient(circle at 250px 30px,transparent 0 3px,#00e0ff 3.5px 4.8px,transparent 5.2px) 0 0/370px 52px,linear-gradient(90deg,#130f2a,#241a4d)',
+      sw: 'radial-gradient(circle at 25% 30%,#ffcc00 0 3px,transparent 3.5px),radial-gradient(circle at 70% 60%,#00e0ff 0 3px,transparent 3.5px),radial-gradient(circle at 50% 30%,transparent 0 4px,#ff4fa3 4.5px 6px,transparent 6.5px),linear-gradient(135deg,#ff4fa3 25%,transparent 25%) -4px 100%/16px 8px repeat-x,linear-gradient(225deg,#ff4fa3 25%,transparent 25%) -4px 100%/16px 8px repeat-x,linear-gradient(90deg,#130f2a,#241a4d)',
+      dark: { th: 250, ah: 48, as: '100%', fx: 'sweep', glow: true, onAcc: '#1a1400' },
+      css: `${FX} .a1{display:block;left:0;right:0;bottom:3px;height:8px;opacity:.75;background:linear-gradient(135deg,#ff4fa3 25%,transparent 25%) -4px 0/16px 8px,linear-gradient(225deg,#ff4fa3 25%,transparent 25%) -4px 0/16px 8px}
+        ${SKY} .s1{display:block;inset:0;opacity:.07;background:radial-gradient(circle,#ffcc00 0 3px,transparent 3.5px) 0 0/140px 120px,radial-gradient(circle,#00e0ff 0 3px,transparent 3.5px) 70px 60px/140px 120px}` },
+    cyber: { anim: true, art: true, accent: '#fcee0a',
+      bg: `repeating-linear-gradient(135deg,#fcee0a 0 7px,#0a0a0a 7px 14px) bottom/100% 4px no-repeat,linear-gradient(#00f0ff,#00f0ff) ${XC(40)} 12px/64px 2px no-repeat,linear-gradient(#ff2a6d,#ff2a6d) ${XC(-300)} 32px/90px 2px no-repeat,linear-gradient(#fcee0a,#fcee0a) ${XC(160)} 22px/36px 2px no-repeat,linear-gradient(90deg,#0b0b06,#16150a 60%,#1a1808)`,
+      sw: 'repeating-linear-gradient(135deg,#fcee0a 0 6px,#0a0a0a 6px 12px) bottom/100% 5px no-repeat,linear-gradient(#00f0ff,#00f0ff) 60% 30%/30% 2px no-repeat,linear-gradient(#ff2a6d,#ff2a6d) 20% 60%/35% 2px no-repeat,linear-gradient(90deg,#0b0b06,#1a1808)',
+      dark: { th: 58, ah: 57, as: '97%', fx: 'sweep', glow: true, onAcc: '#000' },
+      css: `${FX} .a1{display:block;inset:0;opacity:0;background:linear-gradient(#00f0ff,#00f0ff) ${XC(-130)} 16px/140px 3px no-repeat,linear-gradient(#ff2a6d,#ff2a6d) ${XC(-122)} 20px/140px 3px no-repeat,linear-gradient(#fcee0a,#fcee0a) ${XC(-80)} 30px/60px 2px no-repeat}
+        ${live('.a1', 'pqkGlitch 4s steps(1) both')}`,
+      page: 'html.pq-dark .page-heading h1,html.pq-dark .page-title{text-transform:uppercase;letter-spacing:.08em}' },
+    obsidian: { anim: true, accent: '#c084fc',
+      bg: 'linear-gradient(112deg,transparent 0 38%,rgba(255,255,255,.07) 44%,rgba(192,132,252,.18) 47%,transparent 54%),linear-gradient(112deg,transparent 0 60%,rgba(192,132,252,.09) 64%,transparent 70%),radial-gradient(ellipse 300px 60px at 85% -20%,rgba(168,85,247,.25),transparent 70%),linear-gradient(90deg,#040307,#0d0a14 60%,#110c1a)',
+      dark: { th: 268, ah: 270, as: '90%', fx: 'sweep', glow: true, onAcc: '#16081f' },
+      page: 'html.pq-dark .card{background-image:linear-gradient(160deg,hsl(268,10%,13%),hsl(268,8%,8%))}' },
+    sapphire: { anim: true, art: true, accent: '#3b82f6',
+      bg: `conic-gradient(from 200deg at ${XC(90)} 70px,rgba(147,197,253,.2) 0 18deg,transparent 18deg 36deg,rgba(96,165,250,.24) 36deg 52deg,transparent 52deg 74deg,rgba(191,219,254,.16) 74deg 92deg,transparent 92deg 112deg,rgba(59,130,246,.22) 112deg 130deg,transparent 130deg),linear-gradient(90deg,#030b24,#0a2160 60%,#0c2873)`,
+      sw: 'conic-gradient(from 200deg at 60% 130%,rgba(147,197,253,.3) 0 18deg,transparent 18deg 36deg,rgba(96,165,250,.34) 36deg 52deg,transparent 52deg 74deg,rgba(191,219,254,.24) 74deg 92deg,transparent 92deg 112deg,rgba(59,130,246,.3) 112deg 130deg,transparent 130deg),linear-gradient(90deg,#030b24,#0c2873)',
+      dark: { th: 222, ah: 217, as: '91%', fx: 'sweep', glow: true, onAcc: '#fff' },
+      css: `${FX} .a2{display:block;left:${XC(40)};top:9px;width:14px;height:14px;background:#fff;${SPARK};transform:scale(0);opacity:0}
+        ${live('.a2', 'pqkSpark 4s ease-in-out both')}` },
+    rosegold: { anim: true, accent: '#e8a598',
+      bg: 'linear-gradient(100deg,#1a0d0b 0%,#4a2824 25%,#b77a70 42%,#f1c4b9 48%,#b77a70 54%,#4a2824 75%,#2a1512 100%)',
+      dark: { th: 12, ah: 10, as: '62%', fx: 'sweep', glow: true, onAcc: '#2a1410' } },
+    starlight: { anim: true, art: true, accent: '#e2e8f0',
+      bg: 'linear-gradient(90deg,#05081a,#0d1433 60%,#121a40)',
+      sw: 'radial-gradient(1px 1px at 20% 30%,#fff,transparent),radial-gradient(1.5px 1.5px at 45% 70%,#fff,transparent),radial-gradient(1px 1px at 70% 25%,#fff,transparent),radial-gradient(1.5px 1.5px at 85% 60%,#e2e8f0,transparent),linear-gradient(160deg,transparent 40%,rgba(255,255,255,.6) 41%,transparent 43%),linear-gradient(90deg,#05081a,#121a40)',
+      dark: { th: 228, ah: 220, as: '30%', fx: 'none', stars: true, hstars: true, onAcc: '#0b1020' },
+      css: `${FX} .a1{display:block;left:${XC(-360)};top:8px;width:90px;height:1.5px;background:linear-gradient(90deg,transparent,#fff);opacity:0;transform:rotate(-14deg)}
+        ${live('.a1', 'pqkShoot 4s ease-out both')}` },
+    twilight: { anim: true, art: true, accent: '#fb7185',
+      bg: 'linear-gradient(90deg,#1e1b4b 0%,#4c1d95 30%,#9d174d 60%,#b8400f 85%,#c2410c 100%)',
+      dark: { th: 262, ah: 351, as: '95%', fx: 'sweep', glow: true, onAcc: '#2a050c' },
+      css: `${FX} .a1{display:block;left:${XC(-40)};top:28px;width:80px;height:80px;border-radius:50%;background:radial-gradient(circle,#fdba74,#fb7185 70%);opacity:.6;filter:blur(1px)}` },
+    plasma: { anim: true, art: true, accent: '#818cf8',
+      bg: 'radial-gradient(ellipse 180px 50px at 30% 50%,rgba(129,140,248,.55),transparent 70%),radial-gradient(ellipse 160px 44px at 62% 40%,rgba(56,189,248,.4),transparent 70%),radial-gradient(ellipse 120px 40px at 82% 70%,rgba(192,132,252,.35),transparent 70%),linear-gradient(90deg,#05051a,#100c3a 60%,#120e44)',
+      dark: { th: 240, ah: 234, as: '89%', fx: 'sweep', glow: true, onAcc: '#fff' },
+      css: `${FX} .a1{display:block;inset:0;opacity:.35;background:radial-gradient(70px 16px at 40% 50%,rgba(224,231,255,.6),transparent 70%),radial-gradient(56px 12px at 62% 42%,rgba(186,230,253,.55),transparent 70%)}
+        ${live('.a1', 'pqkPulseO 4s ease-in-out both')}` },
+    koi: { anim: true, art: true, accent: '#ff7a45',
+      bg: 'radial-gradient(circle at 30% 60%,transparent 10px,rgba(255,255,255,.07) 11px,transparent 13px,transparent 22px,rgba(255,255,255,.05) 23px,transparent 25px),radial-gradient(circle at 66% 30%,transparent 8px,rgba(255,255,255,.06) 9px,transparent 11px,transparent 19px,rgba(255,255,255,.04) 20px,transparent 22px),linear-gradient(90deg,#021422,#05304a 60%,#06334f)',
+      sw: 'radial-gradient(ellipse 14% 9% at 40% 40%,#ff8a4c 98%,transparent),radial-gradient(ellipse 12% 8% at 66% 66%,#f5f1ea 98%,transparent),radial-gradient(circle at 30% 60%,transparent 10px,rgba(255,255,255,.08) 11px,transparent 13px),linear-gradient(90deg,#021422,#06334f)',
+      dark: { th: 205, ah: 18, as: '100%', fx: 'sweep', glow: true, onAcc: '#1f0a02' },
+      css: `${FX} .a1,${FX} .a2{display:block;width:34px;height:13px;border-radius:50% 60% 60% 50%/50% 50% 50% 50%;transform:var(--r)}
+        ${FX} .a1::after,${FX} .a2::after{content:"";position:absolute;right:-9px;top:1px;width:12px;height:11px;background:inherit;clip-path:polygon(0 50%,100% 0,78% 50%,100% 100%)}
+        ${FX} .a1{left:${XC(-170)};top:15px;--r:rotate(-8deg);background:radial-gradient(ellipse 5px 4px at 30% 50%,#fff 98%,transparent),radial-gradient(ellipse 6px 4px at 66% 42%,#ff4d12 98%,transparent),#ff8a4c}
+        ${FX} .a2{left:${XC(0)};top:26px;--r:rotate(172deg);background:radial-gradient(ellipse 6px 4px at 34% 50%,#ff6a2a 98%,transparent),radial-gradient(ellipse 3px 3px at 64% 40%,#111 98%,transparent),#f5f1ea}
+        ${live('.a1', 'pqkSwim 4s ease-in-out both')}${live('.a2', 'pqkSwim 3.2s ease-in-out .8s both')}` },
+    hanami: { anim: true, art: true, accent: '#f9a8d4',
+      bg: 'radial-gradient(3.5px 2px at 24% 30%,#f472b6 98%,transparent),radial-gradient(3px 2px at 38% 72%,#ec4899 98%,transparent),radial-gradient(3.5px 2px at 47% 22%,#f9a8d4 98%,transparent),radial-gradient(3px 2px at 58% 64%,#f472b6 98%,transparent),radial-gradient(3.5px 2px at 67% 36%,#ec4899 98%,transparent),radial-gradient(260px 60px at 60% 0,rgba(249,168,212,.2),transparent 70%),linear-gradient(90deg,#14040d,#300a21 60%,#360d26)',
+      dark: { th: 330, ah: 327, as: '87%', fx: 'none', glow: true, onAcc: '#2a0618' },
+      css: `${FX} .a1{display:block;inset:0;opacity:.8;background-image:radial-gradient(3px 2px at 20% 20%,#f9a8d4 98%,transparent),radial-gradient(3.5px 2px at 70% 70%,#f472b6 98%,transparent);background-size:160px 52px}
+        ${live('.a1', 'pqkPetal 4s linear both')}` },
+    // purple (still)
+    blueprint: { sky: true, accent: '#60a5fa',
+      bg: 'linear-gradient(rgba(191,219,254,.14) 1px,transparent 1px) 0 0/14px 14px,linear-gradient(90deg,rgba(191,219,254,.14) 1px,transparent 1px) 0 0/14px 14px,linear-gradient(rgba(191,219,254,.34) 1px,transparent 1px) 0 0/70px 70px,linear-gradient(90deg,rgba(191,219,254,.34) 1px,transparent 1px) 0 0/70px 70px,linear-gradient(90deg,#06183a,#0b2c66)',
+      dark: { th: 218, ah: 213, as: '94%', fx: 'none', onAcc: '#04142b' },
+      css: `${SKY} .s1{display:block;inset:0;background:linear-gradient(hsla(213,94%,68%,.05) 1px,transparent 1px) 0 0/24px 24px,linear-gradient(90deg,hsla(213,94%,68%,.05) 1px,transparent 1px) 0 0/24px 24px}` },
+    amethyst: { accent: '#a855f7',
+      bg: `conic-gradient(from -40deg at ${XC(-340)} 70px,rgba(233,213,255,.26) 0 14deg,transparent 14deg 30deg,rgba(168,85,247,.45) 30deg 44deg,transparent 44deg 62deg,rgba(216,180,254,.3) 62deg 74deg,transparent 74deg),conic-gradient(from -24deg at ${XC(160)} 76px,rgba(216,180,254,.24) 0 10deg,transparent 10deg 24deg,rgba(168,85,247,.38) 24deg 40deg,transparent 40deg),linear-gradient(90deg,#12051d,#2a0d45 60%,#2e0f4d)`,
+      sw: 'conic-gradient(from -40deg at 30% 140%,rgba(233,213,255,.3) 0 14deg,transparent 14deg 30deg,rgba(168,85,247,.5) 30deg 44deg,transparent 44deg 62deg,rgba(216,180,254,.34) 62deg 74deg,transparent 74deg),linear-gradient(90deg,#12051d,#2e0f4d)',
+      dark: { th: 275, ah: 271, as: '91%', fx: 'none', onAcc: '#fff' } },
+    crimson: { accent: '#e11d48',
+      bg: 'linear-gradient(115deg,transparent 0 50%,rgba(225,29,72,.42) 50% 53%,transparent 53% 55%,rgba(225,29,72,.26) 55% 56.5%,transparent 56.5%),linear-gradient(90deg,#120208,#2e0712 60%,#33081a)',
+      dark: { th: 350, ah: 347, as: '90%', fx: 'none', onAcc: '#fff' } },
+    jade: { accent: '#2dd4bf',
+      bg: 'radial-gradient(140px 40px at 20% 30%,rgba(110,231,183,.24),transparent 70%),radial-gradient(200px 50px at 58% 90%,rgba(16,185,129,.22),transparent 70%),radial-gradient(120px 30px at 74% 10%,rgba(167,243,208,.16),transparent 70%),linear-gradient(90deg,#03150f,#062b20 60%,#073022)',
+      dark: { th: 168, ah: 172, as: '70%', fx: 'none', onAcc: '#03211b' } },
+    copper: { accent: '#e8803a',
+      bg: 'repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 1px,transparent 1px 3px),linear-gradient(100deg,#1c0d05 0%,#4a2310 30%,#9a5326 46%,#d08a55 50%,#9a5326 54%,#4a2310 75%,#2a1307 100%)',
+      dark: { th: 22, ah: 24, as: '80%', fx: 'none', onAcc: '#1a0a02' } },
+    terminal: { sky: true, accent: '#ffb000',
+      bg: 'repeating-linear-gradient(0deg,rgba(255,176,0,.08) 0 1px,transparent 1px 3px),radial-gradient(400px 60px at 50% 50%,rgba(255,176,0,.1),transparent 70%),linear-gradient(90deg,#0b0700,#1a1100)',
+      dark: { th: 38, ah: 41, as: '100%', fx: 'none', onAcc: '#1a1000' },
+      css: `${SKY} .s1{display:block;inset:0;background:repeating-linear-gradient(0deg,rgba(255,176,0,.03) 0 1px,transparent 1px 3px)}`,
+      page: 'html.pq-dark .page-heading h1,html.pq-dark .page-title{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:0;background:none;-webkit-background-clip:border-box;background-clip:border-box;color:#ffb000;text-shadow:0 0 10px rgba(255,176,0,.45)}html.pq-dark .page-heading h1::after{content:"_";animation:pqkBlink 1.1s steps(1) infinite}' },
+    orchid: { art: true, accent: '#e879f9',
+      bg: `radial-gradient(circle at ${XC(96)} 26px,rgba(240,171,252,.3),transparent 70px),radial-gradient(260px 60px at 14% 130%,rgba(217,70,239,.32),transparent 70%),linear-gradient(90deg,#18051d,#350b3f 60%,#3a0d45)`,
+      sw: 'radial-gradient(circle at 60% 30%,rgba(250,232,255,.6) 0 5px,transparent 5.5px),radial-gradient(circle at 72% 46%,rgba(250,232,255,.5) 0 5px,transparent 5.5px),radial-gradient(circle at 66% 66%,rgba(250,232,255,.42) 0 5px,transparent 5.5px),radial-gradient(circle at 54% 66%,rgba(250,232,255,.42) 0 5px,transparent 5.5px),radial-gradient(circle at 48% 46%,rgba(250,232,255,.5) 0 5px,transparent 5.5px),radial-gradient(circle at 60% 50%,#fde047 0 2.5px,transparent 3px),linear-gradient(90deg,#18051d,#3a0d45)',
+      dark: { th: 300, ah: 292, as: '91%', fx: 'none', onAcc: '#24062b' },
+      css: `${FX} .a1{display:block;left:${XC(74)};top:4px;width:44px;height:44px;opacity:.85;background:radial-gradient(circle at 50% 22%,rgba(250,232,255,.6) 0 8px,transparent 8.5px),radial-gradient(circle at 80% 44%,rgba(250,232,255,.5) 0 8px,transparent 8.5px),radial-gradient(circle at 68% 80%,rgba(250,232,255,.42) 0 8px,transparent 8.5px),radial-gradient(circle at 32% 80%,rgba(250,232,255,.42) 0 8px,transparent 8.5px),radial-gradient(circle at 20% 44%,rgba(250,232,255,.5) 0 8px,transparent 8.5px),radial-gradient(circle at 50% 54%,#fde047 0 4px,transparent 4.5px)}` },
+    honey: { accent: '#fbbf24',
+      bg: 'radial-gradient(circle,transparent 0 6px,rgba(251,191,36,.14) 6.5px 7.5px,transparent 8px) 0 0/18px 15.6px,radial-gradient(circle,transparent 0 6px,rgba(251,191,36,.14) 6.5px 7.5px,transparent 8px) 9px 7.8px/18px 15.6px,linear-gradient(90deg,#110b02,#2a1c04 60%,#2e1f06)',
+      dark: { th: 40, ah: 43, as: '96%', fx: 'none', onAcc: '#1a1000' } },
+    tidal: { accent: '#22d3ee',
+      bg: 'radial-gradient(22px 10px at 50% 100%,transparent 70%,rgba(165,243,252,.17) 75%,transparent 86%) 0 0/30px 12px,radial-gradient(22px 10px at 50% 100%,transparent 70%,rgba(165,243,252,.1) 75%,transparent 86%) 15px 6px/30px 12px,linear-gradient(90deg,#02121a,#06303f 60%,#063645)',
+      dark: { th: 192, ah: 188, as: '86%', fx: 'none', onAcc: '#031a1f' } },
+    nightshade: { art: true, accent: '#a3e635',
+      bg: 'radial-gradient(220px 50px at 56% 130%,rgba(163,230,53,.25),transparent 70%),radial-gradient(circle at 30% -40%,rgba(126,34,206,.45),transparent 50%),linear-gradient(90deg,#0d0515,#220e36 60%,#26103d)',
+      sw: 'radial-gradient(circle at 46% 46%,#ede9fe 0 1.5px,transparent 2px),radial-gradient(circle at 50% 52%,#6d28d9 0 7px,transparent 7.5px),radial-gradient(circle at 60% 36%,#ede9fe 0 1.5px,transparent 2px),radial-gradient(circle at 64% 42%,#5b21b6 0 7px,transparent 7.5px),radial-gradient(220px 50px at 56% 130%,rgba(163,230,53,.3),transparent 70%),linear-gradient(90deg,#0d0515,#26103d)',
+      dark: { th: 278, ah: 84, as: '78%', fx: 'none', onAcc: '#141a05' },
+      css: `${FX} .a1{display:block;left:${XC(60)};top:8px;width:48px;height:34px;background:radial-gradient(10px 4px at 36px 6px,#a3e635 98%,transparent),linear-gradient(#a3e635,#a3e635) 26px 2px/2px 8px no-repeat,radial-gradient(circle at 10px 18px,#ede9fe 0 1.6px,transparent 2px),radial-gradient(circle at 13px 21px,#6d28d9 0 7px,transparent 7.5px),radial-gradient(circle at 25px 12px,#ede9fe 0 1.6px,transparent 2px),radial-gradient(circle at 28px 15px,#5b21b6 0 7px,transparent 7.5px),radial-gradient(circle at 36px 21px,#ede9fe 0 1.6px,transparent 2px),radial-gradient(circle at 39px 24px,#4c1d95 0 7px,transparent 7.5px)}` },
+    // blue: light ones (Picqer stays light) and plain dark ones
+    mint: { tint: true, accent: '#0d9488', line: '#99f6e4', bg: 'linear-gradient(90deg,#134e4a,#0f766e 30%,#14b8a6 50%,#0f766e 70%,#134e4a)' },
+    lavender: { tint: true, accent: '#7c3aed', line: '#ddd6fe', bg: 'linear-gradient(90deg,#2e1065,#5b21b6 30%,#8b5cf6 50%,#5b21b6 70%,#2e1065)' },
+    peach: { tint: true, accent: '#ea580c', line: '#fed7aa', bg: 'linear-gradient(90deg,#431407,#9a3412 30%,#f97316 50%,#9a3412 70%,#431407)' },
+    slate: { tint: true, accent: '#475569', line: '#cbd5e1', bg: 'linear-gradient(90deg,#0f172a,#1e293b 40%,#334155 60%,#1e293b)' },
+    lemon: { tint: true, accent: '#facc15', onAcc: '#1a1400', link: '#a16207', line: '#fef08a', bg: 'linear-gradient(90deg,#3f2d02,#854d0e 30%,#ca8a04 50%,#854d0e 70%,#3f2d02)' },
+    coral: { tint: true, accent: '#e11d48', line: '#fecdd3', bg: 'linear-gradient(90deg,#4c0519,#9f1239 30%,#f43f5e 50%,#9f1239 70%,#4c0519)' },
+    sand: { tint: true, accent: '#a87a3c', line: '#f5e6c8', bg: 'linear-gradient(90deg,#2b1f10,#6b4f2a 30%,#b08646 50%,#6b4f2a 70%,#2b1f10)', page: 'body,.layout{background-color:#f6f2ea !important}' },
+    berry: { tint: true, accent: '#c026d3', line: '#f5d0fe', bg: 'linear-gradient(90deg,#3b0764,#86198f 30%,#c026d3 50%,#86198f 70%,#3b0764)' },
+    denim: { tint: true, accent: '#3b5bdb', line: '#e8b04b', bg: 'repeating-linear-gradient(45deg,rgba(255,255,255,.05) 0 2px,transparent 2px 5px),repeating-linear-gradient(-45deg,rgba(0,0,0,.14) 0 2px,transparent 2px 5px),linear-gradient(90deg,#1a2347,#2b3f7e 50%,#1f2d5c)', page: '.layout-header{box-shadow:none !important;border-bottom:2px dashed #e8b04b}' },
+    checkered: { tint: true, art: true, accent: '#ef4444', line: '#ffffff', bg: 'linear-gradient(90deg,#0b0b0d,#1f2937)',
+      sw: 'repeating-conic-gradient(rgba(255,255,255,.2) 0 25%,transparent 0 50%) 0 0/10px 10px,linear-gradient(90deg,#0b0b0d,#1f2937)',
+      css: `${FX} .a1{display:block;left:25%;width:50%;top:0;bottom:0;background:repeating-conic-gradient(rgba(255,255,255,.16) 0 25%,transparent 0 50%) 0 0/13px 13px;-webkit-mask:linear-gradient(90deg,transparent,#000 30%,#000 70%,transparent);mask:linear-gradient(90deg,transparent,#000 30%,#000 70%,transparent)}` },
+    camo: { tint: true, accent: '#5d7030', line: '#c2b280', bg: 'radial-gradient(30px 11px at 40px 16px,#5f6b2e 98%,transparent) 0 0/170px 52px,radial-gradient(22px 9px at 62px 22px,#5f6b2e 98%,transparent) 0 0/170px 52px,radial-gradient(38px 13px at 120px 40px,#262c12 98%,transparent) 0 0/230px 52px,radial-gradient(18px 8px at 150px 30px,#262c12 98%,transparent) 0 0/230px 52px,radial-gradient(26px 10px at 70px 8px,#76843f 98%,transparent) 0 0/190px 52px,radial-gradient(16px 7px at 30px 44px,#8a7a52 98%,transparent) 0 0/250px 52px,linear-gradient(90deg,#3a4320,#47522a)' },
+    navy: { accent: '#38bdf8', bg: 'linear-gradient(90deg,#06102a,#0f2150)', dark: { th: 218, ah: 199, as: '89%', fx: 'none', onAcc: '#04121c' } },
+    mono: { accent: '#f4f4f5', bg: 'linear-gradient(90deg,#09090b,#18181b)', dark: { th: 220, ah: 220, as: '10%', fx: 'none', onAcc: '#0a0a0a' } },
+    wine: { accent: '#fda4af', bg: 'linear-gradient(90deg,#1a0509,#3b0a16)', dark: { th: 345, ah: 351, as: '95%', fx: 'none', onAcc: '#2a050c' } },
+    olive: { accent: '#e2c044', bg: 'linear-gradient(90deg,#0f1206,#232b0e)', dark: { th: 75, ah: 46, as: '74%', fx: 'none', onAcc: '#1a1400' } },
   };
   // skins belong to a Picqer account: saved per user id on this PC
   const LS_SKIN = 'pqsuite_skin_v2';
   const skinOf = (uid) => ((lsGet(LS_SKIN, null) || {})[String(uid || '')] || null);
-  const skinSave = (uid, id) => { if (!uid) return; const all = lsGet(LS_SKIN, null) || {}; all[String(uid)] = { id: id || null, at: Date.now() }; lsSet(LS_SKIN, all); };
+  const skinSave = (uid, id, color) => { if (!uid) return; const all = lsGet(LS_SKIN, null) || {}; all[String(uid)] = { id: id || null, color: color || null, at: Date.now() }; lsSet(LS_SKIN, all); };
 
   // ---------- dark skins: the whole of Picqer dark in the skin's colors ----------
   //  skins/dark.css (on GitHub) = every color of Picqer's own CSS turned dark, made from picqer.css, with the
@@ -5203,6 +5441,59 @@
     @keyframes pqStB{from{opacity:.55}to{opacity:.15}}
     #pq-stars.still i{animation:none !important}
     @media (prefers-reduced-motion:reduce){#pq-stars i{animation:none !important}}`;
+  // skins 2.0: <i> layers in the header (#pq-void-fx) and a still sky behind the page (#pq-sky).
+  // Everything moves only during the burst (4 s every 11 s, class .live / html.pq-live), like the old fx.
+  const ART_CSS = `
+    #pq-void-fx{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+    #pq-void-fx i{position:absolute;display:none}
+    #pq-sky{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;contain:strict}
+    #pq-sky i{position:absolute;display:none}
+    html.pq-skyon body,html.pq-skyon .layout{background:transparent !important}
+    #pq-sky .sg{display:block;inset:0;background:radial-gradient(ellipse at 88% -12%,color-mix(in srgb,var(--acc) 15%,transparent),transparent 55%),radial-gradient(ellipse at -5% 112%,color-mix(in srgb,var(--acc) 10%,transparent),transparent 50%)}
+    @keyframes pqkSpin45{from{transform:rotate(0)}to{transform:rotate(45deg)}}
+    @keyframes pqkRing{0%{transform:scale(.3);opacity:.9}78%,100%{transform:scale(5);opacity:0}}
+    @keyframes pqkRise{0%{transform:translateY(0);opacity:0}11%{opacity:1}83%{opacity:.9}100%{transform:translateY(-50%);opacity:0}}
+    @keyframes pqkDisk{from{transform:rotate(-12deg) scaleY(.22) rotate(0)}to{transform:rotate(-12deg) scaleY(.22) rotate(360deg)}}
+    @keyframes pqkWave{0%,100%{transform:skewX(0) translateX(0)}33%{transform:skewX(14deg) translateX(-24px)}66%{transform:skewX(-10deg) translateX(12px)}}
+    @keyframes pqkSpark{0%,44%,100%{transform:scale(0) rotate(0);opacity:0}17%{transform:scale(1) rotate(45deg);opacity:1}}
+    @keyframes pqkGrid{from{background-position:0 0,0 0}to{background-position:0 0,0 28px}}
+    @keyframes pqkFall{0%{transform:translateY(0);opacity:.35}11%,89%{opacity:1}100%{transform:translateY(55px);opacity:.35}}
+    @keyframes pqkDrop{from{background-position:0 0}to{background-position:-18px 90px}}
+    @keyframes pqkBolt{0%,25%{opacity:0}28%{opacity:1}31%{opacity:.15}35%{opacity:1}42%,100%{opacity:0}}
+    @keyframes pqkGlow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.35)}}
+    @keyframes pqkSnow{from{transform:translateY(0)}to{transform:translateY(52px)}}
+    @keyframes pqkSnowP{from{transform:translateY(0)}to{transform:translateY(260px)}}
+    @keyframes pqkFoil{from{background-position:0 0}to{background-position:400px 0}}
+    @keyframes pqkPulse{0%{transform:translateX(0);opacity:0}8%{opacity:1}83%{transform:translateX(var(--dx));opacity:1}92%,100%{transform:translateX(var(--dx));opacity:0}}
+    @keyframes pqkBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+    @keyframes pqkGlitch{0%,11%{opacity:0;transform:none}14%{opacity:1;transform:translateX(-14px)}17%{opacity:0}25%{opacity:1;transform:translateX(10px)}28%,100%{opacity:0;transform:none}}
+    @keyframes pqkShoot{0%,17%{opacity:0;transform:rotate(-14deg) translateX(0)}22%{opacity:1}50%,100%{opacity:0;transform:rotate(-14deg) translateX(280px)}}
+    @keyframes pqkSwim{0%,100%{transform:var(--r) translateX(0)}50%{transform:var(--r) translateX(-14px)}}
+    @keyframes pqkPetal{from{background-position:0 0}to{background-position:-160px 52px}}
+    @keyframes pqkPulseO{0%,100%{opacity:.35}50%{opacity:.95}}
+    @keyframes pqkBlink{0%,49%{opacity:1}50%,100%{opacity:0}}
+    @media (prefers-reduced-motion:reduce){#pq-void-fx i,#pq-sky i,.page-heading h1::after{animation:none !important}}`;
+  // light skins with header art: the header holds the layer like the dark ones do
+  const LIGHT_ART = '.layout-header{position:relative;overflow:hidden}.layout-header > *:not(#pq-void-fx){position:relative;z-index:1}';
+  // ---------- colors (like Brawlhalla colors): paint an animated skin in other colors. Voidescent = red and black. ----------
+  // The skin keeps its art and movement; the header art and the sky go through a red/black filter, Picqer itself gets the
+  // Voidescent colors, and there are always stars (the Voidescent night).
+  const VOID = { th: 345, ah: 348, as: '100%', acc: '#ff0034', on: '#fff', hbg: 'linear-gradient(90deg,#08080b,#1d040b)' };
+  const VOID_CSS = (k) => `
+    #pq-void-fx .bgx{display:block;inset:0;background:${k.bg}}
+    #pq-void-fx,#pq-sky{filter:grayscale(1) sepia(1) hue-rotate(-50deg) saturate(5) brightness(.78) contrast(1.25)}
+    html.pq-dark .card{background-image:linear-gradient(90deg,transparent,rgba(255,0,52,.65),transparent);background-size:100% 1px;background-repeat:no-repeat}`;
+  // animated = moves (light sweep, glow orb or its own art): only those come in a color
+  const animated = (k) => !!(k && k.dark && (k.anim || (k.dark.fx && k.dark.fx !== 'none')));
+  function skyOn(k, vd) {
+    const glow = !!(k.dark && k.dark.glow && !(k.dark.stars || vd));
+    if (!(k.sky || glow) || !document.body || !document.documentElement.classList.contains('pq-skyon')) return;
+    if (document.getElementById('pq-sky')) return;
+    const d = document.createElement('div');
+    d.id = 'pq-sky';
+    d.innerHTML = (glow ? '<i class="sg"></i>' : '') + (k.sky ? '<i class="s1"></i><i class="s2"></i>' : '');
+    document.body.prepend(d);
+  }
   function starsOn() {
     if (!document.documentElement.classList.contains('pq-starry') || document.getElementById('pq-stars') || !document.body) return !!document.getElementById('pq-stars');
     const d = document.createElement('div');
@@ -5243,15 +5534,21 @@
     }
     return c ? c.css : '';
   }
-  function skinFx(kind) {
+  function skinFx(k, vd) {
+    if (!k) return true;
     starsOn();
-    if (kind === 'none') return true; // cheap skins: no movement at all
+    skyOn(k, vd);
+    const kind = (k.dark && k.dark.fx) || 'none';
+    const hst = kind === 'full' || !!(k.dark && k.dark.hstars);
+    if (kind === 'none' && !k.art && !hst && !vd) return true; // cheap skins: nothing in the header
     const h = document.querySelector('.layout-header');
     if (!h || h.querySelector('#pq-void-fx')) return !!h;
     const fx = document.createElement('div');
     fx.id = 'pq-void-fx';
-    fx.innerHTML = kind === 'full' ? '<div class="orb"></div><div class="st"></div><div class="st b"></div><div class="sw"></div>' : '<div class="sw"></div>';
+    fx.innerHTML = (vd ? '<i class="bgx"></i>' : '') + (kind === 'full' ? '<div class="orb"></div>' : '') + (hst ? '<div class="st"></div><div class="st b"></div>' : '')
+      + (k.art ? '<i class="a1"></i><i class="a2"></i><i class="a3"></i>' : '') + (kind !== 'none' ? '<div class="sw"></div>' : '');
     h.prepend(fx);
+    if (!animated(k)) return true;
     // movement in bursts (4 s every 11 s, never in a hidden tab): looks alive, costs the PC ~nothing in between
     const ON = +window.__pqFxOn || 4000, EVERY = +window.__pqFxEvery || 11000;
     const burst = () => {
@@ -5265,39 +5562,52 @@
   const SKIN_VARS = ['--th', '--ah', '--as', '--acc', '--on-acc', '--hbg'];
   const LS_SKIN_LAST = 'pqsuite_skin_last_v1'; // the skin this PC showed last: put on right away on the next page (no white flash)
   let skinNow = EARLY_SKIN, skinBuilt = false;
-  window.addEventListener('pq-flags', () => { skinBuilt = false; applySkin(ON_LOGIN ? null : (skinOf(ME.id) || {}).id); }); // skins switched off / on for everyone
-  function applySkin(id) {
-    id = SKIN_LOOK[id] && !flagOff('skins') && can('skins') ? id : null; // off for everyone (Shift+9) or not for this team
+  window.addEventListener('pq-flags', () => { skinBuilt = false; const m = ON_LOGIN ? {} : (skinOf(ME.id) || {}); applySkin(m.id, m.color); }); // skins switched off / on for everyone
+  // color = 'voidescent' or nothing · only animated skins take a color
+  function applySkin(id, color) {
+    if (id === 'voidescent') { id = 'eclipse'; color = 'voidescent'; } // the old Voidescent skin = Eclipse in the Voidescent color
+    id = SKIN_LOOK[id] && !SKIN_LOOK[id].color && !flagOff('skins') && can('skins') ? id : null; // off for everyone (Shift+9) or not for this team
+    const k = SKIN_LOOK[id];
+    const vd = !!(k && color === 'voidescent' && animated(k));
+    const key = id ? id + (vd ? '+void' : '') : null;
     // the early skin (from the last page) can be from an older version: rebuild it once per page
-    if (skinNow === id && skinBuilt) { if (id && SKIN_LOOK[id].dark) skinFx(SKIN_LOOK[id].dark.fx); return; }
-    skinNow = id;
+    if (skinNow === key && skinBuilt) { if (k) skinFx(k, vd); return; }
+    skinNow = key;
     skinBuilt = true;
     if (!id) lsSet(LS_SKIN_LAST, null);
-    ['pq-skin', 'pq-skin-dark', 'pq-void-fx', 'pq-stars'].forEach((x) => document.getElementById(x)?.remove());
+    ['pq-skin', 'pq-skin-dark', 'pq-void-fx', 'pq-stars', 'pq-sky'].forEach((x) => document.getElementById(x)?.remove());
     const root = document.documentElement;
-    root.classList.remove('pq-dark', 'pq-starry');
+    root.classList.remove('pq-dark', 'pq-starry', 'pq-skyon', 'pq-void', 'pq-live');
     SKIN_VARS.forEach((v) => root.style.removeProperty(v));
-    const k = SKIN_LOOK[id];
     if (!k) return;
+    const extras = (k.css || '') + (vd ? VOID_CSS(k) : k.page || '');
+    const crown = k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : '';
+    const fxWait = () => { if (!skinFx(k, vd)) { let n = 0; const iv = setInterval(() => { if (skinFx(k, vd) || ++n > 30) clearInterval(iv); }, 500); } };
     if (k.dark) {
-      root.classList.add('pq-dark');
-      if (k.dark.stars) root.classList.add('pq-starry');
-      const vars = { '--th': String(k.dark.th), '--ah': String(k.dark.ah), '--as': k.dark.as, '--acc': k.accent, '--on-acc': k.dark.onAcc || (id === 'carbon' || id === 'gold' || id === 'crown' ? '#111' : '#fff'), '--hbg': k.bg };
+      const stars = !!(k.dark.stars || vd), sky = !!(k.sky || (k.dark.glow && !stars));
+      const cls = [stars && 'pq-starry', sky && 'pq-skyon', vd && 'pq-void'].filter(Boolean);
+      root.classList.add('pq-dark', ...cls);
+      const P = vd ? VOID : { th: k.dark.th, ah: k.dark.ah, as: k.dark.as, acc: k.accent, on: k.dark.onAcc || (id === 'carbon' || id === 'gold' || id === 'crown' ? '#111' : '#fff'), hbg: k.bg };
+      const vars = { '--th': String(P.th), '--ah': String(P.ah), '--as': P.as, '--acc': P.acc, '--on-acc': P.on, '--hbg': P.hbg };
       Object.entries(vars).forEach(([v, x]) => root.style.setProperty(v, x));
-      const base = DARK_BASE + (k.dark.fx === 'none' ? STILL_CSS : '') + (k.dark.stars ? STARS_CSS : '') + (k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : '');
+      const arty = k.art || sky || vd || k.dark.hstars;
+      const base = DARK_BASE + (animated(k) ? '' : STILL_CSS) + (stars ? STARS_CSS : '') + (arty ? ART_CSS : '') + extras + crown;
       addStyle('pq-skin-dark', darkCss());
       addStyle('pq-skin', base);
-      lsSet(LS_SKIN_LAST, { id, vars, base, cls: k.dark.stars ? 'pq-starry' : '' });
-      if (!skinFx(k.dark.fx)) { let n = 0; const iv = setInterval(() => { if (skinFx(k.dark.fx) || ++n > 30) clearInterval(iv); }, 500); }
+      lsSet(LS_SKIN_LAST, { id: key, vars, base, cls: cls.join(' ') });
+      fxWait();
       return;
     }
+    const acc = k.accent, link = k.link || `color-mix(in srgb,${acc} 72%,#000)`;
     const light = `
-      .layout-header{background:${k.bg} !important;box-shadow:inset 0 -3px 0 ${k.line || k.accent} !important}
-      .btn-primary,.btn-primary:hover,.btn-primary:focus{background:${k.accent} !important;border-color:${k.accent} !important}
-      .card{border-top:2px solid ${k.accent} !important}
-      ${k.crown ? '.layout-header-account .d-mobile-none::before{content:"👑 "}' : ''}`;
+      .layout-header{background:${k.bg} !important;box-shadow:inset 0 -3px 0 ${k.line || acc} !important}
+      .btn-primary,.btn-primary:hover,.btn-primary:focus{background:${acc} !important;border-color:${acc} !important${k.onAcc ? `;color:${k.onAcc} !important` : ''}}
+      .card{border-top:2px solid ${acc} !important}
+      ${k.tint ? `.menu a.active,.menu button.active{color:${link} !important}.layout-content a:not(.btn){color:${link}}` : ''}
+      ${k.art ? LIGHT_ART + ART_CSS : ''}${extras}${crown}`;
     addStyle('pq-skin', light);
-    lsSet(LS_SKIN_LAST, { id, base: light });
+    lsSet(LS_SKIN_LAST, { id: key, base: light });
+    if (k.art) fxWait();
   }
 
 
@@ -5305,6 +5615,10 @@
   const RARITY = { midnight: '#4b69ff', forest: '#4b69ff', ocean: '#4b69ff', sakura: '#4b69ff', arctic: '#4b69ff', sunset: '#8847ff', gold: '#8847ff', emerald: '#8847ff',
     aurora: '#d32ce6', lava: '#d32ce6', nebula: '#eb4b4b', neon: '#eb4b4b', crown: '#eb4b4b', carbon: '#eb4b4b', voidescent: '#e4ae39',
     phantom: '#d32ce6', inferno: '#eb4b4b', celestial: '#e4ae39', eclipse: '#e4ae39' };
+  for (const [col, ids] of [['#4b69ff', 'mint lavender peach slate lemon coral sand berry denim checkered camo navy mono wine olive'],
+    ['#8847ff', 'blueprint amethyst crimson jade copper terminal orchid honey tidal nightshade'], ['#d32ce6', 'retro cyber obsidian sapphire rosegold starlight twilight plasma koi hanami'],
+    ['#eb4b4b', 'synthwave coderain stormcell toxic bloodmoon frostbite hologram circuit abyss'], ['#e4ae39', 'supernova singularity dragonfire milkyway borealis diamond']]) ids.split(' ').forEach((x) => { RARITY[x] = col; });
+  const swOf = (id) => { const k = SKIN_LOOK[id]; return (k && (k.sw || k.bg)) || '#334155'; }; // the little preview of a skin
   // ---------- newer version on GitHub? Tampermonkey only checks about once a day, so tell the person ----------
   const verNum = (v) => String(v || '0').split('.').map((x) => +x || 0);
   const newer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
@@ -5765,7 +6079,7 @@
       if (!p) return `${back}<h3 class="lb-who">${nm}</h3><div class="lb-meta">${whoErr ? '⚠ ' + escHtml(whoErr) : 'Loading…'}</div>`;
       const t = p.today || {}, maxW = Math.max(1, ...(p.week || []).map((w) => w.points || 0));
       const tile = (v, l) => `<div class="pf-tile"><b>${v}</b><span>${l}</span></div>`;
-      return `${back}<div class="pf-head"><div><h3 class="lb-who">${nm}</h3><div class="lb-meta" style="margin:2px 0 0">${p.king ? `👑 king right now · ${p.king.min} min` : p.rankToday ? `#${p.rankToday} today of ${p.ofToday}` : 'nothing closed today'}${p.skin ? ' · wears ' + escHtml(p.skin) : ''}</div></div>
+      return `${back}<div class="pf-head"><div><h3 class="lb-who">${nm}</h3><div class="lb-meta" style="margin:2px 0 0">${p.king ? `👑 king right now · ${p.king.min} min` : p.rankToday ? `#${p.rankToday} today of ${p.ofToday}` : 'nothing closed today'}${p.skin ? ' · wears ' + escHtml(nameOfSkin(p.skin)) + (p.color ? ' · ' + escHtml(nameOfSkin(p.color)) : '') : ''}</div></div>
         <div class="pf-bal"><b>${int(p.balance)}</b><span>coins now</span></div></div>
         <div class="pf-tiles">
           ${tile(int(p.coins), 'coins earned in total')}${tile(int(p.spent), 'coins spent')}${tile(fmt(p.points), 'packing points in total')}${tile(int(p.picklists), 'closed in total')}
@@ -5852,7 +6166,20 @@
     // ---------- 🪙 panel: Inventory (drop crates, items) · Stats · Shop (skins left, skin crate right, CS-style reel) ----------
     let pfTab = 'inv', spinning = false;
     const nameOfSkin = (id) => ((prof && prof.skins) || []).find((x) => x.id === id)?.name || id;
+    // a color card (Voidescent): buy it, turn it on / off, try it on your skin
+    function colorCard(p, s) {
+      const own = (p.owned || []).includes(s.id), on = ('myColor' in p ? p.myColor : p.color) === s.id;
+      const worn = 'mySkin' in p ? p.mySkin : p.skin;
+      const btn = own ? (on ? '<button data-pc="off">Turn off</button>' : `<button class="wear" data-pc="on" data-s="${s.id}">Turn on</button>`)
+        : s.limit && !s.left ? '<button disabled>Sold out</button>'
+        : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>${int(s.price)}</button>`;
+      return `<div class="sh-skin sh-color${on ? ' on' : ''}${own ? ' own' : ''}" style="--r:${RARITY[s.id] || '#e4ae39'}">
+        <em class="sh-ltd">★ ${s.limit ? `${s.left || 0}/${s.limit} · ` : ''}COLOR</em>
+        <div class="sh-sw" style="background:${swOf(s.id)}">${on ? '<span>✓</span>' : ''}</div>
+        <div class="sh-in"><b>${escHtml(s.name)}</b>${on && !animated(SKIN_LOOK[worn]) ? '<small>only shows on ✦ skins</small>' : ''}</div><button class="sh-try" data-tryc="${s.id}" title="try it on your skin for 10 sec">👁</button>${btn}</div>`;
+    }
     function skinCard(p, s) {
+      if (s.color) return colorCard(p, s);
       if (!SKIN_LOOK[s.id]) return `<div class="sh-skin"><div class="sh-sw" style="background:repeating-linear-gradient(135deg,#334155 0 8px,#3f4b5f 8px 16px)"></div><div class="sh-in"><b>${escHtml(s.name)}</b><small>update the script</small></div></div>`;
       const worn = 'mySkin' in p ? p.mySkin : p.skin;
       const own = (p.owned || []).includes(s.id), on = worn === s.id, look = SKIN_LOOK[s.id];
@@ -5863,13 +6190,13 @@
         : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>${int(s.price)}</button>`;
       return `<div class="sh-skin${on ? ' on' : ''}${own ? ' own' : ''}" style="--r:${RARITY[s.id] || '#94a3b8'}">
         ${s.limit ? `<em class="sh-ltd">★ ${s.left || 0}/${s.limit}</em>` : s.passOnly ? '<em class="sh-only pass">PASS</em>' : s.crateOnly ? '<em class="sh-only">DROP</em>' : ''}
-        <div class="sh-sw" style="background:${look.bg}">${on ? '<span>✓</span>' : ''}</div>
-        <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}</b></div><button class="sh-try" data-try="${s.id}" title="try it on for 10 sec">👁</button>${btn}</div>`;
+        <div class="sh-sw" style="background:${swOf(s.id)}">${on ? '<span>✓</span>' : ''}</div>
+        <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}${animated(look) ? ' <i class="sh-anim" title="animated · can get a color">✦</i>' : ''}</b></div><button class="sh-try" data-try="${s.id}" title="try it on for 10 sec">👁</button>${btn}</div>`;
     }
     function spinHtml(p) {
       if (!p.crate) return '';
       const odds = p.crate.odds || [];
-      const list = `<div class="sp-list">${odds.slice().sort((a, b) => a.pct - b.pct).map((o) => `<div class="sp-it" style="--r:${RARITY[o.id] || '#94a3b8'}"><i style="background:${(SKIN_LOOK[o.id] || {}).bg || '#334155'}"></i><b>${escHtml(nameOfSkin(o.id))}</b><small>${String(o.pct).replace('.', ',')}%</small>${(p.owned || []).includes(o.id) ? '<em>✓</em>' : ''}<button class="sh-try" data-try="${o.id}" title="try it on for 10 sec">👁</button></div>`).join('')}</div>`;
+      const list = `<div class="sp-list">${odds.slice().sort((a, b) => a.pct - b.pct).map((o) => `<div class="sp-it" style="--r:${RARITY[o.id] || '#94a3b8'}"><i style="background:${swOf(o.id)}"></i><b>${escHtml(nameOfSkin(o.id))}</b><small>${String(o.pct).replace('.', ',')}%</small>${(p.owned || []).includes(o.id) ? '<em>✓</em>' : ''}<button class="sh-try" data-try="${o.id}" title="try it on for 10 sec">👁</button></div>`).join('')}</div>`;
       return `<div class="sh-crate sp-card">
         <div class="sp-name"><b>Skin crate</b>${ii('crate')}</div>
         <div class="cr-win"><div class="cr-strip">${odds.slice().reverse().concat(odds).map((o) => reelCard(o.id)).join('')}</div><div class="cr-mark"></div></div>
@@ -5878,7 +6205,7 @@
         <small>${int(p.crates || 0)} opened</small>
       </div>${list}`;
     }
-    const reelCard = (id) => { const look = SKIN_LOOK[id] || { bg: '#334155' }; return `<div class="cr-it" style="--r:${RARITY[id] || '#94a3b8'}"><div class="cr-sw" style="background:${look.bg}"></div><b>${escHtml(nameOfSkin(id))}</b></div>`; };
+    const reelCard = (id) => `<div class="cr-it" style="--r:${RARITY[id] || '#94a3b8'}"><div class="cr-sw" style="background:${swOf(id)}"></div><b>${escHtml(nameOfSkin(id))}</b></div>`;
     function statsHtml(p) {
       const t = p.today || {}, maxW = Math.max(1, ...(p.week || []).map((w) => w.points || 0));
       const tile = (v, l) => `<div class="pf-tile"><b>${v}</b><span>${l}</span></div>`;
@@ -5923,6 +6250,17 @@
       if (pfTab === 'inv') wireInv(ov);
       if (pfTab === 'set') wireSet(ov);
       ov.querySelectorAll('[data-try]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); trySkin(b.dataset.try); }));
+      // a color: try it on the skin you wear (or on Eclipse when that one doesn't move), turn it on / off
+      ov.querySelectorAll('[data-tryc]').forEach((b) => (b.onclick = (e) => {
+        e.stopPropagation();
+        const w = 'mySkin' in p ? p.mySkin : p.skin;
+        trySkin(animated(SKIN_LOOK[w]) ? w : 'eclipse', b.dataset.tryc);
+      }));
+      ov.querySelectorAll('[data-pc]').forEach((b) => b.addEventListener('click', async () => {
+        b.disabled = true;
+        const c = b.dataset.pc === 'on' ? b.dataset.s : null;
+        try { const j = await change('color', c); showProfile(j.err || (c ? `${nameOfSkin(c)} on ✓` : 'color off')); } catch (e) { showProfile('could not reach the middle stop'); }
+      }));
       if (pfTab === 'pass') wirePass(ov);
       if (pfTab === 'chat') wireChat(ov); else chatWatch(false);
       wireInfo(ov);
@@ -5962,7 +6300,8 @@
       const tot = odds.reduce((n, o) => n + o.pct, 0) || 1;
       const pick = () => { let x = Math.random() * tot; for (const o of odds) { if (x < o.pct) return o.id; x -= o.pct; } return odds[0] ? odds[0].id : j.won; };
       const N = 60, WIN = 52, W = 112;
-      const items = Array.from({ length: N }, (_, i) => (i === WIN ? j.won : i === WIN - 1 || i === WIN + 2 ? ['voidescent', 'carbon', 'crown'][Math.floor(Math.random() * 3)] : pick()));
+      const tease = odds.filter((o) => ['#e4ae39', '#eb4b4b'].includes(RARITY[o.id])).map((o) => o.id);
+      const items = Array.from({ length: N }, (_, i) => (i === WIN ? j.won : (i === WIN - 1 || i === WIN + 2) && tease.length ? tease[Math.floor(Math.random() * tease.length)] : pick()));
       const winEl = box.querySelector('.cr-win');
       const old = box.querySelector('.cr-strip');
       const strip = document.createElement('div');
@@ -5982,7 +6321,7 @@
         strip.style.transform = `translate3d(${-stop}px,0,0)`;
         strip.children[WIN].classList.add('won');
         if (coins && prof) coins.textContent = int(prof.balance);
-        const nm = escHtml(nameOfSkin(j.won)), rare = ['voidescent', 'carbon', 'crown'].includes(j.won);
+        const nm = escHtml(nameOfSkin(j.won)), rare = ['#e4ae39', '#eb4b4b'].includes(RARITY[j.won]);
         if (rare) box.classList.add('jackpot');
         box.querySelector('.cr-res').innerHTML = (rare ? '<b class="cr-jp">🔥 JACKPOT 🔥</b><br>' : '') + (j.dup
           ? `<b style="color:${RARITY[j.won]}">${nm}</b> · you already had it · <b>+${int(j.back)} coins</b>`
@@ -6264,6 +6603,8 @@
       @media (max-width:640px){.sh .ch-wrap{grid-template-columns:1fr;height:auto}.sh .ch-right{height:380px}}
       .pq-lbx .lb-bd{font-style:normal;font-size:12px;margin-left:5px;letter-spacing:1px}
       .sh .sh-skin{position:relative}
+      .sh .sh-anim{font-style:normal;font-size:11px;color:#ff4d6d;vertical-align:1px}
+      .sh .sh-color{box-shadow:0 0 0 1px rgba(255,0,52,.35),0 0 18px rgba(255,0,52,.16)}
       .sh .sh-try{position:absolute;top:6px;right:6px;width:26px;height:22px;border-radius:7px;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:12px;cursor:pointer;padding:0;margin:0}
       .sh .sh-skin .sh-try{margin:0}
       .sh .sp-list{max-width:640px;margin:10px auto 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px}
@@ -6357,8 +6698,8 @@
     function setProf(p) {
       if (!p) return p;
       prof = p;
-      skinSave(ME_ID, p.skin);
-      applySkin(p.skin);
+      skinSave(ME_ID, p.skin, p.color);
+      applySkin(p.skin, p.color);
       lsSet(LS_PROF, { id: ME_ID, at: Date.now(), p });
       if (lastBal != null && p.balance > lastBal + 0.0005) coinGain(p.balance - lastBal);
       lastBal = p.balance;
@@ -6479,6 +6820,7 @@
             <div class="iv-ppl">${tot ? ppl.map((r) => `<button data-tg="${escHtml(r.id)}" data-n="${escHtml(low(r.name))}" class="${ql && !low(r.name).includes(ql) ? 'hide' : ''}">${escHtml(r.name)}<small>${int(r.balance)} coins</small></button>`).join('') || '<div class="iv-empty">nobody yet</div>' : '<div class="iv-empty">Loading…</div>'}</div></div>`;
         }
       }
+      const mySkins = (p.skins || []).filter((s) => !s.color && (p.owned || []).includes(s.id)), myColors = (p.skins || []).filter((s) => s.color && (p.owned || []).includes(s.id));
       return `<div class="iv-top">${streakHtml(p)}<button class="iv-tr" data-trade title="Trade">🤝</button>${ii('trade')}</div>
         ${p.event && p.event.until > now ? `<div class="iv-ev">✨ x2 coins · ${leftTxt(p.event.until)}</div>` : ''}
         ${eff.length ? `<div class="iv-eff">${eff.map(([t, u, k]) => `<span class="${k}">${t} · ${leftTxt(u)}</span>`).join('')}</div>` : ''}
@@ -6487,8 +6829,9 @@
         ${crates.length ? `<div class="iv-grid">${crates.map(crateCard).join('')}</div>` : '<div class="iv-empty">–</div>'}
         <h3>Items <small>${items.length || ''}</small> ${ii('items')}</h3>
         ${items.length ? `<div class="iv-grid">${items.map(itemCard).join('')}</div>` : '<div class="iv-empty">–</div>'}
-        <h3>Themes <small>${(p.owned || []).length || ''}</small></h3>
-        ${(p.owned || []).length ? `<div class="sh-grid">${(p.skins || []).filter((s) => (p.owned || []).includes(s.id)).map((s) => skinCard(p, s)).join('')}</div>` : '<div class="iv-empty">–</div>'}`;
+        <h3>Themes <small>${mySkins.length || ''}</small></h3>
+        ${mySkins.length ? `<div class="sh-grid">${mySkins.map((s) => skinCard(p, s)).join('')}</div>` : '<div class="iv-empty">–</div>'}
+        ${myColors.length ? `<h3>Colors ${ii('colors')}</h3><div class="sh-grid">${myColors.map((s) => colorCard(p, s)).join('')}</div>` : ''}`;
     }
     function wireInv(ov) {
       ov.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => openDropCrate(b.dataset.open, b)));
@@ -6581,7 +6924,7 @@
     };
     const sfCoins = (n) => ({ col: '#e4ae39', html: `<div class="sf-ic">🪙</div><b>${int(n)}</b>` });
     const sfItem = (k) => ({ col: ITEM_COL[k] || '#94a3b8', html: `<div class="sf-ic">${ITEM_ICON[k] || '❔'}</div><b>${escHtml(itemDef(k).name)}</b>` });
-    const sfSkin = (id) => ({ col: RARITY[id] || '#94a3b8', html: `<div class="sf-sw" style="background:${(SKIN_LOOK[id] || {}).bg || '#334155'}"></div><b>${escHtml(nameOfSkin(id))}</b>` });
+    const sfSkin = (id) => ({ col: RARITY[id] || '#94a3b8', html: `<div class="sf-sw" style="background:${swOf(id)}"></div><b>${escHtml(nameOfSkin(id))}</b>` });
     function openStage(col, icon, title, odds) {
       const rv = document.createElement('div');
       rv.className = 'iv-rev';
@@ -6652,25 +6995,25 @@
 
     // ---------- 👁 try a skin for 10 sec (only on your screen) ----------
     let tryT = null;
-    function trySkin(id) {
+    function trySkin(id, color) {
       if (flagOff('skins') || !can('skins')) return toast('skins are off right now');
       clearInterval(tryT);
       document.getElementById('pq-try')?.remove();
       close('pq-pf-ov');
       skinBuilt = false;
-      applySkin(id);
+      applySkin(id, color);
       let left = 10;
       const pill = document.createElement('div');
       pill.id = 'pq-try';
-      pill.innerHTML = `<span>👁 ${escHtml(nameOfSkin(id))} · <b>${left}</b></span><button>stop</button>`;
+      pill.innerHTML = `<span>👁 ${escHtml(nameOfSkin(id))}${color ? ' · ' + escHtml(nameOfSkin(color)) : ''} · <b>${left}</b></span><button>stop</button>`;
       document.body.appendChild(pill);
-      const stop = () => { clearInterval(tryT); pill.remove(); skinBuilt = false; applySkin(prof ? prof.skin : (skinOf(ME_ID) || {}).id); openProfile(pfTab); };
+      const stop = () => { clearInterval(tryT); pill.remove(); skinBuilt = false; const m = skinOf(ME_ID) || {}; applySkin(prof ? prof.skin : m.id, prof ? prof.color : m.color); openProfile(pfTab); };
       pill.querySelector('button').onclick = stop;
       tryT = setInterval(() => { left--; const b = pill.querySelector('b'); if (b) b.textContent = left; if (left <= 0) stop(); }, 1000);
     }
 
     // ---------- 🎟 battle pass ----------
-    const rewardIc = (r) => (r.coins ? '🪙' : r.crate ? TIER_ICON[r.crate] || '📦' : r.item ? ITEM_ICON[r.item] || '❔' : r.skin ? `<i class="bp-sw" style="background:${(SKIN_LOOK[r.skin] || {}).bg || '#334155'}"></i>` : '');
+    const rewardIc = (r) => (r.coins ? '🪙' : r.crate ? TIER_ICON[r.crate] || '📦' : r.item ? ITEM_ICON[r.item] || '❔' : r.skin ? `<i class="bp-sw" style="background:${swOf(r.skin)}"></i>` : '');
     const rewardTxt = (r) => (r.coins ? `${int(r.coins)} coins` : r.crate ? `${tierName(r.crate)} crate` : r.item ? itemDef(r.item).name : r.skin ? `${nameOfSkin(r.skin)} skin` : '');
     const rewardCol = (r) => (r.coins ? '#e4ae39' : r.crate ? TIER_COL[r.crate] : r.item ? ITEM_COL[r.item] : r.skin ? RARITY[r.skin] || '#e4ae39' : '#94a3b8');
     function passHtml(p) {
@@ -6727,7 +7070,8 @@
         trade: '<b>Trade</b><p>pick someone · they accept · both put things in · both agree</p><p>changing anything = agree again</p>',
         pass: S ? `<b>${escHtml(S.name)}</b><p>20 XP per multi · 13 per single · 10 per pick point · ${int(S.per)} XP per level</p><p>rewards come in by themselves · bought later? you get every level you already reached</p><p>ends ${escHtml(S.ends.split('-').reverse().join('-'))} · level 25 = ${escHtml(nameOfSkin('eclipse'))}, only from the pass</p>` : '',
         crate: `<b>Skin crate</b>${((p.crate || {}).odds || []).map((o) => `<div class="ii-r"><i style="background:${RARITY[o.id] || '#94a3b8'}"></i>${escHtml(nameOfSkin(o.id))}<span>${String(o.pct).replace('.', ',')}%</span></div>`).join('')}<p>already have it: ¼ of its price back</p>`,
-        skins: '<b>Skins</b><p>change Picqer for your account · dark skins make all of it dark</p><p>★ limited · DROP = only from drop crates · PASS = only from the pass</p>',
+        skins: '<b>Skins</b><p>change Picqer for your account · dark skins make all of it dark</p><p>✦ = animated, can get a color · ★ limited · DROP = only from drop crates · PASS = only from the pass</p>',
+        colors: '<b>Colors</b><p>a color paints your animated skin (✦) in its own colors, the art and movement stay</p><p>Voidescent: red and black with stars · only 10 people can have it · on / off any time</p>',
         coins: '<b>Coins</b><p>1 per packing point · 1 per picking point · +20 a minute as king</p><p>boost and double event: x2 each · frozen: 0</p>',
       };
       return T[k] || '';
@@ -6948,7 +7292,7 @@
       const bits = [];
       if (o.coins) bits.push(`<span class="tr-chip on" style="--r:#e4ae39">🪙 ${int(o.coins)} coins</span>`);
       (o.items || []).forEach((x) => bits.push(`<span class="tr-chip on" style="--r:${trItemCol(x)}">${escHtml(trItemTxt(x))}</span>`));
-      (o.skins || []).forEach((s) => bits.push(`<span class="tr-chip on" style="--r:${RARITY[s] || '#94a3b8'}"><i style="background:${(SKIN_LOOK[s] || {}).bg || '#334155'}"></i>${escHtml(nameOfSkin(s))}</span>`));
+      (o.skins || []).forEach((s) => bits.push(`<span class="tr-chip on" style="--r:${RARITY[s] || '#94a3b8'}"><i style="background:${swOf(s)}"></i>${escHtml(nameOfSkin(s))}</span>`));
       return bits.join('') || '<span class="tr-none">nothing yet</span>';
     }
     async function tradeWin(t, nm) {
@@ -7003,7 +7347,7 @@
       const inv = prof.inv || [];
       const owned = (prof.owned || []);
       box.innerHTML = `<div class="tr-chips">${inv.map((x) => `<button class="tr-chip${trMine.uids.has(x.uid) ? ' on' : ''}" data-tu="${escHtml(x.uid)}" style="--r:${trItemCol(x)}">${escHtml(trItemTxt(x))}</button>`).join('') || '<span class="tr-none">no crates or items</span>'}</div>
-        <h3 class="tr-sub">Skins</h3><div class="tr-chips">${owned.map((s) => `<button class="tr-chip${trMine.skins.has(s) ? ' on' : ''}" data-ts="${escHtml(s)}" style="--r:${RARITY[s] || '#94a3b8'}"><i style="background:${(SKIN_LOOK[s] || {}).bg || '#334155'}"></i>${escHtml(nameOfSkin(s))}</button>`).join('') || '<span class="tr-none">no skins</span>'}</div>`;
+        <h3 class="tr-sub">Skins</h3><div class="tr-chips">${owned.map((s) => `<button class="tr-chip${trMine.skins.has(s) ? ' on' : ''}" data-ts="${escHtml(s)}" style="--r:${RARITY[s] || '#94a3b8'}"><i style="background:${swOf(s)}"></i>${escHtml(nameOfSkin(s))}</button>`).join('') || '<span class="tr-none">no skins</span>'}</div>`;
       box.querySelectorAll('[data-tu]').forEach((b) => (b.onclick = () => { const u = b.dataset.tu; trMine.uids.has(u) ? trMine.uids.delete(u) : trMine.uids.add(u); trMineRender(); trQueue(); }));
       box.querySelectorAll('[data-ts]').forEach((b) => (b.onclick = () => { const s = b.dataset.ts; trMine.skins.has(s) ? trMine.skins.delete(s) : trMine.skins.add(s); trMineRender(); trQueue(); }));
     }
@@ -8225,11 +8569,11 @@
     if (use('cardColor')) safe('cardColor', cardColor);
     // a new version: skin off, then on again after a moment (the same as doing it by hand, which fixes a bugged look)
     safe('skin', () => {
-      const id = ON_LOGIN ? null : (skinOf(ME.id) || {}).id;
+      const m = ON_LOGIN ? {} : (skinOf(ME.id) || {}), id = m.id || null;
       const fresh = lsGet('pqsuite_skin_ver_v1', '') !== SUITE_VERSION;
       lsSet('pqsuite_skin_ver_v1', SUITE_VERSION);
-      if (id && fresh) { applySkin(null); setTimeout(() => { skinBuilt = false; applySkin(id); }, 2500); }
-      else applySkin(id);
+      if (id && fresh) { applySkin(null); setTimeout(() => { skinBuilt = false; applySkin(id, m.color); }, 2500); }
+      else applySkin(id, m.color);
     });
     if (use('leaderboard')) safe('leaderboard', leaderboard);
     safe('teams', refreshTeams);

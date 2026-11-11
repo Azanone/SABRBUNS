@@ -11,21 +11,77 @@ export const MULTI = 2, SINGLE = 1.334;
 export const KING_MIN_POINTS = 21;   // green or better in the last 15 min
 export const KING_PER_MIN = 20;
 export const SKINS = [
+  // blue · common
   { id: 'midnight', name: 'Midnight', price: 500 },
+  { id: 'mint', name: 'Mint', price: 600 },
+  { id: 'lavender', name: 'Lavender', price: 600 },
+  { id: 'peach', name: 'Peach', price: 600 },
+  { id: 'slate', name: 'Slate', price: 700 },
+  { id: 'lemon', name: 'Lemon', price: 700 },
+  { id: 'coral', name: 'Coral', price: 700 },
   { id: 'forest', name: 'Forest', price: 800 },
   { id: 'ocean', name: 'Ocean', price: 800 },
+  { id: 'sand', name: 'Sand', price: 800 },
+  { id: 'berry', name: 'Berry', price: 800 },
+  { id: 'denim', name: 'Denim', price: 900 },
+  { id: 'checkered', name: 'Checkered', price: 1000 },
+  { id: 'camo', name: 'Camo', price: 1000 },
   { id: 'sakura', name: 'Sakura', price: 1200 },
   { id: 'arctic', name: 'Arctic', price: 1200 },
+  { id: 'navy', name: 'Navy', price: 1200 },
+  { id: 'mono', name: 'Mono', price: 1200 },
+  { id: 'wine', name: 'Wine', price: 1200 },
+  { id: 'olive', name: 'Olive', price: 1200 },
+  // purple
   { id: 'sunset', name: 'Sunset', price: 1500 },
   { id: 'emerald', name: 'Emerald', price: 3000 },
+  { id: 'blueprint', name: 'Blueprint', price: 3000 },
+  { id: 'amethyst', name: 'Amethyst', price: 3000 },
+  { id: 'crimson', name: 'Crimson', price: 3000 },
+  { id: 'jade', name: 'Jade', price: 3500 },
+  { id: 'honey', name: 'Honey', price: 3500 },
+  { id: 'tidal', name: 'Tidal', price: 3500 },
+  { id: 'orchid', name: 'Orchid', price: 3500 },
+  { id: 'copper', name: 'Copper', price: 4000 },
+  { id: 'terminal', name: 'Terminal', price: 4000 },
+  { id: 'nightshade', name: 'Nightshade', price: 4500 },
+  { id: 'gold', name: 'Gold', price: 8000 },
+  // pink
   { id: 'aurora', name: 'Aurora', price: 4000 },
   { id: 'lava', name: 'Lava', price: 6000 },
-  { id: 'gold', name: 'Gold', price: 8000 },
+  { id: 'starlight', name: 'Starlight', price: 6000 },
+  { id: 'retro', name: 'Retro', price: 6000 },
+  { id: 'twilight', name: 'Twilight', price: 6500 },
+  { id: 'hanami', name: 'Hanami', price: 7000 },
+  { id: 'obsidian', name: 'Obsidian', price: 7000 },
+  { id: 'sapphire', name: 'Sapphire', price: 7000 },
+  { id: 'plasma', name: 'Plasma', price: 7500 },
+  { id: 'rosegold', name: 'Rose Gold', price: 8000 },
+  { id: 'koi', name: 'Koi', price: 8000 },
+  { id: 'cyber', name: 'Cyber', price: 8000 },
+  // red
   { id: 'nebula', name: 'Nebula', price: 12000 },
   { id: 'crown', name: 'Crown', price: 15000 },
+  { id: 'toxic', name: 'Toxic', price: 18000 },
+  { id: 'frostbite', name: 'Frostbite', price: 18000 },
   { id: 'neon', name: 'Neon', price: 20000 },
+  { id: 'stormcell', name: 'Storm Cell', price: 20000 },
+  { id: 'circuit', name: 'Circuit', price: 20000 },
+  { id: 'abyss', name: 'Abyss', price: 20000 },
+  { id: 'coderain', name: 'Code Rain', price: 22000 },
+  { id: 'synthwave', name: 'Synthwave', price: 22000 },
   { id: 'carbon', name: 'Carbon', price: 25000 },
-  { id: 'voidescent', name: 'Voidescent', price: 50000, limit: 10 }, // limited edition: only 10 people can own it
+  { id: 'hologram', name: 'Hologram', price: 25000 },
+  { id: 'bloodmoon', name: 'Blood Moon', price: 25000 },
+  // gold
+  { id: 'dragonfire', name: 'Dragonfire', price: 40000 },
+  { id: 'milkyway', name: 'Milky Way', price: 40000 },
+  { id: 'supernova', name: 'Supernova', price: 45000 },
+  { id: 'borealis', name: 'Borealis', price: 45000 },
+  { id: 'singularity', name: 'Singularity', price: 50000 },
+  { id: 'diamond', name: 'Diamond', price: 60000 },
+  // a color, not a skin: paints any animated skin red and black (like Brawlhalla colors). Still only 10 people can own it.
+  { id: 'voidescent', name: 'Voidescent', price: 50000, limit: 10, color: true },
   // only from drop crates
   { id: 'phantom', name: 'Phantom', price: 15000, crateOnly: true },
   { id: 'inferno', name: 'Inferno', price: 30000, crateOnly: true },
@@ -33,6 +89,7 @@ export const SKINS = [
   // only from the battle pass (season 1, level 25)
   { id: 'eclipse', name: 'Eclipse', price: 40000, passOnly: true },
 ];
+export const isColor = (id) => !!(SKINS.find((x) => x.id === id) || {}).color;
 // battle pass: pay once per season, XP = packing + picking points, rewards come by themselves at every level
 // pass XP: 20 per multi, 13 per single, picking 10 per pick point (same ratio as the points)
 export const XP_MULTI = 20, XP_SINGLE = 13, XP_PICK = 10;
@@ -75,12 +132,20 @@ const LOOT = {
   epic: [['coins', 30, 3000, 6000], ['double', 25], ['skin:phantom', 20], ['skin:inferno', 25]],
   legendary: [['coins', 25, 10000, 20000], ['double', 15], ['skin:inferno', 30], ['skin:celestial', 30]],
 };
-// crate: pay, spin, get a skin. Weights out of 10.000. Crown, Carbon and Voidescent are very rare.
+// crate: pay, spin, get a skin. Weights per rarity (blue 275 · purple 190 · pink 105 · red ~40 · gold 12 · Voidescent 5).
 // Already have it? You get a quarter of its shop price back in coins.
+const W = (w, ids) => ids.map((id) => [id, w]);
 export const CRATE = {
   price: 2000, back: 0.25,
-  odds: [['midnight', 2400], ['forest', 1700], ['ocean', 1700], ['sakura', 1500], ['arctic', 1500], ['sunset', 1200], ['emerald', 800], ['gold', 600],
-    ['lava', 300], ['aurora', 300], ['nebula', 40], ['neon', 25], ['crown', 20], ['carbon', 15], ['voidescent', 5]],
+  odds: [
+    ...W(275, ['midnight', 'mint', 'lavender', 'peach', 'slate', 'lemon', 'coral', 'forest', 'ocean', 'sand', 'berry', 'denim', 'checkered', 'camo', 'sakura', 'arctic', 'navy', 'mono', 'wine', 'olive']),
+    ...W(190, ['sunset', 'emerald', 'gold', 'blueprint', 'amethyst', 'crimson', 'jade', 'honey', 'tidal', 'orchid', 'copper', 'terminal', 'nightshade']),
+    ...W(105, ['aurora', 'lava', 'starlight', 'retro', 'twilight', 'hanami', 'obsidian', 'sapphire', 'plasma', 'rosegold', 'koi', 'cyber']),
+    ['nebula', 40], ['neon', 25], ['crown', 20], ['carbon', 15],
+    ...W(40, ['toxic', 'frostbite', 'stormcell', 'circuit', 'abyss', 'coderain', 'synthwave', 'hologram', 'bloodmoon']),
+    ...W(12, ['dragonfire', 'milkyway', 'supernova', 'borealis', 'singularity', 'diamond']),
+    ['voidescent', 5],
+  ],
 };
 const r3 = (x) => Math.round(x * 1000) / 1000;
 
@@ -146,20 +211,32 @@ export function streakCheck(st, id, today, now, rnd = Math.random) {
   a.news = (a.news || []).concat({ at: now + 1, kind: 'streak', n: a.streak, coins, tier }).slice(-20);
   return a.streak;
 }
-const acct = (st, id) => (st.acct[id] = st.acct[id] || { coins: 0, spent: 0, owned: [], skin: null, kingTotal: 0, kingBest: 0, picklists: 0 });
+const acct = (st, id) => (st.acct[id] = st.acct[id] || { coins: 0, spent: 0, owned: [], skin: null, color: null, kingTotal: 0, kingBest: 0, picklists: 0 });
 const dayRow = (st, d, id) => { st.days[d] = st.days[d] || {}; return (st.days[d][id] = st.days[d][id] || { n: 0, multis: 0, singles: 0, points: 0, kingMin: 0 }); };
 
-// one time: Ahmad (owner) gets every skin
+// once per new batch of skins: Ahmad (owner) gets every skin
 export function giftAll(st) {
-  if (st.giftAll1) return;
+  if (st.giftAll2) return;
   const a = acct(st, '32247');
   for (const sk of SKINS) if (!a.owned.includes(sk.id)) a.owned.push(sk.id);
-  st.giftAll1 = true;
+  st.giftAll1 = st.giftAll2 = true;
+}
+// once: Voidescent became a color. It was Eclipse in red, so whoever owned it keeps that look:
+// they get Eclipse, and if they wore Voidescent they now wear Eclipse in the Voidescent color.
+export function voidColor(st) {
+  if (st.voidColor1) return;
+  for (const a of Object.values(st.acct)) {
+    if (!(a.owned || []).includes('voidescent')) continue;
+    if (!a.owned.includes('eclipse')) a.owned.push('eclipse');
+    if (a.skin === 'voidescent') { a.skin = 'eclipse'; a.color = 'voidescent'; }
+  }
+  st.voidColor1 = true;
 }
 // rows = closed picklists of the last `min` minutes · now = ms · today = 'YYYY-MM-DD' (Amsterdam)
 export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rnd = Math.random }) {
   ensure(st);
   giftAll(st);
+  voidColor(st);
   xpTimes10(st, now, rnd);
   const skip = new Set(proxies.map(String));
   const by = new Map();
@@ -248,7 +325,7 @@ export function totals(st) {
 
 export function profile(st, id, today, now = Date.now()) {
   id = String(id);
-  const a = st.acct[id] || { coins: 0, spent: 0, owned: [], skin: null, kingTotal: 0, kingBest: 0, picklists: 0 };
+  const a = st.acct[id] || { coins: 0, spent: 0, owned: [], skin: null, color: null, kingTotal: 0, kingBest: 0, picklists: 0 };
   const day = st.days[today] || {};
   const ranked = Object.entries(day).sort((x, y) => y[1].points - x[1].points);
   const pos = ranked.findIndex(([k]) => k === id);
@@ -256,7 +333,7 @@ export function profile(st, id, today, now = Date.now()) {
   return {
     id, today: day[id] || { n: 0, multis: 0, singles: 0, points: 0, kingMin: 0 }, rankToday: pos < 0 ? null : pos + 1, ofToday: ranked.length,
     balance: r3(a.coins - a.spent), coins: a.coins, spent: a.spent, points: st.acct[id] ? totalPoints(st, id) : 0, owned: a.owned,
-    skin: a.skinOffUntil > now ? null : a.skin, mySkin: a.skin, kingTotal: a.kingTotal, kingBest: a.kingBest, picklists: a.picklists,
+    skin: a.skinOffUntil > now ? null : a.skin, mySkin: a.skin, color: a.skinOffUntil > now ? null : a.color || null, myColor: a.color || null, kingTotal: a.kingTotal, kingBest: a.kingBest, picklists: a.picklists,
     pickPoints: a.pickPoints || 0, batches: a.batches || 0, pickToday: ((st.pdays || {})[today] || {})[id] || { batches: 0, locations: 0, items: 0, points: 0 },
     inv: a.inv || [], news: a.news || [], items: ITEMS, tiers: TIERS,
     effects: { frozenUntil: a.frozenUntil || 0, skinOffUntil: a.skinOffUntil || 0, boostUntil: a.boostUntil || 0, shieldUntil: a.shieldUntil || 0 },
@@ -309,13 +386,23 @@ export function buy(st, id, skin) {
     a.spent += s.price;
     a.owned.push(skin);
   }
-  a.skin = skin;
+  if (s.color) a.color = skin; else a.skin = skin;
   return { ok: true };
 }
 export function equip(st, id, skin) {
   const a = acct(st, String(id));
   if (skin && !a.owned.includes(skin)) return { err: 'not bought yet' };
+  if (skin && isColor(skin)) { a.color = skin; return { ok: true }; } // a color goes on top of the skin
   a.skin = skin || null;
+  return { ok: true };
+}
+// a color on / off (null = off). It only shows on animated skins, the script decides that.
+export function paint(st, id, color) {
+  const a = acct(st, String(id));
+  if (!color) { a.color = null; return { ok: true }; }
+  if (!isColor(color)) return { err: 'no such color' };
+  if (!a.owned.includes(color)) return { err: 'not bought yet' };
+  a.color = color;
   return { ok: true };
 }
 
@@ -531,7 +618,7 @@ export function tradeOp(st, id, op, b, now) {
       const o = t.offer[g], A = acct(st, g), B = acct(st, r);
       if (o.coins) { A.spent = r3(A.spent + o.coins); B.coins = r3(B.coins + o.coins); }
       for (const u of o.uids) { const i = A.inv.findIndex((x) => x.uid === u); if (i >= 0) { B.inv = B.inv || []; B.inv.push({ ...A.inv[i], at: now }); A.inv.splice(i, 1); } }
-      for (const s of o.skins) { A.owned = A.owned.filter((x) => x !== s); if (A.skin === s) A.skin = null; if (!B.owned.includes(s)) B.owned.push(s); }
+      for (const s of o.skins) { A.owned = A.owned.filter((x) => x !== s); if (A.skin === s) A.skin = null; if (A.color === s) A.color = null; if (!B.owned.includes(s)) B.owned.push(s); }
     }
     t.status = 'done';
     for (const x of [t.from, t.to]) acct(st, x).trades = (acct(st, x).trades || 0) + 1;
@@ -700,7 +787,7 @@ export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
   else if (op === 'crate') { const t = TIERS.find((x) => x.id === b.what); if (!t) return { err: 'tier?' }; for (let i = 0; i < Math.max(1, n); i++) giveCrate(st, target, t.id, now + i, rnd); note(`${Math.max(1, n)} ${t.id} crate`); }
   else if (op === 'item') { if (!ITEMS[b.what]) return { err: 'item?' }; a.inv = a.inv || []; for (let i = 0; i < Math.max(1, n); i++) a.inv.push({ uid: `${(now + i).toString(36)}a${Math.floor(rnd() * 1e5).toString(36)}`, kind: 'item', item: b.what, at: now }); note(`${Math.max(1, n)} ${b.what}`); }
   else if (op === 'skin') { if (!SKINS.find((x) => x.id === b.what)) return { err: 'skin?' }; if (!a.owned.includes(b.what)) a.owned.push(b.what); note(`skin ${b.what}`); }
-  else if (op === 'unskin') { a.owned = a.owned.filter((x) => x !== b.what); if (a.skin === b.what) a.skin = null; note(`took skin ${b.what}`); }
+  else if (op === 'unskin') { a.owned = a.owned.filter((x) => x !== b.what); if (a.skin === b.what) a.skin = null; if (a.color === b.what) a.color = null; note(`took skin ${b.what}`); }
   else if (op === 'uncrate' || op === 'unitem') {
     const want = Math.max(1, n), inv = a.inv || [];
     let gone = 0;
