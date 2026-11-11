@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.81
+// @version      3.82
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.81';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.82';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -5381,17 +5381,32 @@
       wh = hit ? { id: +hit.idwarehouse, name: norm(hit.name) } : { id: null, name: '' };
       return wh;
     }
-    async function names() {
+    // user names: one load per PC per day, shared by every tab. Old names are used right away while it refreshes in the background.
+    // (before: every widget + every tab loaded all /users pages at the same time when the cache ran out → Picqer slowed down)
+    let namesP = null;
+    function names() {
       const c = lsGet(LS_USERS, null);
-      if (c && Date.now() - c.at < 12 * 3600000) return c.map;
-      const map = {};
-      for (let off = 0; off < 2000; off += 100) {
-        const page = await api(`/users?offset=${off}`);
-        (page || []).forEach((u) => { map[u.iduser] = [u.firstname, u.lastname].filter(Boolean).join(' ') || u.username || `#${u.iduser}`; });
-        if (!page || page.length < 100) break;
+      const fresh = c && c.map && Date.now() - c.at < 24 * 3600000;
+      if (fresh) return Promise.resolve(c.map);
+      const lock = lsGet('pqsuite_users_lock', 0);
+      const busy = Date.now() - (+lock || 0) < 3 * 60000; // another tab is already loading them
+      if (!namesP && !busy) {
+        lsSet('pqsuite_users_lock', Date.now());
+        namesP = (async () => {
+          const map = {};
+          for (let off = 0; off < 2000; off += 100) {
+            const page = await api(`/users?offset=${off}`);
+            (page || []).forEach((u) => { map[u.iduser] = [u.firstname, u.lastname].filter(Boolean).join(' ') || u.username || `#${u.iduser}`; });
+            if (!page || page.length < 100) break;
+          }
+          lsSet(LS_USERS, { at: Date.now(), map });
+          return map;
+        })().finally(() => { namesP = null; lsSet('pqsuite_users_lock', 0); });
       }
-      lsSet(LS_USERS, { at: Date.now(), map });
-      return map;
+      if (c && c.map) { if (namesP) namesP.catch(() => {}); return Promise.resolve(c.map); } // stale is fine, don't wait
+      if (namesP) return namesP;
+      // another tab is loading and we have nothing yet: wait for its result (max ~20 s)
+      return new Promise((ok) => { let n = 0; const t = setInterval(() => { const d = lsGet(LS_USERS, null); if ((d && d.map) || ++n > 20) { clearInterval(t); ok((d && d.map) || {}); } }, 1000); });
     }
     function scoreRows(rows) {
       const by = new Map();
@@ -5626,6 +5641,7 @@
         #pq-goal b.t{font-weight:700;white-space:nowrap}
         #pq-goal .gb{flex:1;height:8px;border-radius:999px;background:#e2e8f0;position:relative;overflow:hidden;min-width:80px}
         #pq-goal .gb i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:#4f46e5;transition:width .6s}
+        #pq-goal .gb.ok i{background:#10b981} #pq-goal .gb.bad i{background:#f43f5e}
         #pq-goal .gb em{position:absolute;top:-2px;bottom:-2px;width:2px;background:#0f172a;opacity:.35}
         #pq-goal span{white-space:nowrap;font-variant-numeric:tabular-nums}
         #pq-goal .up{color:#059669;font-weight:600} #pq-goal .dn{color:#e11d48;font-weight:600} #pq-goal .mut{color:#64748b}
@@ -5668,8 +5684,9 @@
         proj != null && open > target ? `at this pace ~${int(Math.max(0, proj))} at ${toTxt}` : '',
         'the dark line on the bar = where it should be now',
       ].filter(Boolean).join('\n');
-      bar.innerHTML = `<b class="t">Shift goal</b><div class="gb"><i style="width:${pct.toFixed(1)}%"></i>${mark != null && mins < z ? `<em style="left:${mark.toFixed(1)}%"></em>` : ''}</div>
-        <span><b>${open == null ? '…' : int(open)}</b> → ${int(target)}</span>${state}${helpBtn(info)}`;
+      const behind = planned != null && open != null && open > planned && !(open <= target);
+      bar.innerHTML = `<b class="t">Shift goal</b><div class="gb${behind ? ' bad' : planned != null ? ' ok' : ''}"><i style="width:${pct.toFixed(1)}%"></i>${mark != null && mins < z ? `<em style="left:${mark.toFixed(1)}%"></em>` : ''}</div>
+        <span><b>${int(target)}</b></span>${helpBtn([open != null ? `now: ${int(open)} open` : 'now: counting…', state.replace(/<[^>]+>/g, ''), info].filter(Boolean).join('\n'))}`;
     }
     function render() {
       safe('goal-bar', goalBar);
