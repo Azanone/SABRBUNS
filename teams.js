@@ -8,7 +8,7 @@
 //  allow : "*" = everything, or a list of:
 //          settings comboBatcher comboAlert replenish shipErr addrFix
 //          banner batchOpt zap dayson unpick pickStats leaderboard
-//          autoNext cardColor colors pickAll truePickAll bulkSingles skins
+//          autoNext cardColor colors pickAll truePickAll bulkSingles skins chat
 //  leftovers: everyone who is in no team
 // =====================================================================
 window.PQ_TEAMS = {

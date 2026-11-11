@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.72
+// @version      3.73
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.72';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.73';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -157,6 +157,7 @@
     truePickAll: 'True pick all: A picks every product of the picklist',
     bulkSingles: 'Picqer "Verwerk in bulk"',
     skins: 'Skins / themes (looks of Picqer)',
+    chat: 'Chat with friends (🪙 panel)',
   };
   const FEATURES = Object.keys(FEATURE_INFO);
   const VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '';
@@ -5791,12 +5792,12 @@
       const nInv = (p.inv || []).length;
       ov.innerHTML = `<div class="lb-panel sh-panel">
         <div class="sh-top">
-          <div class="lb-tabs">${T('inv', `Inventory${nInv ? ` <i class="sh-n">${nInv}</i>` : ''}`)}${T('chat', `Chat${unreadOf(p) ? ` <i class="sh-n">${unreadOf(p)}</i>` : ''}`)}${T('pass', 'Pass')}${T('spin', 'Spin')}${T('stats', 'Stats')}${T('shop', 'Shop')}${T('set', '⚙')}</div>
+          <div class="lb-tabs">${T('inv', `Inventory${nInv ? ` <i class="sh-n">${nInv}</i>` : ''}`)}${can('chat') ? T('chat', `Chat${unreadOf(p) ? ` <i class="sh-n">${unreadOf(p)}</i>` : ''}`) : ''}${T('pass', 'Pass')}${T('spin', 'Spin')}${T('stats', 'Stats')}${T('shop', 'Shop')}${T('set', '⚙')}</div>
           <div class="sh-coins">🪙 <b>${int(p.balance)}</b></div>
           <button class="sh-x" data-pf-close title="Esc">✕</button>
         </div>
         ${note ? `<div class="sh-note">${escHtml(note)}</div>` : ''}
-        ${pfTab === 'inv' ? invHtml(p) : pfTab === 'chat' ? chatHtml(p) : pfTab === 'pass' ? passHtml(p) : pfTab === 'spin' ? spinHtml(p) : pfTab === 'stats' ? statsHtml(p) : pfTab === 'set' ? setHtml() : (() => {
+        ${pfTab === 'inv' ? invHtml(p) : pfTab === 'chat' && can('chat') ? chatHtml(p) : pfTab === 'pass' ? passHtml(p) : pfTab === 'spin' ? spinHtml(p) : pfTab === 'stats' ? statsHtml(p) : pfTab === 'set' ? setHtml() : (() => {
           const notMine = (p.skins || []).filter((s) => !(p.owned || []).includes(s.id));
           return `<h3>Skins ${ii('skins')}</h3>${notMine.length ? `<div class="sh-grid">${notMine.map((s) => skinCard(p, s)).join('')}</div>` : '<div class="iv-empty">you own every skin</div>'}`;
         })()}
@@ -6193,7 +6194,7 @@
       const crates = p ? (p.inv || []).filter((x) => x.kind === 'crate').length : 0;
       const ev = p && ((p.event && p.event.until > now) || (p.effects && p.effects.boostUntil > now)), frozen = p && p.effects && p.effects.frozenUntil > now;
       const boost = p && p.effects && p.effects.boostUntil > now;
-      a.classList.toggle('pq-hb-new', crates > 0 || unreadOf(p) > 0 || !!(p && p.social && p.social.reqIn && p.social.reqIn.length));
+      a.classList.toggle('pq-hb-new', crates > 0 || (can('chat') && (unreadOf(p) > 0 || !!(p && p.social && p.social.reqIn && p.social.reqIn.length))));
       a.classList.toggle('pq-hb-x2', !!ev);
       a.classList.toggle('pq-hb-frozen', !!frozen);
       a.title = ['Inventory · stats · shop', crates ? `${crates} crate${crates > 1 ? 's' : ''} to open` : '', p && p.event && p.event.until > now ? 'double points event: x2 coins' : '', boost ? `coin boost x2 · ${leftTxt(p.effects.boostUntil)} left` : '', frozen ? `your coins are frozen (${leftTxt(p.effects.frozenUntil)})` : ''].filter(Boolean).join(' · ');
@@ -6551,7 +6552,7 @@
     const unreadOf = (p) => Object.values(((p && p.social) || {}).unread || {}).reduce((n, x) => n + x, 0);
     function chatNotify(p) {
       const so = p.social;
-      if (!so) return;
+      if (!so || !can('chat')) return;
       const seen = lsGet(LS_CHAT, null) || {};
       const mine = seen[ME_ID] || { msg: 0, req: [] };
       let maxAt = mine.msg;
@@ -6657,7 +6658,7 @@
     // ---------- ⚙ settings tab in the panel (per account, synced like Shift+8) ----------
     function setHtml() {
       const row = (k, t) => `<label class="iv-set"><span>${t}</span><input type="checkbox" data-set="${k}" ${C[k] !== false ? 'checked' : ''}></label>`;
-      return `<div class="iv-sets">${row('feed', 'Live drops')}${row('trades', 'Trade requests')}${row('widget', 'Rank card')}${row('chatPop', 'Chat popups')}</div>`;
+      return `<div class="iv-sets">${row('feed', 'Live drops')}${row('trades', 'Trade requests')}${row('widget', 'Rank card')}${can('chat') ? row('chatPop', 'Chat popups') : ''}</div>`;
     }
     function wireSet(ov) {
       ov.querySelectorAll('[data-set]').forEach((b) => (b.onchange = () => { C[b.dataset.set] = b.checked; saveCfg(CFG); }));
