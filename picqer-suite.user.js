@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.74
+// @version      3.75
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.74';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.75';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -393,6 +393,8 @@
     const realFetch = window.fetch.bind(window);
     const urlOf = (input) => { try { const u = new URL(typeof input === 'string' ? input : input.url, location.href); return u.pathname.replace('/api/v1', '') + (u.search.length > 60 ? u.search.slice(0, 60) + '…' : u.search); } catch (_) { return '?'; } };
     const gated = async (input, init, fast) => {
+      // logged out (login page): never ask Picqer's API, its 401 makes Chrome show a "sign in" popup
+      if (/^\/(login|password|logout)/.test(location.pathname)) return new Response('', { status: 401, statusText: 'logged out' });
       let res;
       for (let i = 0; i < 4; i++) {
         const w0 = performance.now();
@@ -5409,13 +5411,13 @@
       if (lock && lock.tab !== TAB && Date.now() - lock.ts < POLL * 1.6) return; // another tab on this PC does it
       lsSet(LS_LOCK, { tab: TAB, ts: Date.now() });
       try {
-        let people = null, whName = '', via = '', king = null, pickPeople = null;
+        let people = null, whName = '', via = '', king = null, pickPeople = null, goal = null;
         if (URL_) {
           try {
             const r = await fetch(`${URL_}/leaderboard`, { credentials: 'omit', cache: 'no-store' });
             const j = await r.json();
             if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
-            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed); pickPeople = j.picks && j.picks.people;
+            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed); pickPeople = j.picks && j.picks.people; goal = j.goal || null;
             if (j.flags && JSON.stringify(j.flags) !== JSON.stringify(lsGet(LS_FLAGS, null))) { lsSet(LS_FLAGS, j.flags); window.dispatchEvent(new Event('pq-flags')); }
           } catch (e) { console.info('[leaderboard] middle stop:', e.message, '· asking Picqer myself'); }
         }
@@ -5435,7 +5437,7 @@
           .map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}`, n: r.picklists }))
           .sort((a, b) => b.points - a.points || b.n - a.n);
         const plist = (pickPeople || []).filter((r) => !proxies.has(String(r.id))).map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}` }));
-        data = { at: Date.now(), wh: norm(whName || ''), list, king, via: via || 'Picqer', err: '', picks: plist };
+        data = { at: Date.now(), wh: norm(whName || ''), list, king, via: via || 'Picqer', err: '', picks: plist, goal };
         idleCheck(plist);
       } catch (e) {
         data = { ...(data || { list: [] }), at: Date.now(), err: e.message };
@@ -5612,7 +5614,47 @@
     box.addEventListener('click', () => (box.dataset.mode === 'pick' ? openPk(false) : showList()));
     if (C.widget !== false) document.body.appendChild(box);
 
+    // ---------- shift goal: thin bar under Picqer's header (only when Ahmad set a goal, Shift+9) ----------
+    function goalBar() {
+      const g = data && data.goal;
+      let bar = document.getElementById('pq-goal');
+      if (!g || !g.target) { bar?.remove(); return; }
+      addStyle('pq-goal-style', `
+        #pq-goal{height:30px;display:flex;align-items:center;gap:14px;padding:0 24px;background:#fff;border-bottom:1px solid #e2e8f0;font:500 12.5px system-ui,sans-serif;color:#0f172a;position:relative;z-index:5}
+        #pq-goal b.t{font-weight:700;white-space:nowrap}
+        #pq-goal .gb{flex:1;height:8px;border-radius:999px;background:#e2e8f0;position:relative;overflow:hidden;min-width:80px}
+        #pq-goal .gb i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:#4f46e5;transition:width .6s}
+        #pq-goal .gb em{position:absolute;top:-2px;bottom:-2px;width:2px;background:#0f172a;opacity:.35}
+        #pq-goal span{white-space:nowrap;font-variant-numeric:tabular-nums}
+        #pq-goal .up{color:#059669;font-weight:600} #pq-goal .dn{color:#e11d48;font-weight:600} #pq-goal .mut{color:#64748b}
+        html.pq-dark #pq-goal{background:var(--th-bg,#0f1117);border-color:rgba(255,255,255,.08);color:#e2e8f0}
+        html.pq-dark #pq-goal .gb{background:rgba(255,255,255,.1)} html.pq-dark #pq-goal .gb em{background:#fff}
+        html.pq-dark #pq-goal .mut{color:#94a3b8}
+        @media (max-width:700px){#pq-goal .mut{display:none}}
+      `);
+      const now = new Date(), mins = now.getHours() * 60 + now.getMinutes();
+      const hm = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
+      const a = hm(g.from || '07:00'), z = hm(g.to || '23:00');
+      const done = g.done || 0, target = g.target, pct = Math.min(100, (done / target) * 100);
+      const exp = Math.round(target * Math.min(1, Math.max(0, (mins - a) / Math.max(1, z - a))));
+      const diff = done - exp;
+      const ph = g.perHour || [], h = now.getHours();
+      const rate = (ph[h] || 0) + (ph[h - 1] || 0) * (1 - now.getMinutes() / 60); // picklists in the last ~60 min
+      let eta = '';
+      if (done >= target) eta = 'goal hit ✓';
+      else if (rate > 0 && mins >= a) { const t = new Date(now.getTime() + ((target - done) / rate) * 3600000); eta = `done ~${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')} at this pace`; }
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'pq-goal';
+        const head = document.querySelector('.layout-header');
+        if (head && head.parentNode) head.parentNode.insertBefore(bar, head.nextSibling); else document.body.prepend(bar);
+      }
+      bar.title = ph.map((v, i) => (v ? `${String(i).padStart(2, '0')}:00  ${v}` : '')).filter(Boolean).join('\n') || 'per hour shows up here';
+      bar.innerHTML = `<b class="t">Shift goal</b><div class="gb"><i style="width:${pct.toFixed(1)}%"></i>${mins > a && mins < z ? `<em style="left:${Math.min(100, (exp / target) * 100).toFixed(1)}%"></em>` : ''}</div>
+        <span><b>${int(done)}</b> / ${int(target)} · ${Math.floor(pct)}%</span>${mins > a && done < target ? `<span class="${diff >= 0 ? 'up' : 'dn'}">${diff >= 0 ? '+' : '−'}${int(Math.abs(diff))} ${diff >= 0 ? 'ahead' : 'behind'}</span>` : ''}${eta ? `<span class="mut">${eta}</span>` : ''}`;
+    }
     function render() {
+      safe('goal-bar', goalBar);
       const th = theme();
       box.classList.toggle('dark', th === 'dark');
       const pl = pickRanked(), pme = pl.find((r) => r.id === ME_ID);
@@ -7102,7 +7144,7 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden && (!data || Date.now() - data.at > POLL)) poll(); });
 
     // ---------- Shift+9 (only Ahmad): give / take coins, crates, items, skins, pass, XP ----------
-    let adm = { who: null, q: '', p: null, note: '', log: null, flags: null, hooks: null, hookOpen: false };
+    let adm = { who: null, q: '', p: null, note: '', log: null, flags: null, hooks: null, hookOpen: false, goal: undefined };
     async function adminPost(op, target, extra = {}) {
       const key = lsGet('pqsuite_admin_key', '');
       const r = await fetch(`${URL_}/admin`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Admin-Key': key } : {}) }, body: JSON.stringify({ by: ME_ID, op, target, ...extra }) });
@@ -7139,6 +7181,7 @@
       const flagSw = (k, t) => `<label class="ad-flag"><input type="checkbox" data-adf="${k}" ${fl[k] === false ? '' : 'checked'} ${adm.flags ? '' : 'disabled'}>${t}</label>`;
       ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><div class="ad-flags"><span>everyone</span>${flagSw('cardColor', 'Product colors')}${flagSw('skins', 'Skins')}</div><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-hook title="Discord: logs + end of shift report">🔔</button><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
         ${adm.note ? `<div class="sh-note">${escHtml(adm.note)}</div>` : ''}
+        <div class="ad-goal"><label>Shift goal</label><input type="number" id="ad-gt" min="0" placeholder="picklists" value="${adm.goal ? adm.goal.target : ''}"><span>from</span><input type="time" id="ad-gf" value="${(adm.goal && adm.goal.from) || '07:00'}"><span>to</span><input type="time" id="ad-gz" value="${(adm.goal && adm.goal.to) || '23:00'}"><button class="buy" data-adg="save">Set</button>${adm.goal ? '<button data-adg="off">Off</button>' : '<small>no goal = no bar</small>'}</div>
         ${adm.hookOpen ? `<div class="ad-hooks">
           <div class="ad-r"><label>Logs</label><input id="ad-hlog" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).log || '')}"><button data-adh="test-log">Test</button></div>
           <div class="ad-r"><label>Report</label><input id="ad-hrep" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).report || '')}"><input id="ad-hat" type="time" value="${escHtml((adm.hooks || {}).reportAt || '22:30')}"><button data-adh="test-report">Send now</button></div>
@@ -7152,6 +7195,14 @@
         const j = await adminPost('flags', '', { flags: { [b.dataset.adf]: b.checked } }).catch((e) => ({ err: e.message }));
         if (j.flags) { adm.flags = j.flags; lsSet(LS_FLAGS, j.flags); window.dispatchEvent(new Event('pq-flags')); }
         adm.note = j.err || `${b.parentNode.textContent.trim()} ${b.checked ? 'on' : 'OFF'} for everyone · every PC within ~30 s`;
+        showAdmin();
+      }));
+      ov.querySelectorAll('[data-adg]').forEach((b) => (b.onclick = async () => {
+        const goal = b.dataset.adg === 'off' ? { target: 0 } : { target: +ov.querySelector('#ad-gt').value || 0, from: ov.querySelector('#ad-gf').value, to: ov.querySelector('#ad-gz').value };
+        b.disabled = true;
+        const j = await adminPost('goal', '', { goal }).catch((e) => ({ err: e.message }));
+        if (!j.err) adm.goal = j.goal;
+        adm.note = j.err || (j.goal ? `shift goal ${int(j.goal.target)} · everyone sees the bar within ~30 s` : 'shift goal off · bar gone everywhere');
         showAdmin();
       }));
       ov.querySelector('[data-ad-hook]').onclick = async () => {
@@ -7196,6 +7247,7 @@
       if (document.getElementById('pq-adm-ov')) return close('pq-adm-ov');
       showAdmin();
       adminPost('flags', '').then((j) => { if (j.flags) { adm.flags = j.flags; if (document.getElementById('pq-adm-ov')) showAdmin(); } }).catch(() => {});
+      adminPost('goal', '').then((j) => { if (!j.err) { adm.goal = j.goal; if (document.getElementById('pq-adm-ov')) showAdmin(); } }).catch(() => {});
       if (!tot || Date.now() - tot.at > 60000) loadTotals().then(() => { if (document.getElementById('pq-adm-ov')) showAdmin(); });
     }
     addStyle('pq-adm-style', `
@@ -7203,6 +7255,12 @@
       .ad-flags{display:flex;align-items:center;gap:10px;margin-left:14px;padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:var(--soft);font:600 12px system-ui,sans-serif}
       .ad-flags span{color:var(--mut)}
       .ad-flag{display:flex;align-items:center;gap:5px;cursor:pointer}
+      .ad-goal{display:flex;align-items:center;gap:8px;margin-top:10px;font:600 12px system-ui,sans-serif;flex-wrap:wrap}
+      .ad-goal label{color:var(--mut);width:72px}
+      .ad-goal span,.ad-goal small{color:var(--mut)}
+      .ad-goal input{padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:600 12.5px system-ui,sans-serif;width:100px}
+      .ad-goal button{padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:700 12px system-ui,sans-serif;cursor:pointer}
+      .ad-goal button.buy{background:#6366f1;border-color:#6366f1;color:#fff}
       .ad-hooks{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
       .ad-hooks .ad-r input:not([type=time]){flex:1;width:auto}
       .ad-q{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--fg);font:500 13px system-ui,sans-serif;margin-bottom:8px;outline:none}
@@ -7233,7 +7291,7 @@
       const c = lsGet(LS_PROF, null);
       if (c && c.id === ME_ID && c.p) prof = c.p;
       headerBtn();
-      setInterval(() => { if (!document.getElementById('pq-hb')) headerBtn(); }, 1500);
+      setInterval(() => { if (!document.getElementById('pq-hb')) headerBtn(); if (data && data.goal && !document.getElementById('pq-goal')) goalBar(); }, 1500);
       // coins, skin (also bought / taken off on another PC), crates: every minute while you look at the page
       setTimeout(pollProf, 2500 + Math.random() * 2500);
       setInterval(() => { if (!document.hidden) pollProf(); }, 30000);

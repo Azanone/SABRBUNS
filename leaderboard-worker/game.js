@@ -669,6 +669,15 @@ export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
   ensure(st);
   target = String(target || '');
   if (op === 'log') return { ok: true, log: (st.log || []).slice(-50).reverse() };
+  // shift goal: picklists for the day + shift times. target 0 = no goal (no bar anywhere)
+  if (op === 'goal') {
+    if (b.goal) {
+      const t = Math.max(0, Math.round(Number(b.goal.target) || 0)), hm = (x, d) => (/^\d{2}:\d{2}$/.test(String(x || '')) ? String(x) : d);
+      st.goal = t ? { target: t, from: hm(b.goal.from, '07:00'), to: hm(b.goal.to, '23:00') } : null;
+      st.log = (st.log || []).concat({ at: now, id: OWNER, what: `admin: shift goal ${t ? `${t} (${st.goal.from}-${st.goal.to})` : 'off'}` }).slice(-50);
+    }
+    return { ok: true, goal: st.goal || null };
+  }
   // Discord webhooks: logs (slow pages etc) and the end of shift report (+ time, Amsterdam)
   if (op === 'hooks') {
     st.hooks = st.hooks || {};
