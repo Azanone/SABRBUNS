@@ -36,11 +36,11 @@ window.PQ_TEAMS = {
     },
     {
       "name": "megamulters",
-      "allow": ["settings", "comboBatcher", "comboAlert", "batchOpt", "leaderboard", "autoNext", "cardColor", "colors", "pickAll", "truePickAll", "bulkSingles", "skins"],
+      "allow": ["settings", "comboBatcher", "comboAlert", "batchOpt", "leaderboard", "autoNext", "cardColor", "colors", "pickAll", "bulkSingles", "skins"],
       "users": [
         35714 // Jokke Jacobs
       ]
     }
   ],
-  "leftovers": { "allow": ["comboAlert", "leaderboard", "pickAll", "bulkSingles", "skins"] }
+  "leftovers": { "allow": ["comboAlert", "leaderboard", "bulkSingles", "skins"] }
 };
