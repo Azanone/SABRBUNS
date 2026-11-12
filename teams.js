@@ -24,8 +24,7 @@ window.PQ_TEAMS = {
         39213, // Ali Al- Turaim
         32651, // Egehan Akali
         22610, // Jari Bezemer
-        42368, // Sharlton Matwirjo
-        35714 // Jokke Jacobs
+        42368 // Sharlton Matwirjo
       ]
     },
     {
@@ -39,6 +38,7 @@ window.PQ_TEAMS = {
       "name": "megamulters",
       "allow": ["settings", "comboBatcher", "comboAlert", "batchOpt", "leaderboard", "autoNext", "cardColor", "colors", "pickAll", "truePickAll", "bulkSingles", "skins"],
       "users": [
+        35714 // Jokke Jacobs
       ]
     }
   ],
