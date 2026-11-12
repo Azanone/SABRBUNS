@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.89
+// @version      3.90
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.89';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.90';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -6002,19 +6002,25 @@
     // ---------- BE Pick-up counter (team feature, until 23:00): open picklists with that tag, counts down live ----------
     async function beTick() {
       const pills = () => document.querySelectorAll('.pq-tagpill');
-      if (!can('beCounter') || !URL_ || new Date().getHours() >= 23) { pills().forEach((x) => x.remove()); return; }
+      const gone = () => document.getElementById('pq-tags')?.remove();
+      if (!can('beCounter') || !URL_ || new Date().getHours() >= 23) { gone(); return; }
       let j = null;
       try { j = await (await fetch(`${URL_}/be`, { credentials: 'omit', cache: 'no-store' })).json(); } catch (_) {}
-      if (!j || j.n == null) { pills().forEach((x) => x.remove()); return; }
+      if (!j || j.n == null) { gone(); return; }
       addStyle('pq-be-style', `
-        .pq-tagpill{display:inline-flex;align-items:center;gap:7px;margin-right:10px;padding:4px 11px;border-radius:999px;background:rgba(255,255,255,.12);color:inherit !important;font:600 12px system-ui,sans-serif;white-space:nowrap;text-decoration:none !important;cursor:pointer;transition:background .15s}
-        a.pq-tagpill:hover{background:rgba(255,255,255,.22)}
-        .pq-tagpill b{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums;display:inline-block}
+        #pq-tags{display:inline-flex;align-items:center;margin-right:10px;border:1px solid rgba(255,255,255,.16);border-radius:8px;overflow:hidden;height:24px}
+        .pq-tagpill{display:inline-flex;align-items:center;gap:6px;height:100%;padding:0 9px;color:inherit !important;font:600 10.5px system-ui,sans-serif;letter-spacing:.03em;white-space:nowrap;text-decoration:none !important;transition:background .15s}
+        .pq-tagpill + .pq-tagpill{border-left:1px solid rgba(255,255,255,.16)}
+        .pq-tagpill span{opacity:.7;text-transform:uppercase}
+        a.pq-tagpill{cursor:pointer} a.pq-tagpill:hover{background:rgba(255,255,255,.1)}
+        .pq-tagpill b{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;display:inline-block}
         .pq-tagpill.dn b{animation:pqBeDn 1.4s ease} .pq-tagpill.up b{animation:pqBeUp 1.4s ease}
         @keyframes pqBeDn{0%{color:#4ade80;transform:translateY(-4px)}100%{transform:none}}
         @keyframes pqBeUp{0%{color:#fb7185;transform:translateY(4px)}100%{transform:none}}`);
-      const nav = document.querySelector('.layout-header-navigation');
-      if (!nav) return;
+      const hdr = document.querySelector('.layout-header-navigation');
+      if (!hdr) return;
+      let nav = document.getElementById('pq-tags');
+      if (!nav || !nav.isConnected) { nav = nav || document.createElement('div'); nav.id = 'pq-tags'; hdr.prepend(nav); }
       // older worker: only the BE number
       const tags = Array.isArray(j.tags) && j.tags.length ? j.tags : [{ key: 'be', label: 'BE Pick-up', n: j.n, peak: j.peak, id: 252185 }];
       const keep = new Set(tags.map((t) => 'pq-tag-' + t.key));
@@ -7632,8 +7638,9 @@
     const typing = (t) => t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName));
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key || '').toLowerCase() === 'l') { e.preventDefault(); if (document.getElementById('pq-lb-ov')) close('pq-lb-ov'); else showList(); return; }
-      if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Digit9' && isOwner() && URL_ && !typing(e.target)) { loneKey(e, openAdmin); return; }
+      if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Digit9' && isOwner() && URL_ && !typing(e.target)) { loneKey(e, () => (document.getElementById('pq-adm-ov') ? openAdmin() : unlock('Shift+9').then((ok) => ok && openAdmin()))); return; }
       if (e.ctrlKey && e.altKey && !e.shiftKey && e.code === 'KeyP' && use('pickStats')) { e.preventDefault(); if (document.getElementById('pq-pk-ov')) close('pq-pk-ov'); else openPk(false); return; }
+      if (e.key === 'Escape' && document.getElementById('pq-lock')) return;
       if (e.key === 'Escape') {
         const rv = document.querySelector('.iv-rev.open');
         if (rv) { rv.querySelector('[data-rv="ok"]')?.click(); return; }
@@ -7890,6 +7897,60 @@
       if (tvHash()) setTimeout(() => openPk(true), 500);
       window.addEventListener('hashchange', () => { if (tvHash()) openPk(true); });
     }
+  }
+
+  /* =========================================================================
+   *  OWNER LOCK: Shift+9 and the teams editor ask a password (also on Ahmad's own account)
+   * ========================================================================= */
+  //  This file is public, so only a salted PBKDF2 hash is here, never the password. Unlocked = 15 min in this tab.
+  //  It's a lock on the screen: the worker itself is guarded by ADMIN_KEY, GitHub by the token.
+  const LOCK = { salt: '552282d370b4989bba4b9bf2597f0038', hash: 'fa7c6df84b769f1af88e5801d9789de939bf5bbbc60195c9315e9a6720e7ced0', iter: 250000, key: 'pqsuite_unlock_v1', min: 15 };
+  async function lockCheck(pw) {
+    const hexb = (h) => new Uint8Array(h.match(/../g).map((x) => parseInt(x, 16)));
+    const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: hexb(LOCK.salt), iterations: LOCK.iter }, k, 256);
+    return [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, '0')).join('') === LOCK.hash;
+  }
+  function unlocked() { try { const t = +sessionStorage.getItem(LOCK.key); return !!t && Date.now() - t < LOCK.min * 60000; } catch (_) { return false; } }
+  function unlock(what) {
+    if (unlocked()) return Promise.resolve(true);
+    if (document.getElementById('pq-lock')) return Promise.resolve(false);
+    return new Promise((done) => {
+      addStyle('pq-lock-style', `
+        #pq-lock{position:fixed;inset:0;z-index:2147483005;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.45);backdrop-filter:blur(3px)}
+        #pq-lock .lk{width:min(320px,calc(100vw - 32px));background:#fff;color:#0f172a;border-radius:14px;padding:18px;box-shadow:0 24px 60px rgba(0,0,0,.35);font:500 13px system-ui,sans-serif}
+        html.pq-dark #pq-lock .lk{background:#111827;color:#f1f5f9}
+        #pq-lock b{display:block;font-size:15px;margin-bottom:10px}
+        #pq-lock input{width:100%;box-sizing:border-box;padding:9px 11px;border-radius:9px;border:1px solid #cbd5e1;font:600 14px system-ui,sans-serif;outline:none;background:transparent;color:inherit}
+        #pq-lock input:focus{border-color:#6366f1}
+        #pq-lock .er{min-height:16px;margin-top:6px;color:#e11d48;font-size:12px}
+        #pq-lock .bt{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+        #pq-lock button{padding:7px 14px;border-radius:9px;border:0;font:700 12px system-ui,sans-serif;cursor:pointer;background:#e2e8f0;color:#0f172a}
+        #pq-lock button.go{background:#6366f1;color:#fff}
+        #pq-lock .lk.no{animation:pqLkNo .35s}
+        @keyframes pqLkNo{25%{transform:translateX(-7px)}50%{transform:translateX(7px)}75%{transform:translateX(-4px)}}`);
+      const ov = document.createElement('div');
+      ov.id = 'pq-lock';
+      ov.innerHTML = `<div class="lk"><b>🔒 Password for ${escHtml(what)}</b><input type="password" autocomplete="off" spellcheck="false"><div class="er"></div><div class="bt"><button data-l="no">Cancel</button><button class="go" data-l="go">Open</button></div></div>`;
+      document.body.appendChild(ov);
+      const inp = ov.querySelector('input'), er = ov.querySelector('.er'), card = ov.querySelector('.lk');
+      const end = (ok) => { ov.remove(); done(ok); };
+      const go = async () => {
+        const left = +(sessionStorage.getItem('pqsuite_unlock_wait') || 0) - Date.now();
+        if (left > 0) { er.textContent = `too many tries · wait ${Math.ceil(left / 1000)} s`; return; }
+        er.textContent = '…';
+        if (await lockCheck(inp.value)) { try { sessionStorage.setItem(LOCK.key, String(Date.now())); sessionStorage.removeItem('pqsuite_unlock_bad'); } catch (_) {} return end(true); }
+        const bad = +(sessionStorage.getItem('pqsuite_unlock_bad') || 0) + 1;
+        try { sessionStorage.setItem('pqsuite_unlock_bad', String(bad)); if (bad % 5 === 0) sessionStorage.setItem('pqsuite_unlock_wait', String(Date.now() + 60000)); } catch (_) {}
+        er.textContent = bad % 5 === 0 ? 'wrong · wait 1 min' : 'wrong password';
+        inp.value = ''; card.classList.remove('no'); void card.offsetWidth; card.classList.add('no');
+      };
+      inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') go(); if (e.key === 'Escape') end(false); });
+      ov.querySelector('[data-l="go"]').onclick = go;
+      ov.querySelector('[data-l="no"]').onclick = () => end(false);
+      ov.addEventListener('mousedown', (e) => { if (e.target === ov) end(false); });
+      setTimeout(() => inp.focus(), 20);
+    });
   }
 
   /* =========================================================================
@@ -8500,6 +8561,7 @@
 
       ov.querySelectorAll('.pqs-tab').forEach((t) => t.addEventListener('click', () => {
         const name = t.dataset.tab;
+        if (name === 'teams' && !unlocked()) { unlock('the teams').then((ok) => ok && t.click()); return; }
         ov.querySelectorAll('.pqs-tab').forEach((x) => x.classList.toggle('on', x === t));
         ov.querySelectorAll('[data-pane]').forEach((p) => (p.style.display = p.dataset.pane === name ? '' : 'none'));
         ov.querySelectorAll('[data-foot]').forEach((p) => (p.style.display = p.dataset.foot === name ? '' : 'none'));
@@ -8614,6 +8676,7 @@
           if (!ghToken()) { toast('First paste a GitHub token (box at the top)'); return; }
           const btn = e.target.closest('[data-x]');
           const isT = x === 'tgh';
+          if (isT && !unlocked()) { unlock('saving the teams').then((ok) => ok && btn.click()); return; }
           let text, data;
           if (isT) { text = genConfig(); data = parseCfgFile(text, 'PQ_TEAMS', 'teams.js'); }
           else {
@@ -8681,6 +8744,7 @@
     function close() { document.getElementById('pqs-ov')?.remove(); }
 
     window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.getElementById('pq-lock')) return; // the password box closes itself
       if (e.key === 'Escape' && document.getElementById('pqs-ov')) { close(); return; }
       if (isTyping(e) || e.ctrlKey || e.altKey || e.metaKey) return;
       if ((e.shiftKey && e.code === 'Digit8') || e.key === '*') {
