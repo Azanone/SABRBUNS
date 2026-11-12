@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.88
+// @version      3.89
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.88';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.89';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -158,7 +158,7 @@
     bulkSingles: 'Picqer "Verwerk in bulk"',
     skins: 'Skins / themes (looks of Picqer)',
     chat: 'Chat with friends (🪙 panel)',
-    beCounter: 'BE Pick-up counter in the header (until 23:00)',
+    beCounter: 'BE Pick-up + EIGENAAR counters in the header (until 23:00)',
   };
   const FEATURES = Object.keys(FEATURE_INFO);
   const VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '';
@@ -614,7 +614,7 @@
     pickStats: 'Ctrl+Alt+P: who is picking right now (last 15 min, idle time), who packs, and charts per hour for any day. Bunsenstraat / Barnsteen at the top: switch warehouse. The idle alert is for the pickers of your own warehouse.',
     leaderboard: 'Packing points (multi 2, single 1,334) of the last 15 min. Every warehouse (Bunsenstraat, Barnsteen) has its own board and king. Your rank bottom right (the warehouse you work in), Ctrl+Alt+L for everyone: switch warehouse at the top. Points are coins for the shop, crates and the pass (🪙 at the top), the same everywhere.',
     cardColor: 'A colored bar per product code on picklists, so look-alike products are easy to tell apart.',
-    beCounter: 'In the header next to the coins: how many open picklists have the tag BE Pick-up. Counts down live (every 15 sec), gone after 23:00.',
+    beCounter: 'In the header next to the coins: how many open picklists have the tag BE Pick-up, and how many EIGENAAR. Click one = those picklists in Picqer. Counts live (every 15 sec), gone after 23:00.',
   };
   function addStyle(id, css) {
     if (document.getElementById(id)) return;
@@ -6001,29 +6001,36 @@
     // ---------- shift goal: thin bar under Picqer's header (only when Ahmad set a goal, Shift+9) ----------
     // ---------- BE Pick-up counter (team feature, until 23:00): open picklists with that tag, counts down live ----------
     async function beTick() {
-      let el = document.getElementById('pq-be');
-      if (!can('beCounter') || !URL_ || new Date().getHours() >= 23) { el?.remove(); return; }
+      const pills = () => document.querySelectorAll('.pq-tagpill');
+      if (!can('beCounter') || !URL_ || new Date().getHours() >= 23) { pills().forEach((x) => x.remove()); return; }
       let j = null;
       try { j = await (await fetch(`${URL_}/be`, { credentials: 'omit', cache: 'no-store' })).json(); } catch (_) {}
-      if (!j || j.n == null) { el?.remove(); return; }
+      if (!j || j.n == null) { pills().forEach((x) => x.remove()); return; }
       addStyle('pq-be-style', `
-        #pq-be{display:inline-flex;align-items:center;gap:7px;margin-right:10px;padding:4px 11px;border-radius:999px;background:rgba(255,255,255,.12);color:inherit;font:600 12px system-ui,sans-serif;white-space:nowrap}
-        #pq-be b{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums;display:inline-block}
-        #pq-be.dn b{animation:pqBeDn 1.4s ease} #pq-be.up b{animation:pqBeUp 1.4s ease}
+        .pq-tagpill{display:inline-flex;align-items:center;gap:7px;margin-right:10px;padding:4px 11px;border-radius:999px;background:rgba(255,255,255,.12);color:inherit !important;font:600 12px system-ui,sans-serif;white-space:nowrap;text-decoration:none !important;cursor:pointer;transition:background .15s}
+        a.pq-tagpill:hover{background:rgba(255,255,255,.22)}
+        .pq-tagpill b{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums;display:inline-block}
+        .pq-tagpill.dn b{animation:pqBeDn 1.4s ease} .pq-tagpill.up b{animation:pqBeUp 1.4s ease}
         @keyframes pqBeDn{0%{color:#4ade80;transform:translateY(-4px)}100%{transform:none}}
         @keyframes pqBeUp{0%{color:#fb7185;transform:translateY(4px)}100%{transform:none}}`);
-      if (!el || !el.isConnected) {
-        const nav = document.querySelector('.layout-header-navigation');
-        if (!nav) return;
-        el = el || document.createElement('div');
-        el.id = 'pq-be';
+      const nav = document.querySelector('.layout-header-navigation');
+      if (!nav) return;
+      // older worker: only the BE number
+      const tags = Array.isArray(j.tags) && j.tags.length ? j.tags : [{ key: 'be', label: 'BE Pick-up', n: j.n, peak: j.peak, id: 252185 }];
+      const keep = new Set(tags.map((t) => 'pq-tag-' + t.key));
+      pills().forEach((x) => { if (!keep.has(x.id)) x.remove(); });
+      [...tags].reverse().forEach((t) => { // prepend in reverse = BE first, then EIGENAAR
+        const id = 'pq-tag-' + t.key, href = t.id ? `${location.origin}/picklists?filter_tags_in=${encodeURIComponent(t.id)}` : '';
+        let el = document.getElementById(id);
+        if (!el || !el.isConnected || (href ? el.tagName !== 'A' : el.tagName === 'A')) { el?.remove(); el = document.createElement(href ? 'a' : 'div'); el.id = id; el.className = 'pq-tagpill'; }
+        if (href) el.href = href;
         nav.prepend(el);
-      }
-      const was = el.dataset.n == null ? null : +el.dataset.n;
-      el.dataset.n = j.n;
-      el.title = `open picklists with the tag BE Pick-up · most today ${j.peak || j.n}`;
-      el.innerHTML = `<span>BE Pick-up</span><b>${int(j.n)}</b>`;
-      if (was != null && was !== j.n) { el.classList.remove('dn', 'up'); void el.offsetWidth; el.classList.add(j.n < was ? 'dn' : 'up'); }
+        const was = el.dataset.n == null ? null : +el.dataset.n;
+        el.dataset.n = t.n;
+        el.title = `open picklists with the tag ${t.label} · most today ${t.peak || t.n}${href ? ' · click to see them' : ''}`;
+        el.innerHTML = `<span>${escHtml(t.label)}</span><b>${int(t.n)}</b>`;
+        if (was != null && was !== t.n) { el.classList.remove('dn', 'up'); void el.offsetWidth; el.classList.add(t.n < was ? 'dn' : 'up'); }
+      });
     }
     setInterval(() => { if (!document.hidden) beTick(); }, 15000);
     setTimeout(beTick, 1500);

@@ -16,6 +16,8 @@ import { newState, tick, profile, buy, equip, paint, grant, totals, crate, pickT
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
 const BE_TAG = 'BE Pick-up'; // the Picqer tag the shift leaders' counter counts (open picklists)
+// the header pills (team feature beCounter): key, label on the pill, tag name to find in Picqer, fallback tag id
+const TAG_PILLS = [{ key: 'be', label: 'BE Pick-up', find: BE_TAG, id: 252185 }, { key: 'eig', label: 'EIGENAAR', find: 'EIGENAAR' }];
 const cors = (h = {}) => ({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key', ...h });
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: cors({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }) });
 const PROXIES_DEFAULT = '36135,29011,33549,16983'; // 16983 = a machine, not a person
@@ -145,23 +147,48 @@ export class Game extends DurableObject {
     try { await this.beCount(); } catch (e) { console.log('be count', e.message); }
   }
   // BE Pick-up: open picklists with that tag, every cycle (15 s) from 06:00 until 23:00 (Amsterdam), for the shift leaders' counter
+  // header pills for the shift leaders (06:00-23:00, main warehouse): open picklists per tag. Only reads Picqer.
+  // id = the Picqer tag id for the link (filter_tags_in), found by name in /tags (6 h), the BE id as a fallback
+  async tagIds() {
+    if (this._tags && Date.now() - this._tags.at < 6 * 3600000) return this._tags.list;
+    const all = [];
+    for (let off = 0; off < 2000; off += 100) { const page = (await picqer(this.env, `/tags?offset=${off}`)) || []; all.push(...page); if (page.length < 100) break; }
+    const list = TAG_PILLS.map((t) => {
+      const k = t.find.toLowerCase(), hit = all.find((x) => String(x.title || '').trim().toLowerCase() === k) || all.find((x) => String(x.title || '').toLowerCase().includes(k));
+      return { ...t, title: hit ? String(hit.title).trim() : t.find, id: hit ? hit.idtag : t.id || null };
+    });
+    this._tags = { at: Date.now(), list };
+    return list;
+  }
   async beCount() {
     const hm = amsNow().slice(11, 16);
     if (hm >= '23:00' || hm < '06:00') return;
     const w = await warehouse(this.env);
-    let n = 0;
-    for (let off = 0; off < 5000; off += 100) {
-      const page = (await picqer(this.env, `/picklists?status=new&tag=${encodeURIComponent(BE_TAG)}${w ? `&idwarehouse=${w.id}` : ''}&offset=${off}`)) || [];
-      n += page.filter((p) => p.status === 'new').length;
-      if (page.length < 100) break;
-    }
+    const tags = await this.tagIds().catch(() => TAG_PILLS.map((t) => ({ ...t, title: t.find, id: t.id || null })));
     const o = (await this.ctx.storage.get('beCount')) || {};
     const now = Date.now(), day = amsNow().slice(0, 10);
-    if (o.day !== day) { o.day = day; o.peak = 0; }
-    o.prev = o.n == null ? n : o.n; o.n = n; o.at = now; o.peak = Math.max(o.peak || 0, n);
+    if (o.day !== day) { o.day = day; o.peak = 0; o.tags = {}; }
+    o.tags = o.tags || {};
+    for (const t of tags) {
+      let n = 0;
+      for (let off = 0; off < 5000; off += 100) {
+        const page = (await picqer(this.env, `/picklists?status=new&tag=${encodeURIComponent(t.title)}${w ? `&idwarehouse=${w.id}` : ''}&offset=${off}`)) || [];
+        n += page.filter((p) => p.status === 'new').length;
+        if (page.length < 100) break;
+      }
+      const x = (o.tags[t.key] = o.tags[t.key] || {});
+      x.prev = x.n == null ? n : x.n; x.n = n; x.peak = Math.max(x.peak || 0, n); x.id = t.id; x.label = t.label;
+      if (t.key === 'be') { o.prev = o.n == null ? n : o.n; o.n = n; o.peak = Math.max(o.peak || 0, n); } // older scripts read these
+    }
+    o.at = now;
     await this.ctx.storage.put('beCount', o);
   }
-  async be() { const o = (await this.ctx.storage.get('beCount')) || null; return o && Date.now() - o.at < 5 * 60000 ? { n: o.n, prev: o.prev, peak: o.peak, at: o.at } : { n: null }; }
+  async be() {
+    const o = (await this.ctx.storage.get('beCount')) || null;
+    if (!o || Date.now() - o.at >= 5 * 60000) return { n: null };
+    const tags = TAG_PILLS.map((t) => ({ key: t.key, label: t.label, ...((o.tags || {})[t.key] || {}) })).filter((t) => t.n != null);
+    return { n: o.n, prev: o.prev, peak: o.peak, at: o.at, tags };
+  }
   // completed batches → pick points + coins (new ones only, max 15 details per round)
   // shift goal = how many picklists may still be open at the end time: count the open ones every 3 min (only with a goal)
   async openCount() {
