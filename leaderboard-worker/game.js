@@ -10,6 +10,8 @@
 export const MULTI = 2, SINGLE = 1.334;
 export const KING_MIN_POINTS = 21;   // green or better in the last 15 min
 export const KING_PER_MIN = 20;
+// not people (machines / packing robots): never on a board, never coins, gone from the game · always, also when PROXIES is set
+export const NOT_PEOPLE = ['16983'];
 export const SKINS = [
   // blue · common
   { id: 'midnight', name: 'Midnight', price: 500 },
@@ -252,7 +254,15 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', wh
   if (whs.length) st.whNames = Object.fromEntries(whs.map((w) => [String(w.id), String(w.name || '')]));
   if (!st.kings) { st.kings = {}; if (st.king && st.mainWh) st.kings[st.mainWh] = st.king; } // one king before → the main warehouse's king
   const whOf = (p) => String(p.wh || st.mainWh || '');
-  const skip = new Set(proxies.map(String));
+  const skip = new Set([...proxies.map(String), ...NOT_PEOPLE]);
+  // machines: wipe whatever they got before (account, days, kings)
+  for (const id of NOT_PEOPLE) {
+    delete st.acct[id];
+    for (const d of Object.values(st.days)) delete d[id];
+    for (const d of Object.values(st.pdays || {})) delete d[id];
+    for (const [w, k] of Object.entries(st.kings || {})) if (k && k.id === id) delete st.kings[w];
+    st.precent = (st.precent || []).filter((x) => x.id !== id);
+  }
   const byW = new Map(); // warehouse → (person → row)
   // the chart: every closed picklist per warehouse per hour (like Picqer's dashboard), kept for months
   for (const p of rows) {
@@ -476,7 +486,7 @@ export const pickerOf = (b) => String((b.assigned_to && b.assigned_to.iduser) ||
 export function pickTick(st, batches, { now, today, proxies = [], main = '', rnd = Math.random }) {
   ensure(st);
   if (main) st.mainWh = String(main);
-  const skip = new Set(proxies.map(String));
+  const skip = new Set([...proxies.map(String), ...NOT_PEOPLE]);
   for (const b of batches) {
     const bid = String(b.idpicklist_batch);
     if (st.pseen.includes(bid)) continue;
@@ -715,7 +725,7 @@ export function liveDue(L, open, now, max = 40) {
 }
 export function liveTick(L, open, details, { now, proxies = [] }) {
   L = L || newLive();
-  const skip = new Set(proxies.map(String));
+  const skip = new Set([...proxies.map(String), ...NOT_PEOPLE]);
   const openIds = new Set(open.map((b) => String(b.idpicklist_batch)));
   const whOf = new Map(open.map((b) => [String(b.idpicklist_batch), String(b.wh || b.idwarehouse || '')]));
   for (const k of Object.keys(L.b)) if (!openIds.has(k)) delete L.b[k];

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.86
+// @version      3.87
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.86';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.87';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -254,7 +254,7 @@
       { k: 'pickedOnlyPartial', label: 'Green tag: only half picked (leave out fully picked)', type: 'bool', def: true },
     ]},
     { id: 'zaplog', title: 'ZAP log (shared)', hint: 'used by ZAP + DAYSON', always: true, fields: [
-      { k: 'proxyIds', label: 'Proxy user ids (never count as picker)', type: 'list', def: ['36135', '29011', '33549'] },
+      { k: 'proxyIds', label: 'Proxy user ids (never count as picker)', type: 'list', def: ['36135', '29011', '33549', '16983'] },
       { k: 'cacheDays', label: 'Keep stats (days)', type: 'num', def: 7 },
       { k: 'postToChat', label: 'Post to chat', type: 'bool', def: true },
       { k: 'includeMissing', label: 'Missing lines in chat', type: 'bool', def: false },
@@ -5673,7 +5673,7 @@
     const LS_DATA = 'pqsuite_lb_v3', LS_LOCK = 'pqsuite_lb_lock_v1', LS_USERS = 'pqsuite_lb_users_v1';
     const TAB = Math.random().toString(36).slice(2);
     const ME_ID = String(ME.id || '');
-    const proxies = new Set(((CFG.zaplog && CFG.zaplog.proxyIds) || []).map(String));
+    const proxies = new Set([...((CFG.zaplog && CFG.zaplog.proxyIds) || []).map(String), '16983']); // 16983 = a machine, never on a board
     const low = (x) => norm(String(x == null ? '' : x)).toLowerCase();
     const pad = (n) => String(n).padStart(2, '0');
     const stamp = (t) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };

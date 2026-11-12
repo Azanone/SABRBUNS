@@ -18,7 +18,7 @@ const amsNow = (t = Date.now()) => ams.format(new Date(t));
 const BE_TAG = 'BE Pick-up'; // the Picqer tag the shift leaders' counter counts (open picklists)
 const cors = (h = {}) => ({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key', ...h });
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: cors({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }) });
-const PROXIES_DEFAULT = '36135,29011,33549';
+const PROXIES_DEFAULT = '36135,29011,33549,16983'; // 16983 = a machine, not a person
 
 async function picqer(env, path) {
   const host = String(env.PICQER_HOST || '').replace(/\/+$/, '');
