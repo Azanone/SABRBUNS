@@ -837,8 +837,8 @@ export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
   // Discord webhooks: logs (slow pages etc) and the end of shift report (+ time, Amsterdam)
   if (op === 'hooks') {
     st.hooks = st.hooks || {};
-    if (b.hooks) for (const k of ['log', 'report', 'reportAt']) if (typeof b.hooks[k] === 'string') st.hooks[k] = b.hooks[k].trim();
-    return { ok: true, hooks: { log: st.hooks.log || '', report: st.hooks.report || '', reportAt: st.hooks.reportAt || '22:30' } };
+    if (b.hooks) for (const k of ['log', 'report', 'reportAt', 'admin']) if (typeof b.hooks[k] === 'string') st.hooks[k] = b.hooks[k].trim();
+    return { ok: true, hooks: { log: st.hooks.log || '', report: st.hooks.report || '', reportAt: st.hooks.reportAt || '22:30', admin: st.hooks.admin || '' } };
   }
   // switches for everyone (false = off on every PC)
   if (op === 'flags') {

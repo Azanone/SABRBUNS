@@ -238,10 +238,14 @@ export class Game extends DurableObject {
   async admin(op, target, b) {
     const st = await this.load();
     const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
+    const logBefore = new Set(st.log || []);
     const res = adminOp(st, op, target, b, Date.now(), amsNow().slice(0, 10), rnd);
+    // every new admin line → Discord right away (Admin webhook, else the Logs one)
+    const fresh = (st.log || []).filter((x) => !logBefore.has(x) && /^admin/.test(x.what || ''));
+    if (res.ok && fresh.length) await this.adminDiscord(st, fresh, op === 'announce' ? b : null).catch((e) => console.log('admin discord', e.message));
     if (res.ok && op !== 'look' && op !== 'log' && op !== 'anns' && !(op === 'flags' && !b.flags) && !(op === 'hooks' && !b.hooks) && !(op === 'goal' && !b.goal)) await this.ctx.storage.put('state', st);
     if (op === 'hooks' && b.test) {
-      const which = b.test === 'report' ? 'report' : 'log';
+      const which = b.test === 'report' ? 'report' : b.test === 'admin' ? 'admin' : 'log';
       const url = (st.hooks || {})[which];
       if (!url) return { ...res, err: 'no webhook for that yet' };
       if (which === 'report') {
@@ -249,10 +253,20 @@ export class Game extends DurableObject {
         for (const w of reportWhs(st, today)) { const r = await discord(url, shiftReport(st, today, nm, w)); if (!r.ok) return { ...res, err: `Discord said ${r.status}` }; }
         return res;
       }
-      const r = await discord(url, '✅ Picqer Suite log webhook works');
+      const r = await discord(url, which === 'admin' ? '✅ Picqer Suite admin log webhook works' : '✅ Picqer Suite log webhook works');
       return { ...res, ...(r.ok ? {} : { err: `Discord said ${r.status}` }) };
     }
     return { ...res, ...(target && st.acct[target] ? { profile: profile(st, target, amsNow().slice(0, 10)) } : {}) };
+  }
+  // Shift+9 actions to Discord as they happen · ids → names (read from Picqer, never written)
+  async adminDiscord(st, lines, ann) {
+    const url = (st.hooks || {}).admin || (st.hooks || {}).log;
+    if (!url) return;
+    const nm = await this.userNames().catch(() => ({}));
+    const t = amsNow().slice(11, 16);
+    const txt = lines.map((x) => `🛠️ \`${t}\` ${String(x.what).replace(/^admin:\s*/, '').replace(/→ (\d+)$/, (m, id) => '→ ' + (nm[id] || '#' + id))}`).join('\n');
+    const extra = ann && ann.text ? `\n> ${String(ann.text).slice(0, 500).replace(/\n/g, '\n> ')}` : '';
+    await discord(url, txt + extra);
   }
   // names for the report (Picqer users, kept 12 h)
   async userNames() {

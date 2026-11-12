@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.87
+// @version      3.88
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.87';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.88';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -7715,6 +7715,7 @@
         ${adm.hookOpen ? `<div class="ad-hooks">
           <div class="ad-r"><label>Logs</label><input id="ad-hlog" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).log || '')}"><button data-adh="test-log">Test</button></div>
           <div class="ad-r"><label>Report</label><input id="ad-hrep" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).report || '')}"><input id="ad-hat" type="time" value="${escHtml((adm.hooks || {}).reportAt || '22:30')}"><button data-adh="test-report">Send now</button></div>
+          <div class="ad-r"><label>Admin</label><input id="ad-hadm" placeholder="Discord webhook URL for Shift+9 actions (empty = Logs)" value="${escHtml((adm.hooks || {}).admin || '')}"><button data-adh="test-admin">Test</button></div>
           <div class="ad-r"><label></label><button class="buy" data-adh="save">Save</button></div></div>` : ''}
         ${adm.annOpen ? annBox() : ''}
         ${adm.log ? `<div class="ad-log">${adm.log.map((x) => `<div><span>${new Date(x.at).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>${escHtml(x.what.replace(/→ (\d+)$/, (m, id) => '→ ' + ((ppl.find((y) => y.id === id) || {}).name || '#' + id)))}${x.id && x.id !== '32247' && !/^admin/.test(x.what) ? ` · ${escHtml((ppl.find((y) => y.id === String(x.id)) || {}).name || '#' + x.id)}` : ''}</div>`).join('') || '–'}</div>` : ''}
@@ -7751,10 +7752,10 @@
         showAdmin();
       };
       ov.querySelectorAll('[data-adh]').forEach((b) => (b.onclick = async () => {
-        const hooks = { log: ov.querySelector('#ad-hlog').value, report: ov.querySelector('#ad-hrep').value, reportAt: ov.querySelector('#ad-hat').value || '22:30' };
+        const hooks = { log: ov.querySelector('#ad-hlog').value, report: ov.querySelector('#ad-hrep').value, reportAt: ov.querySelector('#ad-hat').value || '22:30', admin: ov.querySelector('#ad-hadm').value };
         b.disabled = true;
         let j = await adminPost('hooks', '', { hooks }).catch((e) => ({ err: e.message }));
-        if (!j.err && b.dataset.adh !== 'save') j = await adminPost('hooks', '', { test: b.dataset.adh === 'test-report' ? 'report' : 'log' }).catch((e) => ({ err: e.message }));
+        if (!j.err && b.dataset.adh !== 'save') j = await adminPost('hooks', '', { test: b.dataset.adh === 'test-report' ? 'report' : b.dataset.adh === 'test-admin' ? 'admin' : 'log' }).catch((e) => ({ err: e.message }));
         if (j.hooks) adm.hooks = j.hooks;
         adm.note = j.err || (b.dataset.adh === 'save' ? 'saved ✓' : 'sent ✓ · check Discord');
         showAdmin();
