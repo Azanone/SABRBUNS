@@ -24,7 +24,8 @@ window.PQ_TEAMS = {
         39213, // Ali Al- Turaim
         32651, // Egehan Akali
         22610, // Jari Bezemer
-        42368 // Sharlton Matwirjo
+        42368, // Sharlton Matwirjo
+        35714 // Jokke Jacobs
       ]
     },
     {
