@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.84
+// @version      3.85
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.84';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.85';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -205,7 +205,7 @@
       { k: 'skipParked', label: 'Skip picklists parked by zap / dayson / error handler', type: 'bool', def: true },
       { k: 'batchMax', label: 'Optimized batches: max picklists per batch', type: 'num', def: 15 },
       { k: 'highlightTags', label: 'BE pick-up tags (badge + always last in the batch), comma separated', type: 'list', def: ['BE pick-up'] },
-      { k: 'skipTags', label: 'Never batch picklists with these tags (Optimized + auto batch), comma separated', type: 'list', def: ['EIGENAAR'] },
+      { k: 'skipTags', label: 'Never batch picklists with these tags (every tab), comma separated', type: 'list', def: ['EIGENAAR'] },
     ]},
     { id: 'comboAlert', title: 'Combo changed popup', hint: 'popup on [COMBO CHANGED] comment', fields: [
       { k: 'beep', label: 'Beep', type: 'bool', def: true },
@@ -2091,7 +2091,7 @@
       const tags = Array.isArray(pl.tags) ? pl.tags : Object.values(pl.tags);
       return tags.some((t) => HL_CANON.includes(canonTag(t && typeof t === 'object' ? t.title || t.name : t)));
     }
-    // picklists with one of these tags never go in an optimized / auto batch (EIGENAAR = owner's own orders)
+    // picklists with one of these tags never go in a batch (EIGENAAR = owner's own orders)
     const SKIP_TAGS = (conf.skipTags || ['EIGENAAR']).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
     function hasSkipTag(pl) {
       if (!SKIP_TAGS.length || !pl || !pl.tags) return false;
@@ -2180,8 +2180,10 @@
     // may this picklist go in a batch? null = no, 'parked' / 'single' = no (counted), else its combo
     function classify(pl, statuses) {
       if (!pl || !statuses.has(pl.status) || pl.idpicklist_batch) return null;
-      // parked by zap / dayson / error handler -> never put back in a batch
-      if (SKIP_USERS.length && pl.assigned_to_iduser != null && SKIP_USERS.includes(String(pl.assigned_to_iduser))) return 'parked';
+      // never batch (every tab): assigned to someone (zap / dayson / error handler / given to a person), urgent, or a skip tag like EIGENAAR
+      if (pl.assigned_to_iduser != null && String(pl.assigned_to_iduser) !== '0') return 'parked';
+      if (pl.urgent === true || pl.urgent === 1 || pl.urgent === '1') return 'parked';
+      if (hasSkipTag(pl)) return 'parked';
       const ck = comboKey(pl);
       if (!ck) return null;
       return ck.single ? 'single' : ck;
