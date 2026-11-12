@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.85
+// @version      3.86
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.85';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.86';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -281,7 +281,7 @@
     { id: 'leaderboard', title: 'Leaderboard', hint: 'points in the last 15 min · your rank bottom right · Ctrl+Alt+L = everyone · Ctrl+Alt+P = pick / pack / charts · 🪙 at the top = inventory, stats, shop', fields: [
       { k: 'url', label: 'Middle stop (Cloudflare worker link, empty = every PC asks Picqer itself)', type: 'text', def: 'https://sabrbuns.nitroxylazanone.workers.dev' },
       { k: 'windowMin', label: 'Count closed picklists of the last (min)', type: 'num', def: 15 },
-      { k: 'warehouse', label: 'Only this warehouse (name or id, empty = all)', type: 'text', def: 'Bunsenstraat' },
+      { k: 'warehouse', label: 'My warehouse (name or id): rank card, goal bar and idle alerts when I\'m not on a board · empty = all', type: 'text', def: 'Bunsenstraat' },
       { k: 'widget', label: 'Show my rank bottom right', type: 'bool', def: true },
       { k: 'theme', label: 'Look: auto, light or dark', type: 'text', def: 'auto' },
       { k: 'feed', label: 'Live feed: pop up when someone gets an epic or legendary crate', type: 'bool', def: true },
@@ -611,8 +611,8 @@
     unpick: 'A button next to Pick alles that takes back everything that was picked on the picklist.',
     autoNext: 'In a batch: the shipment is made → the next picklist that still needs packing opens by itself.',
     pickAllKey: 'A on a picklist = pick everything in 1 go.',
-    pickStats: 'Ctrl+Alt+P: who is picking right now (last 15 min, idle time), who packs, and charts per hour for any day.',
-    leaderboard: 'Packing points (multi 2, single 1,334) of the last 15 min. Your rank bottom right, Ctrl+Alt+L for everyone. Points are coins for the shop, crates and the pass (🪙 at the top).',
+    pickStats: 'Ctrl+Alt+P: who is picking right now (last 15 min, idle time), who packs, and charts per hour for any day. Bunsenstraat / Barnsteen at the top: switch warehouse. The idle alert is for the pickers of your own warehouse.',
+    leaderboard: 'Packing points (multi 2, single 1,334) of the last 15 min. Every warehouse (Bunsenstraat, Barnsteen) has its own board and king. Your rank bottom right (the warehouse you work in), Ctrl+Alt+L for everyone: switch warehouse at the top. Points are coins for the shop, crates and the pass (🪙 at the top), the same everywhere.',
     cardColor: 'A colored bar per product code on picklists, so look-alike products are easy to tell apart.',
     beCounter: 'In the header next to the coins: how many open picklists have the tag BE Pick-up. Counts down live (every 15 sec), gone after 23:00.',
   };
@@ -5109,6 +5109,8 @@
   //  colors = points in the last 15 min (nothing extrapolated):
   //    46+ blue · 38+ turquoise · 30+ dark green · 21+ green · 14+ orange · less red
   //  king of the hill = #1 with 21+ points: +20 coins every minute on top. Packing points are coins too.
+  //  Warehouses (3.86): every warehouse in WAREHOUSES (worker) gets its own board + king; the lists have a switch,
+  //  the rank card shows the warehouse you work in. Announcements (3.86): Shift+9 → 📢, see ANNOUNCEMENTS below.
   //  The middle stop (Cloudflare worker) asks Picqer once a minute for everyone and keeps today, coins,
   //  the king and the skins. Without it every PC asks Picqer itself (then no king, coins or skins).
   // =====================================================================
@@ -5745,13 +5747,14 @@
       if (lock && lock.tab !== TAB && Date.now() - lock.ts < POLL * 1.6) return; // another tab on this PC does it
       lsSet(LS_LOCK, { tab: TAB, ts: Date.now() });
       try {
-        let people = null, whName = '', via = '', king = null, pickPeople = null, goal = null;
+        let people = null, whName = '', via = '', king = null, pickPeople = null, goal = null, whsIn = null, mainId = '';
         if (URL_) {
           try {
             const r = await fetch(`${URL_}/leaderboard`, { credentials: 'omit', cache: 'no-store' });
             const j = await r.json();
             if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
-            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed); pickPeople = j.picks && j.picks.people; goal = j.goal || null;
+            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed); pickPeople = j.picks && (j.picks.all || j.picks.people); goal = j.goal || null;
+            whsIn = Array.isArray(j.whs) && j.whs.length > 1 ? j.whs : null; mainId = String(j.main || (goal && goal.wh) || '');
             if (j.flags && JSON.stringify(j.flags) !== JSON.stringify(lsGet(LS_FLAGS, null))) { lsSet(LS_FLAGS, j.flags); window.dispatchEvent(new Event('pq-flags')); }
           } catch (e) { console.info('[leaderboard] middle stop:', e.message, '· asking Picqer myself'); }
         }
@@ -5767,11 +5770,14 @@
           people = scoreRows(rows);
         }
         const map = await names().catch(() => ({}));
-        const list = people.filter((r) => !proxies.has(String(r.id)))
+        const rows = (arr) => (arr || []).filter((r) => !proxies.has(String(r.id)))
           .map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}`, n: r.picklists }))
           .sort((a, b) => b.points - a.points || b.n - a.n);
-        const plist = (pickPeople || []).filter((r) => !proxies.has(String(r.id))).map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}` }));
-        data = { at: Date.now(), wh: norm(whName || ''), list, king, via: via || 'Picqer', err: '', picks: plist, goal };
+        const list = rows(people);
+        // 2+ warehouses: a board + king each (Bunsenstraat, Barnsteen…)
+        const whs = whsIn ? whsIn.map((w) => ({ id: String(w.id), name: norm(w.name || ''), list: rows(w.people), king: w.king || null })) : null;
+        const plist = (pickPeople || []).filter((r) => !proxies.has(String(r.id))).map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}`, wh: r.wh != null ? String(r.wh) : '' }));
+        data = { at: Date.now(), wh: norm(whName || ''), list, king, via: via || 'Picqer', err: '', picks: plist, goal, whs, main: mainId };
         idleCheck(plist);
       } catch (e) {
         data = { ...(data || { list: [] }), at: Date.now(), err: e.message };
@@ -5795,17 +5801,59 @@
       let rank = 0, prev = null;
       return act.map((r, i) => { if (prev === null || r.live.m15 !== prev) rank = i + 1; prev = r.live.m15; return { ...r, rank, tier: pickTier(r.live.m15) }; });
     }
-    const pickRanked = () => pickSort((data && data.picks) || []);
-    function ranked() {
-      const list = (data && data.list) || [];
-      const kingId = data && data.king ? String(data.king.id) : (data && data.via !== 'middle stop' && list[0] && per15(list[0].points) >= 21 ? list[0].id : null);
+    // ---------- warehouses (Bunsenstraat, Barnsteen…): a board + king each. One warehouse = no switch anywhere ----------
+    const LS_WH = 'pqsuite_lb_wh_v1';
+    const whsOf = () => (data && data.whs && data.whs.length > 1 ? data.whs : [{ id: '', name: (data && data.wh) || '', list: (data && data.list) || [], king: (data && data.king) || null }]);
+    const multiWh = () => whsOf().length > 1;
+    const whById = (id) => whsOf().find((w) => w.id === String(id)) || whsOf()[0];
+    const mainWh = () => String((data && data.main) || whsOf()[0].id);
+    const whShort = (w) => String((w && w.name) || '').split(/\s+/)[0] || '#' + ((w && w.id) || '');
+    // where I work right now: the board I'm on (most points), else where I picked last (null = not working)
+    function myWh() {
+      if (!multiWh()) return whsOf()[0].id;
+      let best = null;
+      for (const w of whsOf()) { const r = w.list.find((x) => x.id === ME_ID); if (r && (!best || r.points > best.p)) best = { id: w.id, p: r.points }; }
+      if (best) return best.id;
+      const pr = ((data && data.picks) || []).find((x) => x.id === ME_ID && x.wh && x.live && x.live.idleMin != null && x.live.idleMin < 60);
+      return pr ? pr.wh : null;
+    }
+    // my warehouse from the settings (Shift+8 → Leaderboard → My warehouse)
+    function setWh() {
+      const k = low(C.warehouse || '');
+      if (!k) return null;
+      const ws = whsOf(), hit = ws.find((w) => w.id === k) || ws.find((w) => low(w.name) === k) || ws.find((w) => low(w.name).includes(k));
+      return hit ? hit.id : null;
+    }
+    const homeWh = () => myWh() || setWh() || mainWh();
+    // which warehouse the lists show: picked by hand (this PC, 12 h) → where I work → my warehouse setting
+    let tvWh = null; // TV link with a warehouse (#pickers=<id>): that one while the TV dashboard is open
+    function viewWh() {
+      if (!multiWh()) return whsOf()[0].id;
+      if (tvWh && whsOf().find((w) => w.id === tvWh)) return tvWh;
+      const v = lsGet(LS_WH, null);
+      if (v && v.id && Date.now() - v.at < 12 * 3600000 && whsOf().find((w) => w.id === v.id)) return v.id;
+      return homeWh();
+    }
+    const setView = (id) => lsSet(LS_WH, { id: String(id), at: Date.now() });
+    const picksIn = (list, id) => (!multiWh() ? list : list.filter((r) => (r.wh || mainWh()) === String(id)));
+    const pickRanked = (id) => pickSort(picksIn((data && data.picks) || [], id == null ? viewWh() : id));
+    function ranked(id) {
+      const w = whById(id == null ? viewWh() : id);
+      const list = w.list || [];
+      const kingId = w.king ? String(w.king.id) : (data && data.via !== 'middle stop' && list[0] && per15(list[0].points) >= 21 ? list[0].id : null);
       let rank = 0, prev = null;
       return list.map((r, i) => {
         if (!prev || r.points !== prev.points) rank = i + 1;
         prev = r;
         const king = r.id === kingId;
-        return { ...r, rank, king, kingMin: king && data.king ? data.king.min : null, tier: king ? 'gold' : tierOf(per15(r.points)) };
+        return { ...r, rank, king, kingMin: king && w.king ? w.king.min : null, tier: king ? 'gold' : tierOf(per15(r.points)) };
       });
+    }
+    // the switch above a list: Bunsenstraat 12 · Barnsteen 5 (how many on that board) · all = an "All" button first
+    function whSwitch({ count = null, cur = viewWh(), all = false } = {}) {
+      if (!multiWh()) return '';
+      const btn = (id, label, n) => `<button data-whv="${escHtml(id)}" class="${cur === id ? 'on' : ''}">${escHtml(label)}${n != null ? `<small>${n}</small>` : ''}</button>`;
+      return `<div class="lb-tabs lb-wh">${all ? btn('', 'All', null) : ''}${whsOf().map((w) => btn(w.id, w.name || whShort(w), count ? count(w) : null)).join('')}</div>`;
     }
 
     const theme = () => {
@@ -5844,6 +5892,8 @@
       .pq-lb-ov .lb-tabs button{border:0;background:none;color:var(--mut);font:600 12.5px system-ui;padding:5px 12px;border-radius:7px;cursor:pointer}
       .pq-lb-ov .lb-tabs button.on{background:var(--bg);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12)}
       .pq-lb-ov .lb-meta{color:var(--mut);font-size:12px;margin:2px 0 14px}
+      .pq-lb-ov .lb-wh{margin:10px 0 8px}
+      .pq-lb-ov .lb-wh button small{margin-left:6px;font-weight:700;opacity:.65}
       .pq-lb-ov .lb-row{display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;border-left:3px solid var(--c)}
       .pq-lb-ov .lb-row+.lb-row{margin-top:4px}
       .pq-lb-ov .lb-row.me{background:var(--hi)}
@@ -5981,6 +6031,7 @@
       const g = data && data.goal;
       let bar = document.getElementById('pq-goal');
       if (!g || !g.target) { bar?.remove(); return; }
+      if (multiWh() && g.wh && homeWh() !== String(g.wh)) { bar?.remove(); return; } // the goal is about another warehouse than where you work
       addStyle('pq-goal-style', `
         #pq-goal{min-height:30px;box-sizing:border-box;min-width:0;max-width:100%;display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:4px 24px;background:#fff;border-bottom:1px solid #e2e8f0;font:500 12.5px system-ui,sans-serif;color:#0f172a;position:sticky;top:var(--pq-hh,52px);z-index:5}
         #pq-goal b.t{font-weight:700;white-space:nowrap}
@@ -6037,31 +6088,32 @@
       safe('goal-bar', goalBar);
       const th = theme();
       box.classList.toggle('dark', th === 'dark');
-      const pl = pickRanked(), pme = pl.find((r) => r.id === ME_ID);
-      const packMe = ranked().find((r) => r.id === ME_ID);
+      const home = homeWh(), atWh = multiWh() ? ` · ${escHtml(whShort(whById(home)))}` : '';
+      const pl = pickRanked(home), pme = pl.find((r) => r.id === ME_ID);
+      const packMe = ranked(home).find((r) => r.id === ME_ID);
       box.dataset.mode = pme && !packMe ? 'pick' : 'pack'; // pme = only when picking (something collected in the last hour)
       if (C.widget !== false && box.dataset.mode === 'pick') {
-        const key = JSON.stringify(['pick', th, pme.tier, pme.rank, pme.live.m15, pme.live.idleMin, pme.live.batch, pl.length]);
+        const key = JSON.stringify(['pick', th, pme.tier, pme.rank, pme.live.m15, pme.live.idleMin, pme.live.batch, pl.length, home]);
         if (key !== shown) {
           shown = key;
           const gap = pme.rank > 1 ? pl[0].live.m15 - pme.live.m15 : 0, bt = pme.live.batch;
           box.innerHTML = `<div class="lb-card t-${pme.tier}"><div class="lb-rank">#${pme.rank}</div><div class="lb-main">
             <div class="lb-pts">${fmt(pme.live.m15)} <small>pick pts · 15 min</small></div>
-            <div class="lb-sub"><span class="${idleCls(pme)}">${idleTxt(pme)}</span>${bt ? ` · batch ${int(bt.items)}/${int(bt.total)}` : ''} · ${pme.rank === 1 ? `#1 of ${pl.length}` : `${fmt(gap)} behind #1`}</div></div></div>`;
+            <div class="lb-sub"><span class="${idleCls(pme)}">${idleTxt(pme)}</span>${bt ? ` · batch ${int(bt.items)}/${int(bt.total)}` : ''} · ${pme.rank === 1 ? `#1 of ${pl.length}` : `${fmt(gap)} behind #1`}${atWh}</div></div></div>`;
           if (prevRank != null && pme.rank !== prevRank) { box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash'); }
           prevRank = pme.rank;
         }
       } else if (C.widget !== false) {
-        const list = ranked();
+        const list = ranked(home);
         const me = list.find((r) => r.id === ME_ID);
-        const key = JSON.stringify([th, me && me.tier, me && me.rank, me && me.points, me && me.kingMin, list.length]);
+        const key = JSON.stringify([th, me && me.tier, me && me.rank, me && me.points, me && me.kingMin, list.length, home]);
         if (key !== shown) {
           shown = key;
           const mins = Math.round(WIN / 60000);
           const gap = me && me.rank > 1 ? list[0].points - me.points : 0;
           box.innerHTML = `<div class="lb-card t-${me ? me.tier : 'none'}"><div class="lb-rank">${me ? '#' + me.rank : '–'}</div><div class="lb-main">
             <div class="lb-pts">${me ? fmt(me.points) : 0} <small>pts · ${mins} min</small></div>
-            <div class="lb-sub">${me ? (me.king ? `<span class="lb-king">👑 king${me.kingMin != null ? ` · ${me.kingMin} min` : ''}</span>` : `${me.n} closed · ${me.rank === 1 ? `#1 of ${list.length}` : `${fmt(gap)} behind #1`}`) : list.length ? `${list.length} on the board` : 'nobody closed one yet'}</div></div></div>`;
+            <div class="lb-sub">${me ? (me.king ? `<span class="lb-king">👑 king${me.kingMin != null ? ` · ${me.kingMin} min` : ''}</span>` : `${me.n} closed · ${me.rank === 1 ? `#1 of ${list.length}` : `${fmt(gap)} behind #1`}`) : list.length ? `${list.length} on the board` : 'nobody closed one yet'}${atWh}</div></div></div>`;
           if (me && prevRank != null && me.rank !== prevRank) { box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash'); }
           prevRank = me ? me.rank : null;
         }
@@ -6086,12 +6138,12 @@
       document.getElementById(id)?.remove();
       if (id === 'pq-lb-ov') listOpen = false;
       if (id === 'pq-pf-ov') { aimUid = null; chatWatch(false); }
-      if (id === 'pq-pk-ov') { clearInterval(pkTimer); pkTimer = null; pkTv = false; if (/^#pickers/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); }
+      if (id === 'pq-pk-ov') { clearInterval(pkTimer); pkTimer = null; pkTv = false; tvWh = null; if (/^#pickers/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); }
     }
 
     const lbGear = () => openToolSettings && openToolSettings({ title: 'Leaderboard', mods: [{ id: 'leaderboard', keys: can('settings') ? null : ['theme', 'widget'] }] });
     // Ctrl+Alt+L: "15 min" = who is fast right now · "Total" = all packing points ever (from the middle stop)
-    let listTab = 'now', totQ = '', tot = lsGet('pqsuite_tot_v1', null), totErr = '', totBusy = false, who = null, whoProf = null, whoErr = '';
+    let listTab = 'now', totQ = '', tot = lsGet('pqsuite_tot_v1', null), totErr = '', totBusy = false, who = null, whoProf = null, whoErr = '', totWh = '';
     async function loadWho(id) {
       who = id; whoProf = null; whoErr = '';
       showList(true);
@@ -6148,18 +6200,20 @@
       if (listTab === 'total') {
         const hm = tot && tot.at ? new Date(tot.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
         const meta = !URL_ ? 'needs the middle stop (Shift+8 → Leaderboard)' : `coins everyone has now · click someone for everything · ${hm}${totErr ? ' · ⚠ ' + escHtml(totErr) : ''}`;
-        const rows = (tot && tot.list) || [];
+        if (totWh && !whsOf().find((w) => w.id === totWh)) totWh = '';
+        const rows = ((tot && tot.list) || []).filter((r) => !totWh || (r.wh || mainWh()) === totWh); // people from before the warehouses = the main one
         let rank = 0, prev = null;
         const ql = low(totQ);
-        body = who ? whoHtml() : `<div class="lb-meta">${meta}</div><input class="lb-q" placeholder="Search a name…" value="${escHtml(totQ)}">` + (rows.length ? rows.map((r, i) => {
+        body = who ? whoHtml() : `${whSwitch({ cur: totWh, all: true })}<div class="lb-meta">${meta}</div><input class="lb-q" placeholder="Search a name…" value="${escHtml(totQ)}">` + (rows.length ? rows.map((r, i) => {
           if (prev === null || r.balance !== prev) rank = i + 1;
           prev = r.balance;
           return `<div class="lb-row click t-${rank === 1 ? 'gold' : 'none'}${r.id === ME_ID ? ' me' : ''}${ql && !low(r.name).includes(ql) ? ' hide' : ''}" data-n="${escHtml(low(r.name))}" data-who="${escHtml(r.id)}" title="Click for everything about ${escHtml(r.name)}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
             <span class="nm">${escHtml(r.name)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small>${int(r.picklists)} closed · ${fmt(r.points)} pts${r.pickPoints ? ` · ${fmt(r.pickPoints)} pick pts` : ''}${r.kingTotal ? ` · king ${int(r.kingTotal)} min` : ''}</small></span>
             <span class="v">${int(r.balance)}<small>coins</small></span></div>`;
         }).join('') : `<div class="lb-empty">${URL_ ? (tot ? 'Nobody has coins yet' : 'Loading…') : ''}</div>`);
-      } else body = packHtml();
+      } else body = whSwitch({ count: (w) => w.list.length }) + packHtml();
       ov.innerHTML = `<div class="lb-panel"><h2>Leaderboard<button class="lb-gear" title="Leaderboard settings">⚙</button></h2>${tabs}${body}</div>`;
+      ov.querySelectorAll('[data-whv]').forEach((b) => (b.onclick = () => { if (listTab === 'total') totWh = b.dataset.whv; else setView(b.dataset.whv); showList(true); }));
       ov.querySelector('.lb-gear').onclick = () => { close('pq-lb-ov'); lbGear(); };
       ov.querySelectorAll('[data-who]').forEach((b) => (b.onclick = () => loadWho(b.dataset.who)));
       ov.querySelector('[data-lb="back"]')?.addEventListener('click', () => { who = null; showList(true); });
@@ -6761,6 +6815,7 @@
       newsCheck(p);
       if (p.trades) handleTrades(p.trades);
       chatNotify(p);
+      if (p.ann) annFeed(p.ann);
       return p;
     }
     async function pollProf() {
@@ -7011,6 +7066,7 @@
     const IDLE_MIN = 7, LS_IDLE = 'pqsuite_idle_seen_v1';
     function idleCheck(list) {
       if (!can('pickStats') || C.idleAlert === false) return;
+      list = picksIn(list || [], homeWh()); // 2 warehouses: only the pickers where you work (or your warehouse setting)
       const seen = lsGet(LS_IDLE, null) || {};
       let changed = false;
       for (const r of list || []) {
@@ -7419,7 +7475,7 @@
     function trClose() { document.getElementById('pq-trade')?.remove(); trOpen = null; trMine = null; }
 
     // ---------- Ctrl+Alt+P: pick · pack · charts (TV: any Picqer link with #pickers) ----------
-    let pkTab = 'pick', picks = null, picksErr = '', chDate = null, chData = null, chBusy = '', chErr = '', chAt = 0, pkTv = false, pkTimer = null;
+    let pkTab = 'pick', picks = null, picksErr = '', chDate = null, chWh = '', chData = null, chBusy = '', chErr = '', chAt = 0, pkTv = false, pkTimer = null;
     const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
     const addDay = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`; };
     async function loadPicks() {
@@ -7428,44 +7484,47 @@
         const j = await r.json();
         if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
         const map = await names().catch(() => ({}));
-        picks = { at: j.at, list: j.people.filter((x) => !proxies.has(String(x.id))).map((x) => ({ ...x, id: String(x.id), name: map[x.id] || `#${x.id}` })) };
+        picks = { at: j.at, list: (j.all || j.people).filter((x) => !proxies.has(String(x.id))).map((x) => ({ ...x, id: String(x.id), name: map[x.id] || `#${x.id}`, wh: x.wh != null ? String(x.wh) : '' })) };
         picksErr = '';
       } catch (e) { picksErr = e.message; }
       showPk(true);
     }
     // packed per hour = closed picklists, straight from Picqer (past days kept on this PC: they don't change anymore)
-    const LS_CH = 'pqsuite_chart_v1';
-    async function packedFromPicqer(date) {
-      const w = await warehouse();
+    const LS_CH = 'pqsuite_chart_v2'; // per warehouse + day
+    try { localStorage.removeItem('pqsuite_chart_v1'); } catch (_) {}
+    async function packedFromPicqer(date, W) {
+      const w = W ? { id: W } : await warehouse();
       const out = Array(24).fill(0);
       let n = 0;
       for (let off = 0; off < 30000; off += 100) {
         const page = await api(`/picklists?status=closed&closed_after=${encodeURIComponent(date + ' 00:00:00')}&closed_before=${encodeURIComponent(addDay(date, 1) + ' 00:00:00')}${w && w.id ? `&idwarehouse=${w.id}` : ''}&offset=${off}`);
         (page || []).forEach((p) => { const h = +String(p.closed_at || '').slice(11, 13); if (String(p.closed_at || '').slice(0, 10) === date && h >= 0 && h < 24) out[h]++; });
         n += (page || []).length;
-        if (chDate === date) { chBusy = `counting picklists… ${n}`; showPk(true); }
+        if (chDate === date && chWh === (W || '')) { chBusy = `counting picklists… ${n}`; showPk(true); }
         if (!page || page.length < 100) break;
       }
       return out;
     }
     async function loadChart(date) {
-      chDate = date; chErr = ''; chBusy = 'loading…';
-      if (!chData || chData.date !== date) chData = null;
+      const W = multiWh() ? viewWh() : '';
+      chDate = date; chWh = W; chErr = ''; chBusy = 'loading…';
+      if (!chData || chData.date !== date || chData.wh !== W) chData = null;
       showPk(true);
+      const mine = () => chDate === date && chWh === W;
       try {
-        const mid = URL_ ? await fetch(`${URL_}/chart?date=${date}`, { credentials: 'omit', cache: 'no-store' }).then((x) => x.json()).catch(() => null) : null;
+        const mid = URL_ ? await fetch(`${URL_}/chart?date=${date}${W ? `&wh=${encodeURIComponent(W)}` : ''}`, { credentials: 'omit', cache: 'no-store' }).then((x) => x.json()).catch(() => null) : null;
         let packed;
-        const c = lsGet(LS_CH, null) || {};
-        if (date !== todayStr() && c[date]) packed = c[date];
+        const c = lsGet(LS_CH, null) || {}, key = `${W}|${date}`;
+        if (date !== todayStr() && c[key]) packed = c[key];
         else {
-          packed = await packedFromPicqer(date);
-          if (date < todayStr()) { c[date] = packed; const ks = Object.keys(c).sort(); while (ks.length > 45) delete c[ks.shift()]; lsSet(LS_CH, c); }
+          packed = await packedFromPicqer(date, W);
+          if (date < todayStr()) { c[key] = packed; const ks = Object.keys(c).sort((x, y) => x.split('|')[1].localeCompare(y.split('|')[1])); while (ks.length > 60) delete c[ks.shift()]; lsSet(LS_CH, c); }
         }
-        if (chDate !== date) return;
-        chData = { date, packed, picked: mid && mid.have ? mid.picked : null };
+        if (!mine()) return;
+        chData = { date, wh: W, packed, picked: mid && mid.have ? mid.picked : null };
         chAt = Date.now();
-      } catch (e) { if (chDate === date) chErr = e.message; }
-      if (chDate === date) { chBusy = ''; showPk(true); }
+      } catch (e) { if (mine()) chErr = e.message; }
+      if (mine()) { chBusy = ''; showPk(true); }
     }
     function bars(arr, lo, hi, color, f) {
       const part = arr.slice(lo, hi + 1), max = Math.max(1, ...part);
@@ -7489,17 +7548,17 @@
         ${chBusy ? `<div class="lb-meta" style="margin-top:8px">${escHtml(chBusy)}</div>` : ''}`;
     }
     function packHtml() {
-      const list = ranked();
+      const vw = whById(viewWh()), list = ranked(vw.id);
       const mins = Math.round(WIN / 60000);
       const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
-      return `<div class="lb-meta">last ${mins} min · multi 2 · single 1,334${data && data.wh ? ' · ' + escHtml(data.wh) : ''} · ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
+      return `<div class="lb-meta">last ${mins} min · multi 2 · single 1,334${vw.name ? ' · ' + escHtml(vw.name) : ''} · ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
         ${list.length ? list.map((r) => `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.king ? '👑' : '#' + r.rank}</span>
           <span class="nm">${escHtml(r.name)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single${r.king && r.kingMin != null ? ` · king ${r.kingMin} min` : ''}</small></span>
           <span class="v">${fmt(r.points)}<small>pts</small></span></div>`).join('') : `<div class="lb-empty">Nobody closed a picklist in the last ${mins} min</div>`}
         <div class="lb-legend"><span class="t-blue"><i></i>46+</span><span class="t-turq"><i></i>38+</span><span class="t-dgreen"><i></i>30+</span><span class="t-green"><i></i>21+</span><span class="t-orange"><i></i>14+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 21+ · +20 coins a minute</span></div>`;
     }
     function pickHtml() {
-      const all = (picks && picks.list) || [];
+      const all = picksIn((picks && picks.list) || [], viewWh());
       const act = pickSort(all);
       const rest = all.filter((r) => !picking(r) && r.points > 0).sort((a, b) => b.points - a.points);
       const hm = picks && picks.at ? new Date(picks.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
@@ -7522,10 +7581,17 @@
       ov.classList.toggle('tv', pkTv);
       const tab = (k, t) => `<button data-pk="${k}" class="${pkTab === k ? 'on' : ''}">${t}</button>`;
       const body = !URL_ ? '<div class="lb-empty">needs the middle stop (Shift+8 → Leaderboard)</div>' : pkTab === 'pack' ? packHtml() : pkTab === 'chart' ? chartHtml() : pickHtml();
+      const pkCount = pkTab === 'pack' ? (w) => w.list.length : pkTab === 'pick' ? (w) => pickSort(picksIn((picks && picks.list) || [], w.id)).length : null;
       const keep = document.activeElement && document.activeElement.classList.contains('pk-in');
       if (keep) return; // don't throw away an open date picker
       ov.innerHTML = `<div class="lb-panel"><h2>Pickers &amp; packers<span><button class="lb-gear" data-pkx="tv" title="Copy the TV link">📺</button><button class="lb-gear" data-pkx="close" title="Esc">✕</button></span></h2>
-        <div class="lb-tabs">${tab('pick', '⛏ Pick')}${tab('pack', '📦 Pack')}${tab('chart', '📈 Charts')}</div>${body}</div>`;
+        <div class="lb-tabs">${tab('pick', '⛏ Pick')}${tab('pack', '📦 Pack')}${tab('chart', '📈 Charts')}</div>${URL_ ? whSwitch({ count: pkCount }) : ''}${body}</div>`;
+      ov.querySelectorAll('[data-whv]').forEach((b) => (b.onclick = () => {
+        if (pkTv) tvWh = b.dataset.whv;
+        setView(b.dataset.whv);
+        showPk(true);
+        if (pkTab === 'chart') loadChart(chDate || todayStr());
+      }));
       ov.querySelectorAll('[data-pk]').forEach((b) => (b.onclick = () => {
         pkTab = b.dataset.pk;
         showPk(true);
@@ -7534,7 +7600,7 @@
       }));
       ov.querySelector('[data-pkx="close"]').onclick = () => close('pq-pk-ov');
       ov.querySelector('[data-pkx="tv"]').onclick = async (e) => {
-        const link = `${location.origin}/picklists/batches#pickers`;
+        const link = `${location.origin}/picklists/batches#pickers${multiWh() ? '=' + viewWh() : ''}`;
         try { await navigator.clipboard.writeText(link); e.currentTarget.textContent = '✓'; } catch (_) { prompt('TV link:', link); }
       };
       ov.querySelectorAll('[data-dd]').forEach((b) => (b.onclick = () => { const n = +b.dataset.dd; loadChart(n ? addDay(chDate || todayStr(), n) : todayStr()); }));
@@ -7544,7 +7610,7 @@
     function openPk(tv) {
       if (document.getElementById('pq-pk-ov')) return;
       pkTv = !!tv;
-      if (tv) pkTab = 'pick';
+      if (tv) { pkTab = 'pick'; const m = location.hash.match(/^#pickers=(\d+)/); tvWh = m ? m[1] : null; if (tvWh) setView(tvWh); }
       showPk();
       if (!URL_) return;
       loadPicks();
@@ -7577,7 +7643,7 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden && (!data || Date.now() - data.at > POLL)) poll(); });
 
     // ---------- Shift+9 (only Ahmad): give / take coins, crates, items, skins, pass, XP ----------
-    let adm = { who: null, q: '', p: null, note: '', log: null, flags: null, hooks: null, hookOpen: false, goal: undefined, needKey: false };
+    let adm = { who: null, q: '', p: null, note: '', log: null, flags: null, hooks: null, hookOpen: false, goal: undefined, needKey: false, annOpen: false, anns: null, annText: '', annTo: 'all', annH: '8' };
     async function adminPost(op, target, extra = {}) {
       const key = lsGet('pqsuite_admin_key', '');
       const r = await fetch(`${URL_}/admin`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Admin-Key': key } : {}) }, body: JSON.stringify({ by: ME_ID, op, target, ...extra }) });
@@ -7604,6 +7670,29 @@
       const opt = (arr) => arr.map(([v, t]) => `<option value="${escHtml(v)}">${escHtml(t)}</option>`).join('');
       const tiers = ['common', 'uncommon', 'rare', 'epic', 'legendary'].map((t) => [t, tierName(t)]);
       const skins = ((prof && prof.skins) || []).map((x) => [x.id, x.name]);
+      // announcements: everyone in the game + everyone else in Picqer (names this PC knows)
+      const users = (lsGet(LS_USERS, null) || {}).map || {};
+      const nameOf = (id) => (ppl.find((r) => r.id === String(id)) || {}).name || users[id] || '#' + id;
+      function annBox() {
+        const inGame = new Set(ppl.map((r) => r.id));
+        const others = Object.entries(users).filter(([id]) => !inGame.has(String(id)) && !proxies.has(String(id))).map(([id, name]) => ({ id: String(id), name })).sort((a, b) => a.name.localeCompare(b.name));
+        const sel = (v) => (String(adm.annTo) === String(v) ? ' selected' : '');
+        const o = (r) => `<option value="${escHtml(r.id)}"${sel(r.id)}>${escHtml(r.name)}</option>`;
+        const listed = adm.annTo === 'all' || ppl.some((r) => r.id === String(adm.annTo) && !proxies.has(r.id)) || others.some((r) => r.id === String(adm.annTo));
+        const toOpts = `${listed ? '' : `<option value="${escHtml(adm.annTo)}" selected>${escHtml(nameOf(adm.annTo))}</option>`}<option value="all"${sel('all')}>📢 Everyone</option>${ppl.length ? `<optgroup label="In the game">${ppl.filter((r) => !proxies.has(r.id)).map(o).join('')}</optgroup>` : ''}${others.length ? `<optgroup label="Everyone else in Picqer">${others.map(o).join('')}</optgroup>` : ''}`;
+        const hOpt = [['1', '1 hour'], ['4', '4 hours'], ['8', '8 hours'], ['24', '24 hours'], ['72', '3 days']].map(([v, t]) => `<option value="${v}"${String(adm.annH) === v ? ' selected' : ''}>${t}</option>`).join('');
+        const when = (t) => new Date(t).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const seenTxt = (x) => {
+          const ids = Object.keys(x.seen || {});
+          if (x.to === 'all') return `<span title="${escHtml(ids.map(nameOf).join(', ') || 'nobody yet')}">seen by ${ids.length}</span>`;
+          return x.seen[x.to] ? `<span class="good">seen ✓ ${new Date(x.seen[x.to]).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}</span>` : '<span>not seen yet</span>';
+        };
+        const list = adm.anns == null ? '<div class="iv-empty">…</div>' : adm.anns.length ? adm.anns.map((x) => `<div class="ad-an${x.live ? '' : ' old'}"><span class="t">${when(x.at)}</span><b>${x.to === 'all' ? 'Everyone' : escHtml(nameOf(x.to))}</b><span class="tx" title="${escHtml(x.text)}">${escHtml(x.text)}</span>${x.live ? seenTxt(x) : '<span>ended</span>'}<button data-adun="${escHtml(x.id)}" title="${x.live ? 'Stop it: whoever didn\'t see it yet won\'t get it' : 'Remove'}">✕</button></div>`).join('') : '<div class="iv-empty">nothing sent yet</div>';
+        return `<div class="ad-ann">
+          <textarea id="ad-at" maxlength="500" rows="3" placeholder="Announcement… a card at the top of Picqer, once per person (also on another PC)">${escHtml(adm.annText)}</textarea>
+          <div class="ad-r"><label>To</label><select id="ad-ato">${toOpts}</select><span class="ad-mut">for</span><select id="ad-ah">${hOpt}</select><button class="buy" data-adann>Send</button><small class="ad-cnt">${adm.annText.length}/500</small></div>
+          <div class="ad-anns">${list}</div></div>`;
+      }
       const right = !adm.who ? '<div class="iv-empty">pick someone</div>' : !p ? '<div class="iv-empty">…</div>' : `
         <div class="ad-who"><b>${escHtml(who ? who.name : '#' + adm.who)}</b><span>🪙 ${int(p.balance)}</span></div>
         <div class="ad-tags"><span>pass ${p.pass && p.pass.owned ? '✓' : '–'} · lv ${p.pass ? p.pass.lv : 0}</span><span>${(p.inv || []).length} in inventory</span><span>${(p.owned || []).length} skins</span>
@@ -7615,10 +7704,11 @@
           <div class="ad-r"><label>Skin</label><select id="ad-skin">${opt(skins)}</select><button class="buy" data-ad="skin">Give</button><button data-ad="unskin">Take</button></div>
           <div class="ad-r"><label>Pass</label>${p.pass && p.pass.owned ? '<button data-ad="unpass">Take pass</button>' : '<button class="buy" data-ad="pass">Give pass</button>'}<input type="number" id="ad-xp" value="1000"><button data-ad="xp">+ XP</button></div>
           <div class="ad-r"><label>Effects</label><button data-ad="clear">Unfreeze</button><input type="number" id="ad-bm" value="30"><button data-ad="boost">Boost min</button></div>
+          <div class="ad-r"><label>Message</label><button data-ad-msg>📩 Send them a message</button></div>
         </div>`;
       const fl = adm.flags || {};
       const flagSw = (k, t) => `<label class="ad-flag"><input type="checkbox" data-adf="${k}" ${fl[k] === false ? '' : 'checked'} ${adm.flags ? '' : 'disabled'}>${t}</label>`;
-      ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><div class="ad-flags"><span>everyone</span>${flagSw('cardColor', 'Product colors')}${flagSw('skins', 'Skins')}</div><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-hook title="Discord: logs + end of shift report">🔔</button><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
+      ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><div class="ad-flags"><span>everyone</span>${flagSw('cardColor', 'Product colors')}${flagSw('skins', 'Skins')}</div><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-ann title="Announcement: a text for everyone or one person">📢</button><button class="lb-gear" data-ad-hook title="Discord: logs + end of shift report">🔔</button><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
         ${adm.needKey ? `<div class="ad-goal"><label>Admin key</label><input type="password" id="ad-key" placeholder="ADMIN_KEY from Cloudflare" style="width:260px" autocomplete="off"><button class="buy" data-adkey>Save on this PC</button></div>` : ''}
         ${adm.note ? `<div class="sh-note">${escHtml(adm.note)}</div>` : ''}
         <div class="ad-goal"><label>Shift goal</label><span>start</span><input type="time" id="ad-gf" value="${(adm.goal && adm.goal.from) || '18:00'}"><input type="number" id="ad-gs" min="0" placeholder="auto" title="open picklists at the start time (empty = counted by itself)" value="${adm.goal && adm.goal.start ? adm.goal.start : ''}"><span>→</span><input type="number" id="ad-gt" min="1" placeholder="goal" value="${adm.goal ? adm.goal.target : ''}" title="max open picklists at the end time"><span>at</span><input type="time" id="ad-gz" value="${(adm.goal && adm.goal.to) || '23:00'}"><button class="buy" data-adg="save">Set</button>${adm.goal ? '<button data-adg="off">Off</button>' : '<small>no goal = no bar</small>'}</div>
@@ -7626,6 +7716,7 @@
           <div class="ad-r"><label>Logs</label><input id="ad-hlog" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).log || '')}"><button data-adh="test-log">Test</button></div>
           <div class="ad-r"><label>Report</label><input id="ad-hrep" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).report || '')}"><input id="ad-hat" type="time" value="${escHtml((adm.hooks || {}).reportAt || '22:30')}"><button data-adh="test-report">Send now</button></div>
           <div class="ad-r"><label></label><button class="buy" data-adh="save">Save</button></div></div>` : ''}
+        ${adm.annOpen ? annBox() : ''}
         ${adm.log ? `<div class="ad-log">${adm.log.map((x) => `<div><span>${new Date(x.at).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>${escHtml(x.what.replace(/→ (\d+)$/, (m, id) => '→ ' + ((ppl.find((y) => y.id === id) || {}).name || '#' + id)))}${x.id && x.id !== '32247' && !/^admin/.test(x.what) ? ` · ${escHtml((ppl.find((y) => y.id === String(x.id)) || {}).name || '#' + x.id)}` : ''}</div>`).join('') || '–'}</div>` : ''}
         <div class="ad-body"><div class="ad-left"><input class="iv-q ad-q" placeholder="Search…" value="${escHtml(adm.q)}"><div class="iv-ppl">${ppl.map((r) => `<button data-adw="${escHtml(r.id)}" data-n="${escHtml(low(r.name))}" class="${ql && !low(r.name).includes(ql) ? 'hide' : ''}${r.id === adm.who ? ' on' : ''}">${escHtml(r.name)}<small>${int(r.balance)}</small></button>`).join('') || '<div class="iv-empty">…</div>'}</div></div>
         <div class="ad-right">${right}</div></div></div>`;
@@ -7669,6 +7760,31 @@
         showAdmin();
       }));
       ov.querySelector('[data-ad-log]').onclick = async () => { if (adm.log) { adm.log = null; return showAdmin(); } const j = await adminPost('log', ''); adm.log = j.log || []; adm.note = j.err || ''; showAdmin(); };
+      // announcements
+      const loadAnns = async () => { const j = await adminPost('anns', '').catch((e) => ({ err: e.message })); adm.anns = j.anns || adm.anns || []; if (j.err) adm.note = j.err; showAdmin(); };
+      ov.querySelector('[data-ad-ann]').onclick = () => { adm.annOpen = !adm.annOpen; showAdmin(); if (adm.annOpen) { names().then(() => document.getElementById('pq-adm-ov') && showAdmin()).catch(() => {}); loadAnns(); } };
+      ov.querySelector('[data-ad-msg]')?.addEventListener('click', () => { adm.annOpen = true; adm.annTo = adm.who; showAdmin(); setTimeout(() => document.getElementById('ad-at')?.focus(), 30); if (!adm.anns) loadAnns(); });
+      const annT = ov.querySelector('#ad-at');
+      if (annT) annT.addEventListener('input', () => { adm.annText = annT.value; const c = ov.querySelector('.ad-cnt'); if (c) c.textContent = `${annT.value.length}/500`; });
+      ov.querySelector('#ad-ato')?.addEventListener('change', (e) => { adm.annTo = e.target.value; });
+      ov.querySelector('#ad-ah')?.addEventListener('change', (e) => { adm.annH = e.target.value; });
+      ov.querySelector('[data-adann]')?.addEventListener('click', async (e) => {
+        const text = (annT.value || '').trim();
+        if (!text) { adm.note = 'write something first'; return showAdmin(); }
+        e.currentTarget.disabled = true;
+        const to = ov.querySelector('#ad-ato').value, hours = +ov.querySelector('#ad-ah').value || 8;
+        const j = await adminPost('announce', '', { text, to, hours, byName: ME.name || '' }).catch((er) => ({ err: er.message }));
+        if (j.anns) { adm.anns = j.anns; adm.annText = ''; }
+        adm.note = j.err || `sent ✓ · ${to === 'all' ? 'everyone' : nameOf(to)} sees it when Picqer is open (within ~1 min) · for ${hours} h`;
+        showAdmin();
+      });
+      ov.querySelectorAll('[data-adun]').forEach((b) => (b.onclick = async () => {
+        b.disabled = true;
+        const j = await adminPost('unannounce', '', { aid: b.dataset.adun }).catch((er) => ({ err: er.message }));
+        if (j.anns) adm.anns = j.anns;
+        adm.note = j.err || 'removed · nobody new gets it';
+        showAdmin();
+      }));
       const q = ov.querySelector('.ad-q');
       q.oninput = () => { adm.q = q.value; const v = low(q.value); ov.querySelectorAll('[data-adw]').forEach((b) => b.classList.toggle('hide', !!v && !b.dataset.n.includes(v))); };
       ov.querySelectorAll('[data-adw]').forEach((b) => (b.onclick = async () => {
@@ -7731,6 +7847,21 @@
       .ad-r button:disabled{opacity:.45}
       .ad-log{max-height:200px;overflow:auto;margin-top:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--soft);font:500 12px system-ui,sans-serif}
       .ad-log span{color:var(--mut);margin-right:8px;font-variant-numeric:tabular-nums}
+      .ad-ann{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
+      .ad-ann textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:64px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:500 13px/1.45 system-ui,sans-serif;outline:none}
+      .ad-ann textarea:focus{border-color:#6366f1}
+      .ad-ann .ad-r select{max-width:260px}
+      .ad-mut,.ad-cnt{color:var(--mut);font:600 12px system-ui,sans-serif}
+      .ad-cnt{margin-left:auto}
+      .ad-anns{display:flex;flex-direction:column;gap:4px;max-height:190px;overflow:auto}
+      .ad-an{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto auto;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;background:var(--bg);border:1px solid var(--line);font:500 12px system-ui,sans-serif}
+      .ad-an.old{opacity:.55}
+      .ad-an .t{color:var(--mut);font-variant-numeric:tabular-nums}
+      .ad-an .tx{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .ad-an span:not(.t):not(.tx){color:var(--mut);white-space:nowrap}
+      .ad-an .good{color:#059669 !important;font-weight:700}
+      .ad-an button{border:0;background:none;color:var(--mut);cursor:pointer;font-size:13px;padding:2px 4px}
+      .ad-an button:hover{color:#e11d48}
       @media (max-width:700px){.ad-body{grid-template-columns:1fr}}
     `);
     // names for trading / items: load them quietly in the background, so the list is there when you need it
@@ -7751,6 +7882,105 @@
       if (tvHash()) setTimeout(() => openPk(true), 500);
       window.addEventListener('hashchange', () => { if (tvHash()) openPk(true); });
     }
+  }
+
+  /* =========================================================================
+   *  ANNOUNCEMENTS: a text from Ahmad (Shift+9) for everyone or for one person
+   * ========================================================================= */
+  //  For everyone with the suite (no team needed). Comes with the 🪙 profile (every 30 s) or, without the
+  //  leaderboard, from GET /ann every minute (one tab per PC). OK = seen: never again, also not on another PC.
+  //  A card at the top that never takes the focus, so a scanner keeps typing into Picqer.
+  const ANN = { q: [], busy: false, at: 0, shown: new Set(), el: null };
+  const LS_ANN = 'pqsuite_ann_seen_v1';
+  const annUrl = () => norm(String((CFG.leaderboard && CFG.leaderboard.url) || '')).replace(/\/+$/, '');
+  const annSeenHere = () => ((lsGet(LS_ANN, null) || {})[String(ME.id)] || {});
+  function annFeed(list) {
+    ANN.at = Date.now();
+    if (!Array.isArray(list) || !list.length || !ME.id || ON_LOGIN) return;
+    const seen = annSeenHere();
+    for (const x of list) {
+      if (!x || !x.id || seen[x.id] || ANN.shown.has(x.id)) continue;
+      ANN.shown.add(x.id);
+      ANN.q.push(x);
+    }
+    annShow();
+  }
+  // OK clicked in another tab: that card goes here too
+  function annDrop() {
+    const seen = annSeenHere();
+    ANN.q = ANN.q.filter((x, i) => (i === 0 && ANN.busy) || !seen[x.id]);
+    if (ANN.busy && ANN.q[0] && seen[ANN.q[0].id] && ANN.el) { ANN.el.remove(); ANN.el = null; ANN.q.shift(); ANN.busy = false; annShow(); }
+  }
+  function annShow() {
+    if (ANN.busy || !ANN.q.length || !document.body) return;
+    const x = ANN.q[0];
+    ANN.busy = true;
+    addStyle('pq-ann-style', `
+      #pq-ann{--bg:#fff;--fg:#0f172a;--mut:#64748b;--line:#e2e8f0;--acc:#6366f1;position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:2147483003;width:min(480px,calc(100vw - 32px));box-sizing:border-box;
+        background:var(--bg);color:var(--fg);border:1px solid var(--line);border-top:4px solid var(--acc);border-radius:14px;box-shadow:0 18px 50px rgba(15,23,42,.28);padding:14px 16px 12px;
+        font:500 14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;animation:pqAnnIn .35s cubic-bezier(.2,.8,.2,1)}
+      #pq-ann.you{--acc:#10b981}
+      #pq-ann.dark{--bg:#111827;--fg:#f1f5f9;--mut:#94a3b8;--line:#1f2937}
+      #pq-ann .pa-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px}
+      #pq-ann .pa-top b{font:800 13px system-ui,sans-serif;letter-spacing:.02em;color:var(--acc)}
+      #pq-ann .pa-top span{color:var(--mut);font-size:12px;font-variant-numeric:tabular-nums}
+      #pq-ann .pa-text{white-space:pre-wrap;word-break:break-word;max-height:45vh;overflow:auto;font-size:15px}
+      #pq-ann .pa-bot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
+      #pq-ann .pa-bot span{color:var(--mut);font-size:12px}
+      #pq-ann button{padding:7px 18px;border-radius:9px;border:0;background:var(--acc);color:#fff;font:800 13px system-ui,sans-serif;cursor:pointer}
+      #pq-ann.out{animation:pqAnnOut .2s ease forwards}
+      @keyframes pqAnnIn{from{opacity:0;transform:translate(-50%,-14px)}to{opacity:1;transform:translate(-50%,0)}}
+      @keyframes pqAnnOut{to{opacity:0;transform:translate(-50%,-10px)}}
+    `);
+    const el = document.createElement('div');
+    el.id = 'pq-ann';
+    let dark = document.documentElement.classList.contains('pq-dark');
+    try { dark = dark || matchMedia('(prefers-color-scheme: dark)').matches; } catch (_) {}
+    el.className = `${x.to === 'you' ? 'you' : ''}${dark ? ' dark' : ''}`;
+    el.setAttribute('role', 'status');
+    const t = new Date(x.at).toLocaleString('nl-NL', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    el.innerHTML = `<div class="pa-top"><b>${x.to === 'you' ? '📩 MESSAGE FOR YOU' : '📢 ANNOUNCEMENT'}</b><span>${escHtml(t)}${ANN.q.length > 1 ? ` · 1 of ${ANN.q.length}` : ''}</span></div>
+      <div class="pa-text">${escHtml(x.text)}</div>
+      <div class="pa-bot"><span>${x.by ? '— ' + escHtml(x.by) : ''}</span><button type="button">OK</button></div>`;
+    document.body.appendChild(el);
+    ANN.el = el;
+    beep(880, 0.05, 0.09); setTimeout(() => beep(1320, 0.05, 0.12), 140);
+    el.querySelector('button').onclick = () => {
+      const all = lsGet(LS_ANN, null) || {}, uid = String(ME.id), mine = all[uid] || {};
+      mine[x.id] = Date.now();
+      for (const k of Object.keys(mine)) if (Date.now() - mine[k] > 5 * 86400000) delete mine[k];
+      all[uid] = mine;
+      lsSet(LS_ANN, all); // the other tabs drop it too
+      const u = annUrl();
+      if (u) fetch(`${u}/ann`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: uid, aid: x.id }) }).catch(() => {});
+      el.classList.add('out');
+      setTimeout(() => { el.remove(); if (ANN.el === el) ANN.el = null; ANN.q.shift(); ANN.busy = false; annShow(); }, 200);
+    };
+  }
+  function announcements() {
+    if (ON_LOGIN || !ME.id || !annUrl()) return;
+    const LOCK = 'pqsuite_ann_lock_v1', LAST = 'pqsuite_ann_v1', TAB = Math.random().toString(36).slice(2);
+    async function poll() {
+      if (document.hidden || Date.now() - ANN.at < 55000) return; // the 🪙 profile brought them just now
+      const l = lsGet(LOCK, null);
+      if (l && l.tab !== TAB && Date.now() - l.ts < 50000) return; // another tab on this PC asked just now
+      lsSet(LOCK, { tab: TAB, ts: Date.now() });
+      try {
+        const j = await (await fetch(`${annUrl()}/ann?id=${encodeURIComponent(ME.id)}`, { credentials: 'omit', cache: 'no-store' })).json();
+        if (!j || !Array.isArray(j.ann)) return;
+        lsSet(LAST, { id: String(ME.id), at: Date.now(), ann: j.ann }); // the other tabs show it too
+        annFeed(j.ann);
+      } catch (_) {}
+    }
+    window.addEventListener('storage', (e) => {
+      if (e.key === LAST) { const d = lsGet(LAST, null); if (d && d.id === String(ME.id)) annFeed(d.ann); }
+      if (e.key === LS_ANN) annDrop();
+    });
+    const d = lsGet(LAST, null);
+    if (d && d.id === String(ME.id) && Date.now() - d.at < 5 * 60000) annFeed(d.ann);
+    setTimeout(poll, 2500 + Math.random() * 3000);
+    setInterval(poll, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(poll, 700); });
   }
 
   /* =========================================================================
@@ -8643,6 +8873,7 @@
       else applySkin(id, m.color);
     });
     if (use('leaderboard')) safe('leaderboard', leaderboard);
+    safe('announce', announcements);
     safe('teams', refreshTeams);
     if (use('cardColor') || can('colors') || can('settings')) safe('colors', () => refreshRemote(REMOTE.colors, onColors));
     console.log(`[pq-suite] ${VERSION ? 'v' + VERSION + ' · ' : ''}${ME.name || '?'}${ME.id ? ' #' + ME.id : ''} · team ${teamName()} (teams: ${TEAMS_SRC.from})`);

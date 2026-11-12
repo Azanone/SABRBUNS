@@ -6,11 +6,12 @@
 // Settings (Worker -> Settings -> Variables and Secrets):
 //   PICQER_KEY   secret  the Picqer API key (never in GitHub)
 //   PICQER_HOST  text    trl-fulfilment.picqer.com      (from wrangler.jsonc)
-//   WAREHOUSE    text    Bunsenstraat                   (from wrangler.jsonc)
+//   WAREHOUSE    text    Bunsenstraat                   (from wrangler.jsonc) the main one: shift goal + BE counter
+//   WAREHOUSES   text    Bunsenstraat,Barnsteen         (from wrangler.jsonc) every warehouse with a board (name or id, comma separated)
 //   PROXIES      text    user ids that never count, comma separated (optional)
 //   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
-import { newState, tick, profile, buy, equip, paint, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, buyPass, adminOp, OWNER, shiftReport, friendOp, chatSend, chatRead, pairKey, liveDue, liveTick, liveBoard, LIVE_ACTIVE_MIN } from './game.js';
+import { newState, tick, profile, buy, equip, paint, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, buyPass, adminOp, OWNER, shiftReport, reportWhs, friendOp, chatSend, chatRead, pairKey, liveDue, liveTick, liveBoard, LIVE_ACTIVE_MIN, annFor, annSeen } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
@@ -28,40 +29,63 @@ async function picqer(env, path) {
   if (!r.ok) throw new Error(`Picqer HTTP ${r.status}`);
   return r.json();
 }
-let wh = null;
-async function warehouse(env) {
-  const want = String(env.WAREHOUSE || '').trim().toLowerCase();
-  if (!want) return null;
-  if (wh) return wh;
-  const list = await picqer(env, '/warehouses');
+// warehouses: names → Picqer ids (asked once per 6 h). A name matches the exact name, else a name that contains it.
+let whCache = null;
+async function whAll(env) {
+  if (whCache && Date.now() - whCache.at < 6 * 3600000) return whCache;
+  const list = (await picqer(env, '/warehouses')) || [];
   const nm = (w) => String(w.name).trim().toLowerCase();
-  const hit = list.find((w) => String(w.idwarehouse) === want) || list.find((w) => nm(w) === want) || list.find((w) => nm(w).includes(want));
-  wh = hit ? { id: hit.idwarehouse, name: String(hit.name).trim() } : null;
-  return wh;
+  const find = (x) => { const k = String(x || '').trim().toLowerCase(); return !k ? null : list.find((w) => String(w.idwarehouse) === k) || list.find((w) => nm(w) === k) || list.find((w) => nm(w).includes(k)) || null; };
+  const asW = (w) => (w ? { id: String(w.idwarehouse), name: String(w.name).trim() } : null);
+  const main = asW(find(env.WAREHOUSE));
+  const want = String(env.WAREHOUSES || [env.WAREHOUSE, 'Barnsteen'].filter(Boolean).join(',')).split(',').map((x) => x.trim()).filter(Boolean);
+  const whs = [];
+  const missing = [];
+  for (const x of want) { const w = asW(find(x)); if (!w) missing.push(x); else if (!whs.find((y) => y.id === w.id)) whs.push(w); }
+  if (main && !whs.find((y) => y.id === main.id)) whs.unshift(main);
+  whCache = { at: Date.now(), main, whs, missing };
+  return whCache;
 }
+// the main warehouse (shift goal, BE counter) · null = no filter
+async function warehouse(env) { return (await whAll(env)).main; }
+// every warehouse with a board · [null] = no filter at all (nothing configured / found)
+async function warehouses(env) { const w = await whAll(env); return w.whs.length ? w.whs : [w.main || null]; }
 async function closedRows(env, min) {
-  const w = await warehouse(env);
   const since = amsNow(Date.now() - min * 60000);
-  const rows = [];
-  for (let off = 0; off < 5000; off += 100) {
-    const page = await picqer(env, `/picklists?status=closed&closed_after=${encodeURIComponent(since)}${w ? `&idwarehouse=${w.id}` : ''}&offset=${off}`);
-    rows.push(...page);
-    if (page.length < 100) break;
+  const ws = await warehouses(env), rows = [];
+  for (const w of ws) {
+    for (let off = 0; off < 5000; off += 100) {
+      const page = await picqer(env, `/picklists?status=closed&closed_after=${encodeURIComponent(since)}${w ? `&idwarehouse=${w.id}` : ''}&offset=${off}`);
+      // only what the game needs
+      rows.push(...page.map((p) => ({ idpicklist: p.idpicklist, closed_by_iduser: p.closed_by_iduser, closed_at: p.closed_at, wh: w ? w.id : String(p.idwarehouse || ''), products: (p.products || []).map((x) => ({ productcode: x.productcode, has_parts: !!x.has_parts })) })));
+      if (page.length < 100) break;
+    }
   }
-  // only what the game needs
-  return { wh: w ? w.name : '', rows: rows.map((p) => ({ idpicklist: p.idpicklist, closed_by_iduser: p.closed_by_iduser, closed_at: p.closed_at, products: (p.products || []).map((x) => ({ productcode: x.productcode, has_parts: !!x.has_parts })) })) };
+  const main = await warehouse(env);
+  return { whs: ws.filter(Boolean), main: main ? main.id : '', wh: main ? main.name : '', rows };
+}
+// open / completed batches of every warehouse (the first page of each = the newest 100), each tagged with its warehouse
+async function batchList(env, status) {
+  const out = [];
+  for (const w of await warehouses(env)) {
+    const list = (await picqer(env, `/picklists/batches?status=${status}${w ? `&idwarehouse=${w.id}` : ''}`)) || [];
+    out.push(...list.filter((b) => !w || String(b.idwarehouse) === String(w.id)).map((b) => ({ ...b, wh: w ? w.id : String(b.idwarehouse || '') })));
+  }
+  return out;
 }
 
 export class Game extends DurableObject {
   async load() { return (await this.ctx.storage.get('state')) || newState(); }
-  async tick(rows, wh, proxies) {
+  async tick(rows, wh, proxies, whs = [], main = '') {
     const st = await this.load();
     const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
-    const board = tick(st, rows, { now: Date.now(), min: 15, today: amsNow().slice(0, 10), proxies, wh, rnd });
+    const board = tick(st, rows, { now: Date.now(), min: 15, today: amsNow().slice(0, 10), proxies, wh, whs, main, rnd });
     await this.ctx.storage.put('state', st);
     await this.ensureAlarm();
     return board;
   }
+  // packing: closed picklists of the last 15 min (every warehouse) → boards, coins, king
+  async packRound() { const r = await closedRows(this.env, 15); return this.tick(r.rows, r.wh, proxiesOf(this.env), r.whs, r.main); }
   async board() { return (await this.load()).board; }
   async boardAll() {
     const st = await this.load(), b = st.board;
@@ -74,7 +98,7 @@ export class Game extends DurableObject {
       const ss = oc && oc.day === today ? oc.samples : [];
       const fromAt = Date.parse(`${today}T${st.goal.from || '18:00'}:00`) - 3600000; // Amsterdam (winter) → UTC, close enough for picking a sample
       const first = ss.find((x) => x.at >= fromAt) || null;
-      goal = { ...st.goal, open: oc ? oc.n : null, openAt: oc ? oc.at : null, start: st.goal.start || (first ? first.n : null), startAuto: !st.goal.start, samples: ss.slice(-40) };
+      goal = { ...st.goal, open: oc ? oc.n : null, openAt: oc ? oc.at : null, start: st.goal.start || (first ? first.n : null), startAuto: !st.goal.start, samples: ss.slice(-40), wh: String(st.mainWh || ''), whName: ((st.whNames || {})[st.mainWh] || '') };
     }
     return { ...b, picks: await this.picks(), flags: st.flags || {}, goal };
   }
@@ -84,18 +108,23 @@ export class Game extends DurableObject {
   async pickTick(batches, proxies) {
     const st = await this.load();
     const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
-    const b = pickTick(st, batches, { now: Date.now(), today: amsNow().slice(0, 10), proxies, rnd });
+    const b = pickTick(st, batches, { now: Date.now(), today: amsNow().slice(0, 10), proxies, main: st.mainWh || '', rnd });
     await this.ctx.storage.put('state', st);
     return b;
   }
   // picks = completed batches today (points, coins) + live picking (last 15 min, idle) per person
   async picks() {
-    const now = Date.now();
-    const b = pickBoard(await this.load(), now, amsNow().slice(0, 10));
+    const now = Date.now(), st = await this.load();
+    const b = pickBoard(st, now, amsNow().slice(0, 10));
     const live = liveBoard(await this.ctx.storage.get('live'), now);
     const ids = new Set([...b.people.map((p) => p.id), ...Object.keys(live)]);
     const zero = { batches: 0, locations: 0, items: 0, points: 0, hour: 0 };
-    b.people = [...ids].map((id) => ({ ...zero, ...(b.people.find((p) => p.id === id) || { id }), live: live[id] || null }));
+    const main = String(st.mainWh || '');
+    // where are they now: live picking first (where they collected last), else today's batches
+    const all = [...ids].map((id) => { const r = { ...zero, ...(b.people.find((p) => p.id === id) || { id }), live: live[id] || null }; r.wh = (r.live && r.live.wh) || r.wh || main; return r; });
+    b.all = all;
+    b.people = all.filter((r) => !main || r.wh === main); // older scripts: the main warehouse only
+    b.whs = Object.entries(st.whNames || {}).map(([id, name]) => ({ id, name }));
     b.activeMin = LIVE_ACTIVE_MIN;
     return b;
   }
@@ -108,7 +137,7 @@ export class Game extends DurableObject {
   }
   async cycle() {
     const env = this.env;
-    try { const { wh: w, rows } = await closedRows(env, 15); await this.tick(rows, w, proxiesOf(env)); } catch (e) { console.log('pack', e.message); }
+    try { await this.packRound(); } catch (e) { console.log('pack', e.message); }
     try { await this.picksDone(); } catch (e) { console.log('picks', e.message); }
     await this.live();
     try { await this.report(); } catch (e) { console.log('report', e.message); }
@@ -154,16 +183,15 @@ export class Game extends DurableObject {
     await this.ctx.storage.put('openCount', o);
   }
   async picksDone() {
-    const env = this.env, w = await warehouse(env);
-    const list = (await picqer(env, `/picklists/batches?status=completed${w ? `&idwarehouse=${w.id}` : ''}`)) || [];
+    const env = this.env;
+    const mine = await batchList(env, 'completed');
     const today = amsNow().slice(0, 10);
-    const mine = list.filter((b) => !w || String(b.idwarehouse) === String(w.id));
     const isNew = new Set((await this.newBatchIds(mine.map((b) => b.idpicklist_batch))).map(String));
     const old = mine.filter((b) => isNew.has(String(b.idpicklist_batch)) && String(b.completed_at || '').slice(0, 10) < today);
     if (old.length) await this.markBatches(old.map((b) => b.idpicklist_batch));
     const todo = mine.filter((b) => isNew.has(String(b.idpicklist_batch)) && String(b.completed_at || '').slice(0, 10) >= today).slice(0, 15);
     if (!todo.length) return;
-    const full = (await Promise.all(todo.map((b) => picqer(env, `/picklists/batches/${b.idpicklist_batch}`).catch(() => null)))).filter(Boolean);
+    const full = (await Promise.all(todo.map((b) => picqer(env, `/picklists/batches/${b.idpicklist_batch}`).then((d) => (d ? { ...d, wh: b.wh } : null)).catch(() => null)))).filter(Boolean);
     await this.pickTick(full, proxiesOf(env));
   }
   // cron (every minute): only makes sure the 15 s loop runs; if it died, do a round now
@@ -174,9 +202,7 @@ export class Game extends DurableObject {
   }
   async live() {
     const env = this.env, now = Date.now();
-    const w = await warehouse(env);
-    const list = (await picqer(env, `/picklists/batches?status=open${w ? `&idwarehouse=${w.id}` : ''}`)) || [];
-    const open = list.filter((b) => b.status === 'open' && b.assigned_to && (!w || String(b.idwarehouse) === String(w.id)));
+    const open = (await batchList(env, 'open')).filter((b) => b.status === 'open' && b.assigned_to);
     const due = liveDue(await this.ctx.storage.get('live'), open, now, 40);
     const details = [];
     // 6 at a time: one batch with all its products takes Picqer a few seconds
@@ -188,7 +214,7 @@ export class Game extends DurableObject {
     const L = liveTick(await this.ctx.storage.get('live'), open, details, { now, proxies: proxiesOf(env) });
     await this.ctx.storage.put('live', L);
   }
-  async chart(date) { return chart(await this.load(), date); }
+  async chart(date, wh) { return chart(await this.load(), date, wh); }
   async inv(kind, id, uid, target) {
     const st = await this.load();
     const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
@@ -213,13 +239,17 @@ export class Game extends DurableObject {
     const st = await this.load();
     const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
     const res = adminOp(st, op, target, b, Date.now(), amsNow().slice(0, 10), rnd);
-    if (res.ok && op !== 'look' && op !== 'log' && !(op === 'flags' && !b.flags) && !(op === 'hooks' && !b.hooks) && !(op === 'goal' && !b.goal)) await this.ctx.storage.put('state', st);
+    if (res.ok && op !== 'look' && op !== 'log' && op !== 'anns' && !(op === 'flags' && !b.flags) && !(op === 'hooks' && !b.hooks) && !(op === 'goal' && !b.goal)) await this.ctx.storage.put('state', st);
     if (op === 'hooks' && b.test) {
       const which = b.test === 'report' ? 'report' : 'log';
       const url = (st.hooks || {})[which];
       if (!url) return { ...res, err: 'no webhook for that yet' };
-      const text = which === 'report' ? shiftReport(st, amsNow().slice(0, 10), await this.userNames()) : '✅ Picqer Suite log webhook works';
-      const r = await discord(url, text);
+      if (which === 'report') {
+        const today = amsNow().slice(0, 10), nm = await this.userNames();
+        for (const w of reportWhs(st, today)) { const r = await discord(url, shiftReport(st, today, nm, w)); if (!r.ok) return { ...res, err: `Discord said ${r.status}` }; }
+        return res;
+      }
+      const r = await discord(url, '✅ Picqer Suite log webhook works');
       return { ...res, ...(r.ok ? {} : { err: `Discord said ${r.status}` }) };
     }
     return { ...res, ...(target && st.acct[target] ? { profile: profile(st, target, amsNow().slice(0, 10)) } : {}) };
@@ -257,9 +287,13 @@ export class Game extends DurableObject {
     if (st.reportDay === today || hm < (h.reportAt || '22:30')) return;
     st.reportDay = today;
     await this.ctx.storage.put('state', st);
-    await discord(h.report, shiftReport(st, today, await this.userNames()));
+    const nm = await this.userNames();
+    for (const w of reportWhs(st, today)) await discord(h.report, shiftReport(st, today, nm, w)); // one per warehouse that worked today
   }
   async trades(id) { return { trades: tradesFor(await this.load(), String(id), Date.now()) }; }
+  // announcements (Shift+9): what this person didn't see yet · seen = never again (on any PC)
+  async ann(id) { return { ann: annFor(await this.load(), String(id), Date.now()) }; }
+  async annSeen(id, aid) { const st = await this.load(); if (annSeen(st, String(id), String(aid), Date.now())) await this.ctx.storage.put('state', st); return { ok: true }; }
   async seenNews(id, at) { const st = await this.load(); const a = st.acct[String(id)]; if (a && a.news) { a.news = a.news.filter((x) => x.at > at); await this.ctx.storage.put('state', st); } return { ok: true }; }
   // Suite settings per Picqer account (own key each, so the game state stays small)
   async getSettings(id) { return (await this.ctx.storage.get('set:' + id)) || null; }
@@ -273,7 +307,9 @@ export class Game extends DurableObject {
   async health() {
     const st = await this.load(), L = (await this.ctx.storage.get('live')) || { b: {}, ev: [] };
     const bs = Object.values(L.b);
+    const W = await whAll(this.env).catch((e) => ({ err: e.message }));
     return { stateBytes: JSON.stringify(st).length, accounts: Object.keys(st.acct).length, alarm: await this.ctx.storage.getAlarm(), liveErr: (await this.ctx.storage.get('liveErr')) || null, liveTookMs: (await this.ctx.storage.get('liveTook')) || null,
+      warehouses: W.err ? W : { main: W.main, all: W.whs, notFound: W.missing },
       live: { batches: bs.length, lastCheck: bs.length ? Math.max(...bs.map((b) => b.checked)) : null, events: L.ev.length, pickers: Object.keys(L.last || {}).length } };
   }
   async totals() { return { at: Date.now(), people: totals(await this.load()) }; }
@@ -314,27 +350,13 @@ async function discord(url, content) {
   catch (e) { return { ok: false, status: 0 }; }
 }
 const proxiesOf = (env) => String(env.PROXIES || PROXIES_DEFAULT).split(',').map((x) => x.trim()).filter(Boolean);
+// the board is old (or the first time): a packing round + completed batches right now
 async function run(env) {
-  const { wh: w, rows } = await closedRows(env, 15);
-  const board = await game(env).tick(rows, w, proxiesOf(env));
-  try { await runPicks(env); } catch (e) { console.log('picks', e.message); }
+  const g = game(env);
+  // right after a deploy the object can still run the old code (no packRound yet): then the old way
+  const board = await g.packRound().catch(async () => { const r = await closedRows(env, 15); return g.tick(r.rows, r.wh, proxiesOf(env)); });
+  try { await g.picksDone(); } catch (e) { console.log('picks', e.message); }
   return board;
-}
-// picking points: newly completed batches (Picqer lists the newest first). Max 15 details per minute.
-async function runPicks(env) {
-  const w = await warehouse(env);
-  const list = (await picqer(env, `/picklists/batches?status=completed${w ? `&idwarehouse=${w.id}` : ''}`)) || [];
-  const today = amsNow().slice(0, 10);
-  const mine = list.filter((b) => !w || String(b.idwarehouse) === String(w.id));
-  const fresh = await game(env).newBatchIds(mine.map((b) => b.idpicklist_batch));
-  const isNew = new Set(fresh.map(String));
-  const old = mine.filter((b) => isNew.has(String(b.idpicklist_batch)) && String(b.completed_at || '').slice(0, 10) < today);
-  if (old.length) await game(env).markBatches(old.map((b) => b.idpicklist_batch)); // from before today: don't count
-  const todo = mine.filter((b) => isNew.has(String(b.idpicklist_batch)) && String(b.completed_at || '').slice(0, 10) >= today).slice(0, 15);
-  if (!todo.length) return;
-  const full = [];
-  for (const b of todo) { try { full.push(await picqer(env, `/picklists/batches/${b.idpicklist_batch}`)); } catch (e) { console.log('batch', b.idpicklist_batch, e.message); } }
-  await game(env).pickTick(full, proxiesOf(env));
 }
 
 export default {
@@ -354,7 +376,8 @@ export default {
       if (url.pathname === '/chart') {
         const d = String(url.searchParams.get('date') || '');
         if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return json({ err: 'date needed (YYYY-MM-DD)' }, 400);
-        return json(await game(env).chart(d));
+        const w = String(url.searchParams.get('wh') || '');
+        return json(await game(env).chart(d, /^\d+$/.test(w) ? w : ''));
       }
       if ((url.pathname === '/open' || url.pathname === '/use') && req.method === 'POST') {
         const b = await req.json().catch(() => ({}));
@@ -400,6 +423,16 @@ export default {
         const b = await req.json().catch(() => ({}));
         if (!/^\d+$/.test(String(b.id || ''))) return json({ err: 'id needed' }, 400);
         return json(await game(env).seenNews(String(b.id), +b.at || 0));
+      }
+      if (url.pathname === '/ann') {
+        if (req.method === 'POST') {
+          const b = await req.json().catch(() => ({}));
+          if (!/^\d+$/.test(String(b.id || '')) || !b.aid) return json({ err: 'id and aid needed' }, 400);
+          return json(await game(env).annSeen(String(b.id), String(b.aid)));
+        }
+        const id = String(url.searchParams.get('id') || '');
+        if (!/^\d+$/.test(id)) return json({ err: 'id needed' }, 400);
+        return json(await game(env).ann(id));
       }
       if (url.pathname === '/health') return json(await game(env).health());
       if (url.pathname === '/settings') {

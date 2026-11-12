@@ -11,6 +11,9 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Game"] }],
   "vars": {
     "PICQER_HOST": "trl-fulfilment.picqer.com",
-    "WAREHOUSE": "Bunsenstraat"
+    // the main warehouse: shift goal + BE counter
+    "WAREHOUSE": "Bunsenstraat",
+    // every warehouse with its own board + king (name or id, comma separated; a name may be part of the Picqer name)
+    "WAREHOUSES": "Bunsenstraat,Barnsteen"
   }
 }

@@ -162,6 +162,12 @@ const ensure = (st) => {
   st.event = st.event || null; st.log = st.log || [];
   return st;
 };
+// warehouses: the main one (Bunsenstraat) keeps st.hours like before, every other one gets its own (st.hoursBy[id])
+const isMain = (st, wh) => !wh || !st.mainWh || String(wh) === String(st.mainWh);
+const hoursOf = (st, wh) => { if (isMain(st, wh)) return st.hours; st.hoursBy = st.hoursBy || {}; return (st.hoursBy[wh] = st.hoursBy[wh] || {}); };
+const hoursFor = (st, wh) => (isMain(st, wh) ? st.hours : ((st.hoursBy || {})[wh] || {}));
+const hourRow = (H, d) => (H[d] = H[d] || { packed: Array(24).fill(0), picked: Array(24).fill(0) });
+const whName = (st, wh) => ((st.whNames || {})[wh] || '');
 // coins with effects: frozen = 0 · double event and own boost = x2 each
 export function earn(st, id, amount, now) {
   const a = acct(st, id);
@@ -235,28 +241,36 @@ export function voidColor(st) {
   st.voidColor1 = true;
 }
 // rows = closed picklists of the last `min` minutes · now = ms · today = 'YYYY-MM-DD' (Amsterdam)
-export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rnd = Math.random }) {
+// rows have .wh (warehouse id) · whs = [{ id, name }] every warehouse we count · main = the id of the main one (shift goal, BE)
+// every warehouse gets its own board + king. Coins, drops, streaks, pass: the same game everywhere.
+export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', whs = [], main = '', rnd = Math.random }) {
   ensure(st);
   giftAll(st);
   voidColor(st);
   xpTimes10(st, now, rnd);
+  if (main || whs.length) st.mainWh = String(main || whs[0].id);
+  if (whs.length) st.whNames = Object.fromEntries(whs.map((w) => [String(w.id), String(w.name || '')]));
+  if (!st.kings) { st.kings = {}; if (st.king && st.mainWh) st.kings[st.mainWh] = st.king; } // one king before → the main warehouse's king
+  const whOf = (p) => String(p.wh || st.mainWh || '');
   const skip = new Set(proxies.map(String));
-  const by = new Map();
-  // the chart: every closed picklist of the warehouse per hour (like Picqer's dashboard), kept for months
+  const byW = new Map(); // warehouse → (person → row)
+  // the chart: every closed picklist per warehouse per hour (like Picqer's dashboard), kept for months
   for (const p of rows) {
     const d = String(p.closed_at || today).slice(0, 10), h = +String(p.closed_at || '').slice(11, 13) || 0;
     st.seenH[d] = st.seenH[d] || {};
     if (st.seenH[d][p.idpicklist]) continue;
     st.seenH[d][p.idpicklist] = 1;
-    st.hours[d] = st.hours[d] || { packed: Array(24).fill(0), picked: Array(24).fill(0) };
-    st.hours[d].packed[h]++;
+    hourRow(hoursOf(st, whOf(p)), d).packed[h]++;
   }
   for (const p of rows) {
     const id = p.closed_by_iduser == null ? null : String(p.closed_by_iduser);
     if (!id || skip.has(id)) continue;
     const pt = pointsOf(p);
     if (!pt) continue;
-    // the board: last 15 min
+    const w = whOf(p);
+    // the board of that warehouse: last 15 min
+    if (!byW.has(w)) byW.set(w, new Map());
+    const by = byW.get(w);
     const b = by.get(id) || { id, picklists: 0, multis: 0, singles: 0, points: 0 };
     b.picklists++; b.multis += pt.multi; b.singles += pt.single; b.points = r3(b.points + pt.pts);
     by.set(id, b);
@@ -267,31 +281,44 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rn
     st.seen[d][p.idpicklist] = 1;
     totalPoints(st, id); // older accounts: count up what we had before this picklist
     const t = dayRow(st, d, id);
+    if (!t.w) t.w = t.n ? { [String(st.mainWh || '')]: { n: t.n, multis: t.multis, singles: t.singles, points: t.points } } : {}; // before warehouses: all main
     t.n++; t.multis += pt.multi; t.singles += pt.single; t.points = r3(t.points + pt.pts);
+    const tw = (t.w[w] = t.w[w] || { n: 0, multis: 0, singles: 0, points: 0 });
+    tw.n++; tw.multis += pt.multi; tw.singles += pt.single; tw.points = r3(tw.points + pt.pts);
     const a = acct(st, id);
+    a.wh = w; // the last warehouse they worked in
     earn(st, id, pt.pts, now); a.picklists++;
     passXp(st, id, pt.multi * XP_MULTI + pt.single * XP_SINGLE, now, today, rnd);
     a.points = r3(a.points + pt.pts);
     rollDrop(st, id, 1, now, rnd);
     if (d === today) streakCheck(st, id, today, now, rnd);
   }
-  const people = [...by.values()].sort((a, b) => b.points - a.points || b.picklists - a.picklists);
-  // king of the hill
+  // a board + king of the hill per warehouse (every warehouse we count, also when nobody closed one there)
   const need = KING_MIN_POINTS * min / 15;
-  const top = people[0] && people[0].points >= need ? people[0] : null;
-  const k = st.king;
-  if (!top) st.king = null;
-  else if (k && (k.id === top.id || (by.get(k.id) && by.get(k.id).points === top.points))) { // still on top (a tie keeps the king)
-    const add = Math.min(3, Math.floor((now - k.last) / 60000));
-    if (add > 0) {
-      const a = acct(st, k.id);
-      earn(st, k.id, add * KING_PER_MIN, now);
-      a.kingTotal += add;
-      dayRow(st, today, k.id).kingMin += add;
-      k.last += add * 60000;
-    }
-    acct(st, k.id).kingBest = Math.max(acct(st, k.id).kingBest, Math.floor((now - k.since) / 60000));
-  } else st.king = { id: top.id, since: now, last: now };
+  const ids = [...new Set([...whs.map((x) => String(x.id)), ...byW.keys()])];
+  if (!ids.length) ids.push(String(st.mainWh || ''));
+  for (const w of Object.keys(st.kings)) if (!ids.includes(w)) delete st.kings[w];
+  const boards = ids.map((w) => {
+    const by = byW.get(w) || new Map();
+    const people = [...by.values()].sort((a, b) => b.points - a.points || b.picklists - a.picklists);
+    const top = people[0] && people[0].points >= need ? people[0] : null;
+    const k = st.kings[w];
+    if (!top) delete st.kings[w];
+    else if (k && (k.id === top.id || (by.get(k.id) && by.get(k.id).points === top.points))) { // still on top (a tie keeps the king)
+      const add = Math.min(3, Math.floor((now - k.last) / 60000));
+      if (add > 0) {
+        const a = acct(st, k.id);
+        earn(st, k.id, add * KING_PER_MIN, now);
+        a.kingTotal += add;
+        dayRow(st, today, k.id).kingMin += add;
+        k.last += add * 60000;
+      }
+      acct(st, k.id).kingBest = Math.max(acct(st, k.id).kingBest, Math.floor((now - k.since) / 60000));
+    } else st.kings[w] = { id: top.id, since: now, last: now };
+    const kk = st.kings[w];
+    return { id: w, name: whName(st, w) || (w === String(st.mainWh || '') ? wh : ''), people, king: kk ? { id: kk.id, since: kk.since, min: Math.floor((now - kk.since) / 60000) } : null };
+  });
+  st.king = st.kings[String(st.mainWh || '')] || null; // the main warehouse's king (older code paths)
   // keep 8 days of stats, 2 days of "seen"
   const keepDays = Object.keys(st.days).sort().slice(-8);
   for (const d of Object.keys(st.days)) if (!keepDays.includes(d)) delete st.days[d];
@@ -299,12 +326,16 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', rn
   for (const d of Object.keys(st.seen)) if (!keepSeen.includes(d)) delete st.seen[d];
   for (const d of Object.keys(st.seenH).sort().slice(0, -2)) delete st.seenH[d];
   for (const d of Object.keys(st.hours).sort().slice(0, -120)) delete st.hours[d];
+  for (const H of Object.values(st.hoursBy || {})) for (const d of Object.keys(H).sort().slice(0, -120)) delete H[d];
   for (const d of Object.keys(st.pdays).sort().slice(0, -8)) delete st.pdays[d];
   if (st.event && st.event.until <= now) st.event = null;
   st.feed = (st.feed || []).filter((x) => now - x.at < 6 * 3600000);
+  st.ann = (st.ann || []).filter((x) => now - x.until < 3 * 86400000); // announcements: gone 3 days after they ended
   for (const id of Object.keys(st.acct)) { questCheck(st, id, today, now, rnd); achCheck(st, id, now, today); }
-  people.forEach((p) => { const bd = badgesOf(st.acct[p.id]); if (bd) p.badges = bd; });
-  st.board = { at: now, min, wh, people, feed: st.feed, event: st.event ? { until: st.event.until, by: st.event.by } : null, king: st.king ? { id: st.king.id, since: st.king.since, min: Math.floor((now - st.king.since) / 60000) } : null };
+  for (const bd of boards) bd.people.forEach((p) => { const x = badgesOf(st.acct[p.id]); if (x) p.badges = x; });
+  // people / king / wh = the main warehouse, like before (older scripts) · whs = every warehouse
+  const mb = boards.find((x) => x.id === String(st.mainWh || '')) || boards[0];
+  st.board = { at: now, min, wh: mb.name || wh, main: String(st.mainWh || ''), people: mb.people, king: mb.king, whs: boards, feed: st.feed, event: st.event ? { until: st.event.until, by: st.event.by } : null };
   return st.board;
 }
 
@@ -321,7 +352,7 @@ function totalPoints(st, id) {
 export function totals(st) {
   return Object.keys(st.acct).map((id) => {
     const a = st.acct[id];
-    return { id, badges: badgesOf(a), points: totalPoints(st, id), picklists: a.picklists || 0, pickPoints: a.pickPoints || 0, batches: a.batches || 0, kingTotal: a.kingTotal || 0, kingBest: a.kingBest || 0, coins: a.coins || 0, balance: r3(a.coins - a.spent) };
+    return { id, badges: badgesOf(a), points: totalPoints(st, id), picklists: a.picklists || 0, pickPoints: a.pickPoints || 0, batches: a.batches || 0, kingTotal: a.kingTotal || 0, kingBest: a.kingBest || 0, coins: a.coins || 0, balance: r3(a.coins - a.spent), wh: a.wh || '' };
   }).filter((x) => x.points > 0 || x.picklists > 0 || x.balance > 0 || x.pickPoints > 0).sort((x, y) => y.balance - x.balance || y.points - x.points);
 }
 
@@ -346,9 +377,16 @@ export function profile(st, id, today, now = Date.now()) {
     social: socialView(a),
     streak: { n: a.streak || 0, day: a.streakDay || null, best: a.streakBest || 0, goal: STREAK_GOAL, today: r3(dayTotal(st, today, id)) },
     pity: { dry: a.dry || 0, at: PITY }, cooldown: HIT_COOLDOWN, trades: tradesFor(st, id, now),
-    king: st.king && st.king.id === id ? { min: Math.floor((Date.now() - st.king.since) / 60000) } : null,
+    king: kingOf(st, id, now),
     week, skins: shop(st), crate: crateInfo(st, a), crates: a.crates || 0,
+    wh: a.wh || '', ann: annFor(st, id, now),
   };
+}
+// king right now in any warehouse?
+function kingOf(st, id, now) {
+  const all = Object.entries(st.kings || (st.king && st.mainWh ? { [st.mainWh]: st.king } : {}));
+  const hit = all.find(([, k]) => k && k.id === id);
+  return hit ? { min: Math.floor((now - hit[1].since) / 60000), wh: hit[0], whName: whName(st, hit[0]) } : null;
 }
 
 // which skins can still come out of a crate for this person (a sold-out limited one only if they already have it)
@@ -435,8 +473,9 @@ export function batchPoints(b) {
 }
 export const pickerOf = (b) => String((b.assigned_to && b.assigned_to.iduser) || (b.completed_by && b.completed_by.iduser) || '');
 // batches = details of newly completed batches · each batch counts once
-export function pickTick(st, batches, { now, today, proxies = [], rnd = Math.random }) {
+export function pickTick(st, batches, { now, today, proxies = [], main = '', rnd = Math.random }) {
   ensure(st);
+  if (main) st.mainWh = String(main);
   const skip = new Set(proxies.map(String));
   for (const b of batches) {
     const bid = String(b.idpicklist_batch);
@@ -446,18 +485,23 @@ export function pickTick(st, batches, { now, today, proxies = [], rnd = Math.ran
     if (!id || skip.has(id)) continue;
     const pt = batchPoints(b);
     if (!pt.points) continue;
+    const w = String(b.wh || b.idwarehouse || st.mainWh || '');
     const d = String(b.completed_at || today).slice(0, 10), h = +String(b.completed_at || '').slice(11, 13) || 0;
     st.pdays[d] = st.pdays[d] || {};
     const r = (st.pdays[d][id] = st.pdays[d][id] || { batches: 0, locations: 0, items: 0, points: 0 });
+    if (!r.w) r.w = r.batches ? { [String(st.mainWh || '')]: { batches: r.batches, points: r.points } } : {}; // before warehouses: all main
     r.batches++; r.locations += pt.locations; r.items += pt.items; r.points = r3(r.points + pt.points);
-    st.hours[d] = st.hours[d] || { packed: Array(24).fill(0), picked: Array(24).fill(0) };
-    st.hours[d].picked[h] = r3((st.hours[d].picked[h] || 0) + pt.points);
+    const rw = (r.w[w] = r.w[w] || { batches: 0, points: 0 });
+    rw.batches++; rw.points = r3(rw.points + pt.points);
+    const hr = hourRow(hoursOf(st, w), d);
+    hr.picked[h] = r3((hr.picked[h] || 0) + pt.points);
     const a = acct(st, id);
+    a.wh = w;
     a.pickPoints = r3((a.pickPoints || 0) + pt.points);
     a.batches = (a.batches || 0) + 1;
     earn(st, id, pt.points, now);
     passXp(st, id, pt.points * XP_PICK, now, today, rnd);
-    st.precent.push({ id, at: now, points: pt.points });
+    st.precent.push({ id, at: now, points: pt.points, wh: w });
     rollDrop(st, id, 3, now, rnd);
     if (d === today) streakCheck(st, id, today, now, rnd);
   }
@@ -465,20 +509,27 @@ export function pickTick(st, batches, { now, today, proxies = [], rnd = Math.ran
   st.precent = st.precent.filter((x) => now - x.at < 2 * 3600000);
   return pickBoard(st, now, today);
 }
+// the warehouse someone mostly worked in (per-warehouse rows: { wh: { points } })
+const topWh = (w) => { const e = Object.entries(w || {}).sort((x, y) => (y[1].points || 0) - (x[1].points || 0))[0]; return e ? e[0] : ''; };
 export function pickBoard(st, now, today) {
   ensure(st);
   const day = st.pdays[today] || {};
-  const hour = {};
-  for (const x of st.precent) if (now - x.at < 3600000) hour[x.id] = r3((hour[x.id] || 0) + x.points);
+  const hour = {}, lastWh = {};
+  for (const x of st.precent) {
+    if (now - x.at < 3600000) hour[x.id] = r3((hour[x.id] || 0) + x.points);
+    if (x.wh) lastWh[x.id] = x.wh; // oldest first: the last batch wins
+  }
   const ids = new Set([...Object.keys(day), ...Object.keys(hour)]);
-  const people = [...ids].map((id) => ({ id, ...(day[id] || { batches: 0, locations: 0, items: 0, points: 0 }), hour: hour[id] || 0, badges: badgesOf(st.acct[id]) }))
-    .sort((a, b) => b.points - a.points || b.hour - a.hour);
+  const people = [...ids].map((id) => {
+    const { w, ...row } = day[id] || { batches: 0, locations: 0, items: 0, points: 0 };
+    return { id, ...row, hour: hour[id] || 0, badges: badgesOf(st.acct[id]), wh: lastWh[id] || topWh(w) || String(st.mainWh || '') };
+  }).sort((a, b) => b.points - a.points || b.hour - a.hour);
   return { at: now, day: today, people };
 }
-export function chart(st, date) {
+export function chart(st, date, wh = '') {
   ensure(st);
-  const h = st.hours[date];
-  return { date, have: !!h, packed: h ? h.packed : Array(24).fill(0), picked: h ? h.picked : Array(24).fill(0) };
+  const h = hoursFor(st, String(wh || ''))[date];
+  return { date, wh: String(wh || st.mainWh || ''), have: !!h, packed: h ? h.packed : Array(24).fill(0), picked: h ? h.picked : Array(24).fill(0) };
 }
 
 // ---------- inventory: open a drop crate, use an item ----------
@@ -666,22 +717,23 @@ export function liveTick(L, open, details, { now, proxies = [] }) {
   L = L || newLive();
   const skip = new Set(proxies.map(String));
   const openIds = new Set(open.map((b) => String(b.idpicklist_batch)));
+  const whOf = new Map(open.map((b) => [String(b.idpicklist_batch), String(b.wh || b.idwarehouse || '')]));
   for (const k of Object.keys(L.b)) if (!openIds.has(k)) delete L.b[k];
   for (const d of details) {
     const bid = String(d.idpicklist_batch);
     const who = String((d.assigned_to && d.assigned_to.iduser) || '');
     if (!who || skip.has(who)) continue;
-    const s = snap(d), prev = L.b[bid];
+    const s = snap(d), prev = L.b[bid], wh = whOf.get(bid) || String(d.idwarehouse || '') || (prev && prev.wh) || '';
     let changed = prev ? prev.changed || 0 : 0;
     if (prev && prev.who === who) {
       const di = Math.max(0, s.items - prev.items), dl = Math.max(0, s.locs - prev.locs);
       if (di || dl) {
-        L.ev.push({ id: who, at: now, items: di, locs: dl, pts: r3(dl * PICK_LOC + di * PICK_ITEM) });
+        L.ev.push({ id: who, at: now, items: di, locs: dl, pts: r3(dl * PICK_LOC + di * PICK_ITEM), wh });
         L.last[who] = now;
         changed = now;
       }
     }
-    L.b[bid] = { who, ...s, checked: now, changed };
+    L.b[bid] = { who, wh, ...s, checked: now, changed };
   }
   L.ev = L.ev.filter((e) => now - e.at < 60 * 60000);
   for (const k of Object.keys(L.last)) if (now - L.last[k] > 12 * 3600000) delete L.last[k];
@@ -690,17 +742,18 @@ export function liveTick(L, open, details, { now, proxies = [] }) {
 export function liveBoard(L, now) {
   L = L || newLive();
   const by = {};
-  const row = (id) => (by[id] = by[id] || { m15: 0, items15: 0, locs15: 0, h60: 0, last: L.last[id] || 0, batch: null });
+  const row = (id) => (by[id] = by[id] || { m15: 0, items15: 0, locs15: 0, h60: 0, last: L.last[id] || 0, batch: null, wh: '' });
   for (const e of L.ev) {
     const r = row(e.id);
     r.h60 = r3(r.h60 + e.pts);
+    if (e.wh) r.wh = e.wh; // oldest first: where they picked last
     if (now - e.at < 15 * 60000) { r.m15 = r3(r.m15 + e.pts); r.items15 += e.items; r.locs15 += e.locs; }
   }
   for (const id of Object.keys(L.last)) row(id);
   // the batch they're on now: the one that changed last
   for (const s of Object.values(L.b)) {
     const r = by[s.who];
-    if (r && (!r.batch || s.changed > r.batch.changed)) r.batch = { items: s.items, total: s.total, locs: s.locs, locTotal: s.locTotal, changed: s.changed };
+    if (r && (!r.batch || s.changed > r.batch.changed)) { r.batch = { items: s.items, total: s.total, locs: s.locs, locTotal: s.locTotal, changed: s.changed }; if (s.wh && (!r.wh || s.changed >= r.last)) r.wh = s.wh; }
   }
   for (const r of Object.values(by)) { r.idleMin = r.last ? Math.floor((now - r.last) / 60000) : null; if (r.batch) delete r.batch.changed; }
   return by;
@@ -783,6 +836,24 @@ export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
     for (const k of ['cardColor', 'skins']) if (b.flags && typeof b.flags[k] === 'boolean') f[k] = b.flags[k];
     if (b.flags) { st.flags = f; st.log = (st.log || []).concat({ at: now, id: OWNER, what: `admin: everyone ${JSON.stringify(f)}` }).slice(-50); }
     return { ok: true, flags: f };
+  }
+  // announcements: to 'all' or one Picqer user id · shown for `hours` (1-72) to everyone who opens Picqer, once
+  if (op === 'announce') {
+    const text = String(b.text || '').replace(/\r/g, '').trim().slice(0, ANN_MAX);
+    const to = !b.to || b.to === 'all' ? 'all' : String(b.to).replace(/\D/g, '');
+    if (!text) return { err: 'write something first' };
+    if (!to) return { err: 'to who?' };
+    const hours = Math.min(72, Math.max(1, Number(b.hours) || 8));
+    const x = { id: `${now.toString(36)}${Math.floor(rnd() * 46656).toString(36)}`, at: now, until: now + hours * 3600000, text, to, byName: String(b.byName || '').slice(0, 60), seen: {} };
+    st.ann = (st.ann || []).concat(x).slice(-30);
+    st.log = (st.log || []).concat({ at: now, id: OWNER, what: `admin: announcement (${hours} h) → ${to === 'all' ? 'everyone' : to}` }).slice(-50);
+    return { ok: true, anns: annList(st, now) };
+  }
+  if (op === 'anns') return { ok: true, anns: annList(st, now) };
+  if (op === 'unannounce') {
+    const before = (st.ann || []).length;
+    st.ann = (st.ann || []).filter((x) => x.id !== String(b.aid));
+    return st.ann.length === before ? { err: 'not there anymore' } : { ok: true, anns: annList(st, now) };
   }
   if (!st.acct[target]) return { err: 'no account for that person yet' };
   const a = acct(st, target), n = Math.round(Number(b.n) || 0);
@@ -965,11 +1036,14 @@ export function badgesOf(a) {
 export function achView(a) { return ACH.map((x) => ({ id: x.id, icon: x.icon, name: x.name, desc: x.desc, at: (a.ach || {})[x.id] || 0 })); }
 
 // ---------- end of shift report (Discord) ----------
-export function shiftReport(st, today, names = {}) {
+export function shiftReport(st, today, names = {}, wh = '') {
   const nm = (id) => names[id] || `#${id}`;
-  const day = st.days[today] || {}, pday = (st.pdays || {})[today] || {}, h = (st.hours[today] || {}).packed || [];
-  const packers = Object.entries(day).map(([id, r]) => ({ id, ...r })).sort((x, y) => y.points - x.points);
-  const pickers = Object.entries(pday).map(([id, r]) => ({ id, ...r })).sort((x, y) => y.points - x.points);
+  const W = String(wh || '');
+  // the part of a day row for this warehouse (rows from before warehouses = the main one)
+  const part = (r) => (!W ? r : r.w ? r.w[W] || null : isMain(st, W) ? r : null);
+  const day = st.days[today] || {}, pday = (st.pdays || {})[today] || {}, h = (hoursFor(st, W)[today] || {}).packed || [];
+  const packers = Object.entries(day).map(([id, r]) => { const x = part(r); return x && x.n ? { id, n: x.n, multis: x.multis || 0, singles: x.singles || 0, points: x.points || 0 } : null; }).filter(Boolean).sort((x, y) => y.points - x.points);
+  const pickers = Object.entries(pday).map(([id, r]) => { const x = part(r); return x && x.batches ? { id, batches: x.batches, points: x.points || 0 } : null; }).filter(Boolean).sort((x, y) => y.points - x.points);
   const n = packers.reduce((t, r) => t + r.n, 0), mu = packers.reduce((t, r) => t + r.multis, 0), si = packers.reduce((t, r) => t + r.singles, 0);
   const bat = pickers.reduce((t, r) => t + r.batches, 0), pp = pickers.reduce((t, r) => t + r.points, 0);
   const busiest = h.reduce((b, v, i) => (v > (h[b] || 0) ? i : b), 0);
@@ -978,11 +1052,38 @@ export function shiftReport(st, today, names = {}) {
   const max = Math.max(1, ...h);
   const hours = h.map((v, i) => [i, v]).filter(([, v]) => v > 0).map(([i, v]) => `${String(i).padStart(2, '0')} ${'█'.repeat(Math.max(1, Math.round((v / max) * 18)))} ${v}`).join('\n');
   return [
-    `**Shift report · ${today.split('-').reverse().join('-')}**`,
+    `**Shift report${W && whName(st, W) ? ` · ${whName(st, W)}` : ''} · ${today.split('-').reverse().join('-')}**`,
     `📦 **${fmtN(n)}** picklists packed · ${fmtN(mu)} multi · ${fmtN(si)} single${n ? ` · busiest ${String(busiest).padStart(2, '0')}:00 (${h[busiest]})` : ''}`,
     `⛏️ **${fmtN(bat)}** batches picked · ${fmtN(pp)} pick points`,
     packers.length ? `\n**Packers**\n${packers.slice(0, 5).map((r, i) => `${medal(i)} ${nm(r.id)} · ${fmtN(r.points)} pts · ${r.n} closed`).join('\n')}` : '',
     pickers.length ? `\n**Pickers**\n${pickers.slice(0, 5).map((r, i) => `${medal(i)} ${nm(r.id)} · ${fmtN(r.points)} pts · ${r.batches} batches`).join('\n')}` : '',
     hours ? `\n**Per hour**\n\`\`\`\n${hours}\n\`\`\`` : '',
   ].filter(Boolean).join('\n').slice(0, 1990);
+}
+// which warehouses had something today (for one report each) · none known = one report like before
+export function reportWhs(st, today) {
+  const ids = Object.keys(st.whNames || {});
+  if (ids.length < 2) return [''];
+  const any = (W) => { const r = hoursFor(st, W)[today]; return !!r && (r.packed.some((v) => v > 0) || r.picked.some((v) => v > 0)); };
+  const out = ids.filter(any);
+  return out.length ? out : [String(st.mainWh || ids[0])];
+}
+
+// ---------- announcements (Shift+9): a text for everyone or for one person, shown once to each person ----------
+export const ANN_MAX = 500;
+export function annFor(st, id, now) {
+  id = String(id);
+  return (st.ann || []).filter((x) => x.until > now && (x.to === 'all' || x.to === id) && !(x.seen || {})[id])
+    .map((x) => ({ id: x.id, at: x.at, text: x.text, to: x.to === 'all' ? 'all' : 'you', by: x.byName || '' }));
+}
+export function annSeen(st, id, aid, now) {
+  const x = (st.ann || []).find((y) => y.id === String(aid));
+  if (!x || (x.to !== 'all' && x.to !== String(id))) return false;
+  x.seen = x.seen || {};
+  if (x.seen[id]) return false;
+  x.seen[String(id)] = now;
+  return true;
+}
+function annList(st, now) {
+  return (st.ann || []).slice(-15).reverse().map((x) => ({ id: x.id, at: x.at, until: x.until, live: x.until > now, text: x.text, to: x.to, seen: x.seen || {} }));
 }
