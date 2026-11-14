@@ -54,8 +54,8 @@ export const SKINS = [
   { id: 'starlight', name: 'Starlight', price: 6000 },
   { id: 'retro', name: 'Retro', price: 6000 },
   { id: 'twilight', name: 'Twilight', price: 6500 },
-  { id: 'hanami', name: 'Hanami', price: 7000, crateOnly: true },
-  { id: 'obsidian', name: 'Obsidian', price: 7000, crateOnly: true },
+  { id: 'hanami', name: 'Hanami', price: 7000, crateOnly: true, spinOnly: true },
+  { id: 'obsidian', name: 'Obsidian', price: 7000, crateOnly: true, spinOnly: true },
   { id: 'sapphire', name: 'Sapphire', price: 7000 },
   { id: 'plasma', name: 'Plasma', price: 7500 },
   { id: 'rosegold', name: 'Rose Gold', price: 8000 },
@@ -69,19 +69,19 @@ export const SKINS = [
   { id: 'neon', name: 'Neon', price: 20000 },
   { id: 'stormcell', name: 'Storm Cell', price: 20000 },
   { id: 'circuit', name: 'Circuit', price: 20000 },
-  { id: 'abyss', name: 'Abyss', price: 20000, crateOnly: true },
+  { id: 'abyss', name: 'Abyss', price: 20000, crateOnly: true, spinOnly: true },
   { id: 'coderain', name: 'Code Rain', price: 22000 },
   { id: 'synthwave', name: 'Synthwave', price: 22000 },
   { id: 'carbon', name: 'Carbon', price: 25000 },
   { id: 'hologram', name: 'Hologram', price: 25000 },
-  { id: 'bloodmoon', name: 'Blood Moon', price: 25000 },
+  { id: 'bloodmoon', name: 'Blood Moon', price: 25000, crateOnly: true, spinOnly: true },
   // gold
   { id: 'dragonfire', name: 'Dragonfire', price: 40000 },
   { id: 'milkyway', name: 'Milky Way', price: 40000 },
   { id: 'supernova', name: 'Supernova', price: 45000 },
   { id: 'borealis', name: 'Borealis', price: 45000 },
-  { id: 'singularity', name: 'Singularity', price: 50000, crateOnly: true },
-  { id: 'diamond', name: 'Diamond', price: 60000 },
+  { id: 'singularity', name: 'Singularity', price: 50000, crateOnly: true, spinOnly: true },
+  { id: 'diamond', name: 'Diamond', price: 60000, crateOnly: true, spinOnly: true },
   // a color, not a skin: paints any animated skin red and black (like Brawlhalla colors). Still only 10 people can own it.
   { id: 'voidescent', name: 'Voidescent', price: 50000, limit: 10, color: true },
   // only from drop crates
@@ -121,18 +121,19 @@ export const TIERS = [
 ];
 export const ITEMS = {
   boost: { name: 'Coin boost', desc: 'your coins x2 for 30 min', self: true, min: 30 },
-  shield: { name: 'Shield', desc: 'blocks the next freeze or skin off on you (24 h)', self: true, min: 24 * 60 },
+  shield: { name: 'Shield', desc: 'blocks the next freeze, skin off or skin steal on you (24 h)', self: true, min: 24 * 60 },
   freeze: { name: 'Freeze', desc: "someone's coins stop for 20 min", target: true, min: 20 },
   skinoff: { name: 'Skin off', desc: "someone's skin is gone for 30 min", target: true, min: 30 },
   double: { name: 'Double points event', desc: 'everyone gets x2 coins for 1 hour', self: true, min: 60 },
+  steal: { name: 'Skin steal', desc: "you wear someone's skin for 1 hour, they go without", target: true, min: 60 },
 };
 // what a drop crate can hold, weights per tier
 const LOOT = {
   common: [['coins', 60, 50, 150], ['boost', 20], ['shield', 20]],
-  uncommon: [['coins', 45, 200, 500], ['boost', 15], ['shield', 10], ['freeze', 15], ['skinoff', 15]],
-  rare: [['coins', 35, 800, 2000], ['freeze', 15], ['skinoff', 15], ['double', 20], ['skin:phantom', 15]],
-  epic: [['coins', 30, 3000, 6000], ['double', 25], ['skin:phantom', 20], ['skin:inferno', 25], ['skin:hanami', 12], ['skin:obsidian', 12]],
-  legendary: [['coins', 25, 10000, 20000], ['double', 15], ['skin:inferno', 30], ['skin:celestial', 30], ['skin:abyss', 15], ['skin:singularity', 10]],
+  uncommon: [['coins', 45, 200, 500], ['boost', 15], ['shield', 10], ['freeze', 13], ['skinoff', 12], ['steal', 5]],
+  rare: [['coins', 35, 800, 2000], ['freeze', 12], ['skinoff', 12], ['steal', 12], ['double', 16], ['skin:phantom', 13]],
+  epic: [['coins', 30, 3000, 6000], ['double', 25], ['steal', 15], ['skin:phantom', 20], ['skin:inferno', 25]],
+  legendary: [['coins', 30, 10000, 20000], ['double', 15], ['skin:inferno', 30], ['skin:celestial', 30]],
 };
 // crate: pay, spin, get a skin. Weights per rarity (blue 275 · purple 190 · pink 105 · red ~40 · gold 12 · Voidescent 5).
 // Already have it? You get a quarter of its shop price back in coins.
@@ -170,12 +171,17 @@ const hoursOf = (st, wh) => { if (isMain(st, wh)) return st.hours; st.hoursBy = 
 const hoursFor = (st, wh) => (isMain(st, wh) ? st.hours : ((st.hoursBy || {})[wh] || {}));
 const hourRow = (H, d) => (H[d] = H[d] || { packed: Array(24).fill(0), picked: Array(24).fill(0) });
 const whName = (st, wh) => ((st.whNames || {})[wh] || '');
-// coins with effects: frozen = 0 · double event and own boost = x2 each
+const stolenOf = (a, now) => (a.stolen && a.stolen.until > now ? a.stolen : null);
+// an event (the Double points item = x2 coins · Shift+9 = any mix of coins / drops / pass XP)
+export const evOf = (st, now) => (st.event && st.event.until > now ? { x: 2, luck: 1, xp: 1, ...st.event } : null);
+const evPub = (e) => (e ? { until: e.until, by: e.by, x: e.x == null ? 2 : e.x, luck: e.luck || 1, xp: e.xp || 1, name: e.name || '' } : null);
+// coins with effects: frozen = 0 · event (x2, or what Shift+9 set) and own boost (x2)
 export function earn(st, id, amount, now) {
   const a = acct(st, id);
   if (a.frozenUntil > now) return 0;
   let x = amount;
-  if (st.event && st.event.until > now) x *= 2;
+  const ev = evOf(st, now);
+  if (ev) x *= ev.x;
   if (a.boostUntil > now) x *= 2;
   a.coins = r3(a.coins + x);
   return x;
@@ -194,10 +200,11 @@ function giveCrate(st, id, tier, now, rnd, pity, quiet) {
 }
 function rollDrop(st, id, rolls, now, rnd) {
   const a = acct(st, id);
+  const ev = evOf(st, now), luck = ev ? ev.luck : 1; // event: crates drop `luck` times as often
   for (let i = 0; i < rolls; i++) {
     const x = rnd();
     let acc = 0, got = null;
-    for (const t of TIERS) { acc += 1 / t.one; if (x < acc) { got = t.id; break; } }
+    for (const t of TIERS) { acc += luck / t.one; if (x < acc) { got = t.id; break; } }
     a.dry = (a.dry || 0) + 1;
     if (got) { giveCrate(st, id, got, now, rnd); if (['rare', 'epic', 'legendary'].includes(got)) a.dry = 0; }
     else if (a.dry >= PITY) { giveCrate(st, id, 'rare', now, rnd, true); a.dry = 0; }
@@ -345,7 +352,7 @@ export function tick(st, rows, { now, min = 15, today, proxies = [], wh = '', wh
   for (const bd of boards) bd.people.forEach((p) => { const x = badgesOf(st.acct[p.id]); if (x) p.badges = x; });
   // people / king / wh = the main warehouse, like before (older scripts) · whs = every warehouse
   const mb = boards.find((x) => x.id === String(st.mainWh || '')) || boards[0];
-  st.board = { at: now, min, wh: mb.name || wh, main: String(st.mainWh || ''), people: mb.people, king: mb.king, whs: boards, feed: st.feed, event: st.event ? { until: st.event.until, by: st.event.by } : null };
+  st.board = { at: now, min, wh: mb.name || wh, main: String(st.mainWh || ''), people: mb.people, king: mb.king, whs: boards, feed: st.feed, event: evPub(st.event) };
   return st.board;
 }
 
@@ -376,11 +383,11 @@ export function profile(st, id, today, now = Date.now()) {
   return {
     id, today: day[id] || { n: 0, multis: 0, singles: 0, points: 0, kingMin: 0 }, rankToday: pos < 0 ? null : pos + 1, ofToday: ranked.length,
     balance: r3(a.coins - a.spent), coins: a.coins, spent: a.spent, points: st.acct[id] ? totalPoints(st, id) : 0, owned: a.owned,
-    skin: a.skinOffUntil > now ? null : a.skin, mySkin: a.skin, color: a.skinOffUntil > now ? null : a.color || null, myColor: a.color || null, kingTotal: a.kingTotal, kingBest: a.kingBest, picklists: a.picklists,
+    skin: a.skinOffUntil > now ? null : stolenOf(a, now) ? a.stolen.skin : a.skin, mySkin: a.skin, color: a.skinOffUntil > now ? null : stolenOf(a, now) ? a.stolen.color : a.color || null, stolen: stolenOf(a, now), myColor: a.color || null, kingTotal: a.kingTotal, kingBest: a.kingBest, picklists: a.picklists,
     pickPoints: a.pickPoints || 0, batches: a.batches || 0, pickToday: ((st.pdays || {})[today] || {})[id] || { batches: 0, locations: 0, items: 0, points: 0 },
     inv: a.inv || [], news: a.news || [], items: ITEMS, tiers: TIERS,
     effects: { frozenUntil: a.frozenUntil || 0, skinOffUntil: a.skinOffUntil || 0, boostUntil: a.boostUntil || 0, shieldUntil: a.shieldUntil || 0 },
-    event: st.event && st.event.until > now ? st.event : null,
+    event: evPub(evOf(st, now)),
     pass: passView(a),
     quests: questView(st, id, today),
     ach: achView(a),
@@ -430,7 +437,7 @@ export function buy(st, id, skin) {
   id = String(id);
   const s = SKINS.find((x) => x.id === skin);
   if (!s) return { err: 'no such skin' };
-  if (s.crateOnly && !acct(st, id).owned.includes(skin)) return { err: `${s.name} only comes out of crates` };
+  if (s.crateOnly && !acct(st, id).owned.includes(skin)) return { err: s.spinOnly ? `${s.name} only comes out of the skin crate (Spin)` : `${s.name} only comes out of crates` };
   if (s.passOnly && !acct(st, id).owned.includes(skin)) return { err: `${s.name} only comes from the battle pass` };
   const a = acct(st, id);
   if (!a.owned.includes(skin)) {
@@ -589,6 +596,7 @@ export function useItem(st, id, uid, target, now) {
     if (!target || target === id) return { err: 'pick someone else' };
     if (!st.acct[target]) return { err: 'that person has no account here yet' };
     const t = acct(st, target);
+    if (item === 'steal' && (!t.skin || t.skinOffUntil > now)) return { err: "they're not wearing a skin right now" };
     const last = (t.hitAt || {})[item] || 0;
     if (now - last < HIT_COOLDOWN * 60000) return { err: `they already got a ${def.name} ${Math.floor((now - last) / 60000)} min ago · again in ${Math.ceil((last + HIT_COOLDOWN * 60000 - now) / 60000)} min` };
     a.inv.splice(i, 1);
@@ -596,6 +604,8 @@ export function useItem(st, id, uid, target, now) {
     t.hitAt = { ...(t.hitAt || {}), [item]: now };
     if (item === 'freeze') t.frozenUntil = Math.max(t.frozenUntil || 0, until);
     if (item === 'skinoff') t.skinOffUntil = Math.max(t.skinOffUntil || 0, until);
+    // steal: you wear their skin (+ color) for an hour, they go without. Nothing changes hands for good.
+    if (item === 'steal') { a.stolen = { skin: t.skin, color: t.color || null, from: target, until }; t.skinOffUntil = Math.max(t.skinOffUntil || 0, until); }
     t.news = (t.news || []).concat({ at: now, kind: 'hit', item, from: id, until }).slice(-20);
     st.log = (st.log || []).concat({ at: now, id, what: `${def.name} on ${target}` }).slice(-50);
     return { ok: true, until };
@@ -603,7 +613,7 @@ export function useItem(st, id, uid, target, now) {
   a.inv.splice(i, 1);
   if (item === 'boost') a.boostUntil = Math.max(a.boostUntil || 0, now) + def.min * 60000;
   if (item === 'shield') a.shieldUntil = until;
-  if (item === 'double') st.event = { kind: 'double', until: Math.max((st.event && st.event.until) || 0, now) + def.min * 60000, by: id };
+  if (item === 'double') st.event = st.event && st.event.until > now ? { ...st.event, until: st.event.until + def.min * 60000 } : { kind: 'double', until: now + def.min * 60000, by: id };
   st.log = (st.log || []).concat({ at: now, id, what: def.name }).slice(-50);
   return { ok: true, until };
 }
@@ -798,7 +808,8 @@ export function xpTimes10(st, now, rnd = Math.random) {
 export function passXp(st, id, pts, now, today, rnd = Math.random) {
   if (!(pts > 0) || String(today) > SEASON.ends) return;
   const p = passOf(acct(st, id));
-  p.xp = r3(p.xp + pts);
+  const ev = evOf(st, now);
+  p.xp = r3(p.xp + pts * (ev ? ev.xp : 1));
   passCatchUp(st, id, now, rnd);
 }
 export function buyPass(st, id, now, today, rnd = Math.random) {
@@ -847,6 +858,19 @@ export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
     if (b.flags) { st.flags = f; st.log = (st.log || []).concat({ at: now, id: OWNER, what: `admin: everyone ${JSON.stringify(f)}` }).slice(-50); }
     return { ok: true, flags: f };
   }
+  // events: coins x · crate drops x · pass XP x, for some minutes, with a name (e.g. "Triple coins"). off = stop now
+  if (op === 'event') {
+    if (b.off) { st.event = null; st.log = (st.log || []).concat({ at: now, id: OWNER, what: 'admin: event stopped' }).slice(-50); return { ok: true, event: null }; }
+    if (b.event) {
+      const num = (v, max) => Math.min(max, Math.max(1, Math.round((Number(v) || 1) * 10) / 10));
+      const e = b.event, x = num(e.x, 10), luck = num(e.luck, 20), xp = num(e.xp, 10), min = Math.min(24 * 60, Math.max(1, Math.round(Number(e.min) || 60)));
+      if (x === 1 && luck === 1 && xp === 1) return { err: 'pick at least one thing above x1' };
+      const name = String(e.name || '').trim().slice(0, 40) || [x > 1 ? `x${x} coins` : '', luck > 1 ? `x${luck} drops` : '', xp > 1 ? `x${xp} XP` : ''].filter(Boolean).join(' · ');
+      st.event = { kind: 'admin', until: now + min * 60000, by: OWNER, x, luck, xp, name };
+      st.log = (st.log || []).concat({ at: now, id: OWNER, what: `admin: event "${name}" x${x} coins · x${luck} drops · x${xp} XP for ${min} min` }).slice(-50);
+    }
+    return { ok: true, event: evPub(evOf(st, now)) };
+  }
   // announcements: to 'all' or one Picqer user id · shown for `hours` (1-72) to everyone who opens Picqer, once
   if (op === 'announce') {
     const text = String(b.text || '').replace(/\r/g, '').trim().slice(0, ANN_MAX);
@@ -887,7 +911,7 @@ export function adminOp(st, op, target, b, now, today, rnd = Math.random) {
   else if (op === 'unpass') { const p = passOf(a); p.owned = false; note('took battle pass'); }
   else if (op === 'pass') { const p = passOf(a); p.owned = true; passCatchUp(st, target, now, rnd); note('battle pass'); }
   else if (op === 'xp') { if (!n) return { err: 'amount?' }; const p = passOf(a); p.xp = Math.max(0, r3(p.xp + n)); passCatchUp(st, target, now, rnd); note(`${n} XP`); }
-  else if (op === 'clear') { a.frozenUntil = 0; a.skinOffUntil = 0; note('cleared freeze / skin off'); }
+  else if (op === 'clear') { a.frozenUntil = 0; a.skinOffUntil = 0; a.stolen = null; note('cleared freeze / skin off / stolen skin'); }
   else if (op === 'boost') { a.boostUntil = Math.max(a.boostUntil || 0, now) + Math.max(1, n || 30) * 60000; note(`boost ${n || 30} min`); }
   else return { err: 'unknown' };
   return { ok: true };

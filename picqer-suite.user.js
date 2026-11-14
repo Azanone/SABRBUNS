@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.90
+// @version      3.91
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.90';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.91';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -154,7 +154,7 @@
     cardColor: 'Product colors on picklists',
     colors: 'Edit this PC\'s colors (Shift+8)',
     pickAll: 'Picqer "Pick alles" buttons',
-    truePickAll: 'True pick all: A picks every product of the picklist',
+    truePickAll: 'True pick all: no Pick alles button → A ticks every line',
     bulkSingles: 'Picqer "Verwerk in bulk"',
     skins: 'Skins / themes (looks of Picqer)',
     chat: 'Chat with friends (🪙 panel)',
@@ -260,9 +260,9 @@
       { k: 'includeMissing', label: 'Missing lines in chat', type: 'bool', def: false },
     ]},
     { id: 'unpick', title: 'Unpick all', hint: 'button next to Pick alles', fields: [] },
-    { id: 'autoNext', always: true, switchKey: 'goNext', title: 'Auto next', hint: 'after a shipment: the next picklist of the batch opens by itself',
+    { id: 'autoNext', always: true, switchKey: 'next', title: 'Auto next', hint: 'after a shipment: the next picklist of the batch opens by itself',
       note: 'Works in a batch: as soon as the shipment is made you go to the next picklist that still needs packing.', fields: [
-      { k: 'goNext', label: 'Go to the next picklist after a shipment', type: 'bool', def: true },
+      { k: 'next', label: 'Go to the next picklist after a shipment', type: 'bool', def: false }, // 3.91: off unless you turn it on (new key: everyone starts off once)
       { k: 'skipClosed', label: 'You land on a closed picklist: go on to the next one right away (not when you came back with <)', type: 'bool', def: true },
       { k: 'delayMs', label: 'Wait before going on (ms)', type: 'num', def: 800 },
     ] },
@@ -342,7 +342,7 @@
     window.addEventListener('load', () => setTimeout(() => {
       const n = (performance.getEntriesByType('navigation') || [])[0] || nav || {};
       const msg = `load ${Math.round(n.loadEventStart || 0)} ms · html ${Math.round(n.responseEnd || 0)} ms · biggest paint ${Math.round(lcp)} ms`;
-      diag((n.loadEventStart || 0) > 8000 || lcp > 8000 ? 'SLOWPAGE' : 'page', msg);
+      if ((n.loadEventStart || 0) > 8000 || lcp > 8000) diag('SLOWPAGE', msg); // normal page loads don't go in the log anymore
     }, 3000));
     window.addEventListener('error', (e) => diag('jserr', `${e.message} @ ${String(e.filename || '').split('/').pop()}:${e.lineno}`));
     window.addEventListener('unhandledrejection', (e) => { const r = e.reason; diag('jserr', `promise: ${(r && (r.message || r)) || '?'}`.slice(0, 200)); });
@@ -393,7 +393,19 @@
   try {
     const realFetch = window.fetch.bind(window);
     const urlOf = (input) => { try { const u = new URL(typeof input === 'string' ? input : input.url, location.href); return u.pathname.replace('/api/v1', '') + (u.search.length > 60 ? u.search.slice(0, 60) + '…' : u.search); } catch (_) { return '?'; } };
+    // logged out (session ended while the tab was open): a plain call gets "401 + sign in" and Chrome shows its popup.
+    // With X-Requested-With Picqer answers 403 without that challenge, so no popup. After one such 403: quiet for a minute.
+    const OUT = 'pqsuite_logged_out_v1';
+    const xrw = (input, init) => {
+      try {
+        const h = new Headers((init && init.headers) || (typeof input !== 'string' && input && input.headers) || {});
+        if (!h.has('X-Requested-With')) h.set('X-Requested-With', 'XMLHttpRequest');
+        return { ...(init || {}), headers: h };
+      } catch (_) { return init; }
+    };
     const gated = async (input, init, fast) => {
+      init = xrw(input, init);
+      if (Date.now() - (+lsGet(OUT, 0) || 0) < 60000) return new Response('', { status: 401, statusText: 'logged out' });
       // logged out (login page): never ask Picqer's API, its 401 makes Chrome show a "sign in" popup
       if (/^\/(login|password|logout)/.test(location.pathname)) return new Response('', { status: 401, statusText: 'logged out' });
       let res;
@@ -404,6 +416,13 @@
         if (waited > 2000) diag('wait', `suite call waited ${Math.round(waited / 1000)} s in the line · ${urlOf(input)}`);
         const f0 = performance.now();
         res = await realFetch(input, init);
+        if (res.status === 401) { lsSet(OUT, Date.now()); return res; }
+        if (res.status === 403 && !/json/i.test(res.headers.get('content-type') || '')) {
+          // really logged out? Picqer's own pages then send you to /login (a 403 can also be "not allowed for you")
+          const home = await realFetch('/', { method: 'HEAD', redirect: 'manual', credentials: 'same-origin' }).catch(() => null);
+          if (home && home.type === 'opaqueredirect') { lsSet(OUT, Date.now()); diag('out', 'logged out · the suite stops asking Picqer for a minute'); }
+          return res;
+        }
         const took = performance.now() - f0;
         if (took > 4000) diag('slow', `suite call ${Math.round(took / 1000)} s · ${res.status} · ${urlOf(input)}`);
         if (res.status === 429) diag('429', `Picqer: too many requests · ${urlOf(input)}`);
@@ -464,7 +483,7 @@
       for (const f of m.fields) out[id][f.k] = s[f.k] !== undefined ? s[f.k] : f.def;
     }
     // old "Auto print + auto next" switched off as a whole: keep both off
-    if (saved.autoNext && saved.autoNext.enabled === false && saved.autoNext.goNext !== false) { out.autoNext.goNext = false; out.autoNext.printLabel = false; }
+    if (saved.autoNext && saved.autoNext.enabled === false && saved.autoNext.goNext !== false) { out.autoNext.next = false; out.autoNext.printLabel = false; }
     return out;
   }
   const CFG = loadCfg(lsGet(LS_CFG_LAST, null));
@@ -473,8 +492,13 @@
     const fresh = loadCfg(uid);
     for (const id of Object.keys(fresh)) { if (!CFG[id]) CFG[id] = {}; Object.assign(CFG[id], fresh[id]); }
   }
+  // these used to stay on the PC: own product colors, the batcher's choices (tab, shops, snoozed, BE, max, who, auto batch people)
+  const X_KEYS = ['pqsuite_colors_local_v1', 'cb_tab', 'cb_shops', 'cb_snoozed', 'cb_opt_be', 'cb_opt_max', 'cb_opt_show', 'cb_assign', 'cb_gassign', 'cb_auto_users', 'cb_auto_wh', 'pqsuite_inv_sort_v1'];
+  function xRead() { const x = {}; for (const k of X_KEYS) { try { const v = localStorage.getItem(k); if (v != null && v.length < 6000) x[k] = v; } catch (_) {} } return x; }
+  function xWrite(x) { if (!x || typeof x !== 'object') return; for (const k of X_KEYS) { try { if (typeof x[k] === 'string') localStorage.setItem(k, x[k]); else localStorage.removeItem(k); } catch (_) {} } }
   function saveCfg(out) {
     const uid = String(ME.id || '');
+    out._x = xRead();
     const v = { at: Date.now(), cfg: out };
     if (uid) lsSet(cfgKey(uid), v); else lsSet(LS_CFG, out);
     const url = String((out.leaderboard && out.leaderboard.url) || '').trim().replace(/\/+$/, '');
@@ -495,6 +519,7 @@
     if (remote && remote.cfg && (!local || remote.at > local.at)) {
       const changed = JSON.stringify(remote.cfg) !== JSON.stringify(local && local.cfg);
       lsSet(cfgKey(uid), { at: remote.at, cfg: remote.cfg });
+      if (remote.cfg._x) xWrite(remote.cfg._x); // colors + batcher choices of this account
       // first time on this PC with this account: reload once so everything runs with your settings
       if (changed && !sessionStorage.getItem('pqsuite_cfg_synced_' + uid)) {
         try { sessionStorage.setItem('pqsuite_cfg_synced_' + uid, '1'); } catch (_) {}
@@ -503,6 +528,23 @@
     } else if (local && local.cfg && (!remote || !remote.cfg || local.at > remote.at)) {
       saveCfg(local.cfg); // this PC has newer ones (or the cloud has none yet): put them in the cloud
     }
+    xWatch();
+  }
+  // a choice changed on this PC (a color, a batcher dropdown): save it to the account, at most every 20 s
+  let xTimer = null;
+  function xWatch() {
+    if (xTimer) return;
+    const uid = String(ME.id || '');
+    let last = JSON.stringify(((lsGet(cfgKey(uid), null) || {}).cfg || {})._x || {});
+    const check = () => {
+      const now = JSON.stringify(xRead());
+      if (now === last) return;
+      last = now;
+      const cur = lsGet(cfgKey(uid), null);
+      saveCfg((cur && cur.cfg) || JSON.parse(JSON.stringify(CFG)));
+    };
+    xTimer = setInterval(check, 20000);
+    window.addEventListener('pagehide', check);
   }
   const on = (id) => CFG[id] && CFG[id].enabled;
 
@@ -610,7 +652,7 @@
     zaplog: 'The shared log behind ZAP and DAYSON. Proxy ids are accounts that never count as a picker or packer.',
     unpick: 'A button next to Pick alles that takes back everything that was picked on the picklist.',
     autoNext: 'In a batch: the shipment is made → the next picklist that still needs packing opens by itself.',
-    pickAllKey: 'A on a picklist = pick everything in 1 go.',
+    pickAllKey: 'A on a picklist = Picqer\'s own Pick alles button. No such button for you there: every line gets ticked one by one (only teams with true pick all).',
     pickStats: 'Ctrl+Alt+P: who is picking right now (last 15 min, idle time), who packs, and charts per hour for any day. Bunsenstraat / Barnsteen at the top: switch warehouse. The idle alert is for the pickers of your own warehouse.',
     leaderboard: 'Packing points (multi 2, single 1,334) of the last 15 min. Every warehouse (Bunsenstraat, Barnsteen) has its own board and king. Your rank bottom right (the warehouse you work in), Ctrl+Alt+L for everyone: switch warehouse at the top. Points are coins for the shop, crates and the pass (🪙 at the top), the same everywhere.',
     cardColor: 'A colored bar per product code on picklists, so look-alike products are easy to tell apart.',
@@ -4589,7 +4631,7 @@
     const LS_ON = 'pqsuite_autonext_on_v1';
     const pickKey = String(C.pickAllKey || 'a').toLowerCase();
     let isProcessing = false;
-    const enabled = C.goNext !== false; // Shift+8 -> Auto print + auto next
+    const enabled = C.next === true; // Shift+8 -> Auto next (off unless you turned it on)
     let rowsPromise = null, flashAtLoad = new Set(), arrival = null, pendingWarn = null;
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const nm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
@@ -4975,15 +5017,12 @@
       if (k !== pickKey) return;
       // a scanner typing an "a" in a barcode is not you pressing A
       loneKey(e, () => {
-        if (can('truePickAll') && PID) {
-          if (isProcessing) return;
-          truePickAll();
-          return;
-        }
-        const btn = document.querySelector('.pick-all-button');
-        if (!btn) return;
-        if (!can('pickAll') || btn.disabled || btn.dataset.pqLock) { setInfo('Pick alles is not for your team'); return; }
-        btn.click();
+        if (!can('pickAll') && !can('truePickAll')) { if (document.querySelector('.pick-all-button')) setInfo('Pick alles is not for your team'); return; }
+        // Picqer's own Pick alles button first (one click, Picqer does the rest)
+        const btn = [...document.querySelectorAll('.pick-all-button')].find((b) => b.offsetParent !== null && !b.disabled && !b.dataset.pqLock && !b.classList.contains('disabled'));
+        if (btn) { btn.click(); return; }
+        // no Pick alles button for this person / picklist: tick every line (only teams with truePickAll)
+        if (can('truePickAll') && PID) { if (!isProcessing) truePickAll(); return; }
       });
     });
 
@@ -5753,7 +5792,7 @@
             const r = await fetch(`${URL_}/leaderboard`, { credentials: 'omit', cache: 'no-store' });
             const j = await r.json();
             if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
-            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed); pickPeople = j.picks && (j.picks.all || j.picks.people); goal = j.goal || null;
+            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed); eventCheck(j.event); pickPeople = j.picks && (j.picks.all || j.picks.people); goal = j.goal || null;
             whsIn = Array.isArray(j.whs) && j.whs.length > 1 ? j.whs : null; mainId = String(j.main || (goal && goal.wh) || '');
             if (j.flags && JSON.stringify(j.flags) !== JSON.stringify(lsGet(LS_FLAGS, null))) { lsSet(LS_FLAGS, j.flags); window.dispatchEvent(new Event('pq-flags')); }
           } catch (e) { console.info('[leaderboard] middle stop:', e.message, '· asking Picqer myself'); }
@@ -6046,12 +6085,12 @@
       if (!g || !g.target) { bar?.remove(); return; }
       if (multiWh() && g.wh && homeWh() !== String(g.wh)) { bar?.remove(); return; } // the goal is about another warehouse than where you work
       addStyle('pq-goal-style', `
-        #pq-goal{min-height:30px;box-sizing:border-box;min-width:0;max-width:100%;display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:4px 24px;background:#fff;border-bottom:1px solid #e2e8f0;font:500 12.5px system-ui,sans-serif;color:#0f172a;position:sticky;top:var(--pq-hh,52px);z-index:5}
+        #pq-goal{min-height:18px;box-sizing:border-box;min-width:0;max-width:100%;display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:1px 24px;line-height:16px;background:#fff;border-bottom:1px solid #e2e8f0;font:500 11px system-ui,sans-serif;color:#0f172a;position:sticky;top:var(--pq-hh,52px);z-index:5}
         #pq-goal b.t{font-weight:700;white-space:nowrap}
-        #pq-goal .gb{flex:1;height:8px;border-radius:999px;background:#e2e8f0;position:relative;overflow:hidden;min-width:80px}
+        #pq-goal .gb{flex:1;height:4px;border-radius:999px;background:#e2e8f0;position:relative;overflow:hidden;min-width:80px}
         #pq-goal .gb i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:#4f46e5;transition:width .6s}
         #pq-goal .gb.ok i{background:#10b981} #pq-goal .gb.bad i{background:#f43f5e}
-        #pq-goal .gb em{position:absolute;top:-2px;bottom:-2px;width:2px;background:#0f172a;opacity:.35}
+        #pq-goal .gb em{position:absolute;top:0;bottom:0;width:2px;background:#0f172a;opacity:.35}
         #pq-goal span{white-space:nowrap;font-variant-numeric:tabular-nums}
         #pq-goal .up{color:#059669;font-weight:600} #pq-goal .dn{color:#e11d48;font-weight:600} #pq-goal .mut{color:#64748b}
         html.pq-dark #pq-goal{background:var(--th-bg,#0f1117);border-color:rgba(255,255,255,.08);color:#e2e8f0}
@@ -6284,11 +6323,11 @@
       const spinIds = new Set(((p.crate || {}).odds || []).map((o) => o.id));
       const btn = on ? '<button data-pf="off">Take off</button>' : own ? `<button class="wear" data-pf="wear" data-s="${s.id}">Wear</button>`
         : s.passOnly ? '<button disabled>🎟 Pass</button>'
-        : s.crateOnly ? `<button disabled>📦 ${spinIds.has(s.id) ? 'Crates' : 'Drops'}</button>`
+        : s.crateOnly ? `<button disabled>${spinIds.has(s.id) ? '🎰 Spin only' : '📦 Drops'}</button>`
         : s.limit && !s.left ? '<button disabled>Sold out</button>'
         : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>${int(s.price)}</button>`;
       return `<div class="sh-skin${on ? ' on' : ''}${own ? ' own' : ''}" style="--r:${RARITY[s.id] || '#94a3b8'}">
-        ${s.limit ? `<em class="sh-ltd">★ ${s.left || 0}/${s.limit}</em>` : s.passOnly ? '<em class="sh-only pass">PASS</em>' : s.crateOnly ? `<em class="sh-only">${spinIds.has(s.id) ? 'CRATE' : 'DROP'}</em>` : ''}
+        ${s.limit ? `<em class="sh-ltd">★ ${s.left || 0}/${s.limit}</em>` : s.passOnly ? '<em class="sh-only pass">PASS</em>' : s.crateOnly ? `<em class="sh-only">${spinIds.has(s.id) ? 'SPIN' : 'DROP'}</em>` : ''}
         <div class="sh-sw" style="background:${swOf(s.id)}">${on ? '<span>✓</span>' : ''}</div>
         <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}${animated(look) ? ' <i class="sh-anim" title="animated · can get a color">✦</i>' : ''}</b></div><button class="sh-try" data-try="${s.id}" title="try it on for 10 sec">👁</button>${btn}</div>`;
     }
@@ -6349,7 +6388,7 @@
             .map(([k, t]) => `<button class="sh-chip${shopF === k ? ' on' : ''}" data-sf="${k}">${k[0] === '#' ? `<i style="background:${k}"></i>` : ''}${t}</button>`).join('');
           const sec = (t, col, list) => (list.length ? `<div class="sh-gh">${col ? `<i style="background:${col}"></i>` : ''}<b>${t}</b><small>${list.length}</small></div><div class="sh-grid">${list.sort((a, b) => a.price - b.price).map((s) => skinCard(p, s)).join('')}</div>` : '');
           const body = G.map(([k, t]) => sec(t, k[0] === '#' ? k : '', notMine.filter((s) => !s.crateOnly && !s.passOnly && keyOf(s) === k && fits(s)))).join('')
-            + sec('Only from crates or the pass', '', notMine.filter((s) => (s.crateOnly || s.passOnly) && fits(s)));
+            + sec('Only from the spin, drop crates or the pass', '', notMine.filter((s) => (s.crateOnly || s.passOnly) && fits(s)));
           return `<h3>Skins ${ii('skins')}</h3><div class="sh-chips">${chips}</div>${body || '<div class="iv-empty">nothing here</div>'}`;
         })()}
       </div>`;
@@ -6475,8 +6514,8 @@
     const TIER_COL = { common: '#b0c3d9', uncommon: '#5e98d9', rare: '#4b69ff', epic: '#d32ce6', legendary: '#e4ae39' };
     const TIER_ICON = { common: '📦', uncommon: '📦', rare: '🎁', epic: '🎁', legendary: '💎' };
     const TIER_ORDER = ['legendary', 'epic', 'rare', 'uncommon', 'common'];
-    const ITEM_ICON = { boost: '⚡', shield: '🛡️', freeze: '❄️', skinoff: '🧥', double: '✨' };
-    const ITEM_COL = { boost: '#10b981', shield: '#0ea5e9', freeze: '#38bdf8', skinoff: '#ef4444', double: '#f59e0b' };
+    const ITEM_ICON = { boost: '⚡', shield: '🛡️', freeze: '❄️', skinoff: '🧥', double: '✨', steal: '🥷' };
+    const ITEM_COL = { boost: '#10b981', shield: '#0ea5e9', freeze: '#38bdf8', skinoff: '#ef4444', double: '#f59e0b', steal: '#a855f7' };
     const LS_PROF = 'pqsuite_prof_v1', LS_NEWS = 'pqsuite_news_seen_v1';
     const fmt3 = (x) => (Math.round((+x || 0) * 1000) / 1000).toLocaleString('nl-NL');
     const tierName = (t) => (((prof && prof.tiers) || []).find((x) => x.id === t) || {}).name || (t ? t[0].toUpperCase() + t.slice(1) : '');
@@ -6803,7 +6842,7 @@
       a.classList.toggle('pq-hb-new', crates > 0 || (can('chat') && (unreadOf(p) > 0 || !!(p && p.social && p.social.reqIn && p.social.reqIn.length))));
       a.classList.toggle('pq-hb-x2', !!ev);
       a.classList.toggle('pq-hb-frozen', !!frozen);
-      a.title = ['Inventory · stats · shop', crates ? `${crates} crate${crates > 1 ? 's' : ''} to open` : '', p && p.event && p.event.until > now ? 'double points event: x2 coins' : '', boost ? `coin boost x2 · ${leftTxt(p.effects.boostUntil)} left` : '', frozen ? `your coins are frozen (${leftTxt(p.effects.frozenUntil)})` : ''].filter(Boolean).join(' · ');
+      a.title = ['Inventory · stats · shop', crates ? `${crates} crate${crates > 1 ? 's' : ''} to open` : '', p && p.event && p.event.until > now ? `event: ${evTxt(p.event)}` : '', boost ? `coin boost x2 · ${leftTxt(p.effects.boostUntil)} left` : '', frozen ? `your coins are frozen (${leftTxt(p.effects.frozenUntil)})` : ''].filter(Boolean).join(' · ');
     }
     function coinGain(diff) {
       const a = document.getElementById('pq-hb');
@@ -6907,7 +6946,7 @@
       } else {
         const d = itemDef(x.item), blocked = x.kind === 'blocked';
         el.style.setProperty('--r', blocked ? '#10b981' : '#ef4444');
-        const what = blocked ? 'your shield is used up' : x.item === 'freeze' ? `no coins for ${x.until ? leftTxt(x.until) : '20 min'}` : x.item === 'skinoff' ? `your skin is off for ${x.until ? leftTxt(x.until) : '30 min'}` : '';
+        const what = blocked ? 'your shield is used up' : x.item === 'freeze' ? `no coins for ${x.until ? leftTxt(x.until) : '20 min'}` : x.item === 'skinoff' ? `your skin is off for ${x.until ? leftTxt(x.until) : '30 min'}` : x.item === 'steal' ? `they wear your skin for ${x.until ? leftTxt(x.until) : '1 hour'} · you get it back after` : '';
         el.innerHTML = `<div class="dp-box">${blocked ? '🛡️' : ITEM_ICON[x.item] || '⚠️'}</div><div class="dp-t"><small>${blocked ? 'blocked' : 'you got hit'}</small><b>${who} · ${escHtml(d.name)}</b><span>${what}</span></div>`;
       }
       el.title = open ? 'click to open your inventory' : '';
@@ -6926,6 +6965,7 @@
       if (e.shieldUntil > now) eff.push(['🛡️ Shield on', e.shieldUntil, 'good']);
       if (e.frozenUntil > now) eff.push(['❄️ Coins frozen', e.frozenUntil, 'bad']);
       if (e.skinOffUntil > now) eff.push(['🧥 Skin off', e.skinOffUntil, 'bad']);
+      if (p.stolen && p.stolen.until > now) eff.push([`🥷 Wearing ${escHtml(((tot && tot.list) || []).find((r) => r.id === String(p.stolen.from))?.name || 'someone')}'s skin`, p.stolen.until, 'good']);
       const crates = (p.inv || []).filter((x) => x.kind === 'crate').sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier) || a.at - b.at);
       const items = (p.inv || []).filter((x) => x.kind === 'item');
       const crateCard = (x) => `<div class="iv-c" style="--r:${TIER_COL[x.tier] || '#94a3b8'}" title="${agoTxt(x.at)}"><div class="iv-ic">${TIER_ICON[x.tier] || '📦'}</div><b>${escHtml(tierName(x.tier))}</b><button class="buy" data-open="${escHtml(x.uid)}">Open</button></div>`;
@@ -6942,9 +6982,14 @@
             <div class="iv-ppl">${tot ? ppl.map((r) => `<button data-tg="${escHtml(r.id)}" data-n="${escHtml(low(r.name))}" class="${ql && !low(r.name).includes(ql) ? 'hide' : ''}">${escHtml(r.name)}<small>${int(r.balance)} coins</small></button>`).join('') || '<div class="iv-empty">nobody yet</div>' : '<div class="iv-empty">Loading…</div>'}</div></div>`;
         }
       }
-      const mySkins = (p.skins || []).filter((s) => !s.color && (p.owned || []).includes(s.id)), myColors = (p.skins || []).filter((s) => s.color && (p.owned || []).includes(s.id));
+      // sort your skins: rarity (best first) · price · name · animated first · wearing first always
+      const RO = ['#e4ae39', '#eb4b4b', '#d32ce6', '#8847ff', '#4b69ff'], ro = (x) => { const i = RO.indexOf(RARITY[x.id] || '#4b69ff'); return i < 0 ? 9 : i; };
+      const SORTS = { rar: ['Rarity', (a, b) => ro(a) - ro(b) || b.price - a.price], price: ['Price', (a, b) => b.price - a.price], name: ['A–Z', (a, b) => a.name.localeCompare(b.name)], anim: ['✦ Animated', (a, b) => animated(SKIN_LOOK[b.id]) - animated(SKIN_LOOK[a.id]) || ro(a) - ro(b) || b.price - a.price], got: ['Newest', (a, b) => (p.owned || []).indexOf(b.id) - (p.owned || []).indexOf(a.id)] };
+      const invSort = SORTS[lsGet('pqsuite_inv_sort_v1', 'rar')] ? lsGet('pqsuite_inv_sort_v1', 'rar') : 'rar';
+      const sortChips = `<div class="sh-chips">${Object.entries(SORTS).map(([k, [t]]) => `<button class="sh-chip${invSort === k ? ' on' : ''}" data-isort="${k}">${t}</button>`).join('')}</div>`;
+      const mySkins = (p.skins || []).filter((s) => !s.color && (p.owned || []).includes(s.id)).sort(SORTS[invSort][1]).sort((a, b) => (b.id === p.skin) - (a.id === p.skin)), myColors = (p.skins || []).filter((s) => s.color && (p.owned || []).includes(s.id));
       return `<div class="iv-top">${streakHtml(p)}<button class="iv-tr" data-trade title="Trade">🤝</button>${ii('trade')}</div>
-        ${p.event && p.event.until > now ? `<div class="iv-ev">✨ x2 coins · ${leftTxt(p.event.until)}</div>` : ''}
+        ${p.event && p.event.until > now ? `<div class="iv-ev">✨ ${escHtml(evTxt(p.event))} · ${leftTxt(p.event.until)}</div>` : ''}
         ${eff.length ? `<div class="iv-eff">${eff.map(([t, u, k]) => `<span class="${k}">${t} · ${leftTxt(u)}</span>`).join('')}</div>` : ''}
         ${aim}
         <h3>Crates <small>${crates.length || ''}</small> ${ii('drops')}</h3>
@@ -6952,10 +6997,11 @@
         <h3>Items <small>${items.length || ''}</small> ${ii('items')}</h3>
         ${items.length ? `<div class="iv-grid">${items.map(itemCard).join('')}</div>` : '<div class="iv-empty">–</div>'}
         <h3>Themes <small>${mySkins.length || ''}</small></h3>
-        ${mySkins.length ? `<div class="sh-grid">${mySkins.map((s) => skinCard(p, s)).join('')}</div>` : '<div class="iv-empty">–</div>'}
+        ${mySkins.length ? `${mySkins.length > 3 ? sortChips : ''}<div class="sh-grid">${mySkins.map((s) => skinCard(p, s)).join('')}</div>` : '<div class="iv-empty">–</div>'}
         ${myColors.length ? `<h3>Colors ${ii('colors')}</h3><div class="sh-grid">${myColors.map((s) => colorCard(p, s)).join('')}</div>` : ''}`;
     }
     function wireInv(ov) {
+      ov.querySelectorAll('[data-isort]').forEach((b) => (b.onclick = () => { lsSet('pqsuite_inv_sort_v1', b.dataset.isort); showProfile(); }));
       ov.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => openDropCrate(b.dataset.open, b)));
       ov.querySelectorAll('[data-use]').forEach((b) => (b.onclick = () => {
         const x = ((prof && prof.inv) || []).find((i) => i.uid === b.dataset.use);
@@ -7040,8 +7086,8 @@
     }
     // ---------- opening: things pop up one after another, slower and slower, until it lands on what you get ----------
     const TIER_LOOT = {
-      common: ['c:80', 'boost', 'shield', 'c:140'], uncommon: ['c:300', 'boost', 'shield', 'freeze', 'skinoff', 'c:450'],
-      rare: ['c:1200', 'freeze', 'skinoff', 'double', 's:phantom', 'c:1800'], epic: ['c:4000', 'double', 's:phantom', 's:inferno', 'c:5500'],
+      common: ['c:80', 'boost', 'shield', 'c:140'], uncommon: ['c:300', 'boost', 'shield', 'freeze', 'skinoff', 'steal', 'c:450'],
+      rare: ['c:1200', 'freeze', 'skinoff', 'steal', 'double', 's:phantom', 'c:1800'], epic: ['c:4000', 'double', 'steal', 's:phantom', 's:inferno', 'c:5500'],
       legendary: ['c:12000', 'double', 's:inferno', 's:celestial', 'c:18000'],
     };
     const sfCoins = (n) => ({ col: '#e4ae39', html: `<div class="sf-ic">🪙</div><b>${int(n)}</b>` });
@@ -7095,6 +7141,17 @@
 
     // ---------- live feed: everyone sees epic + legendary drops (turn off in 🪙 → ⚙) ----------
     const LS_FEED = 'pqsuite_feed_seen_v1';
+    // what an event gives, short: "Triple coins · x3 coins · x2 drops"
+    function evTxt(e) { const parts = [(e.x == null ? 2 : e.x) > 1 ? `x${e.x == null ? 2 : e.x} coins` : '', e.luck > 1 ? `x${e.luck} drops` : '', e.xp > 1 ? `x${e.xp} pass XP` : ''].filter(Boolean).join(' · '); return e.name && e.name !== parts ? `${e.name} · ${parts}` : parts; }
+    // a new event started: tell everyone once (a card at the top, like an announcement)
+    function eventCheck(e) {
+      if (!e || !(e.until > Date.now()) || !e.name) return; // the Double points item has its own pop-up
+      const k = 'pqsuite_event_seen_v1', id = `ev${e.until}${e.name}`;
+      if (lsGet(k, '') === id) return;
+      lsSet(k, id);
+      ANN.q.push({ id, local: true, at: Date.now(), title: '🎉 EVENT', text: `${evTxt(e)}\nfor ${leftTxt(e.until)}`, to: 'all', by: '' });
+      annShow();
+    }
     function feedCheck(feed) {
       if (!Array.isArray(feed) || !feed.length) return;
       const seen = +lsGet(LS_FEED, 0) || 0;
@@ -7657,7 +7714,7 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden && (!data || Date.now() - data.at > POLL)) poll(); });
 
     // ---------- Shift+9 (only Ahmad): give / take coins, crates, items, skins, pass, XP ----------
-    let adm = { who: null, q: '', p: null, note: '', log: null, flags: null, hooks: null, hookOpen: false, goal: undefined, needKey: false, annOpen: false, anns: null, annText: '', annTo: 'all', annH: '8' };
+    let adm = { who: null, q: '', p: null, note: '', log: null, flags: null, hooks: null, hookOpen: false, goal: undefined, needKey: false, evOpen: false, ev: undefined, annOpen: false, anns: null, annText: '', annTo: 'all', annH: '8' };
     async function adminPost(op, target, extra = {}) {
       const key = lsGet('pqsuite_admin_key', '');
       const r = await fetch(`${URL_}/admin`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Admin-Key': key } : {}) }, body: JSON.stringify({ by: ME_ID, op, target, ...extra }) });
@@ -7722,10 +7779,16 @@
         </div>`;
       const fl = adm.flags || {};
       const flagSw = (k, t) => `<label class="ad-flag"><input type="checkbox" data-adf="${k}" ${fl[k] === false ? '' : 'checked'} ${adm.flags ? '' : 'disabled'}>${t}</label>`;
-      ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><div class="ad-flags"><span>everyone</span>${flagSw('cardColor', 'Product colors')}${flagSw('skins', 'Skins')}</div><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-ann title="Announcement: a text for everyone or one person">📢</button><button class="lb-gear" data-ad-hook title="Discord: logs + end of shift report">🔔</button><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
+      ov.innerHTML = `<div class="lb-panel sh-panel ad-panel"><div class="sh-top"><h2>Admin</h2><div class="ad-flags"><span>everyone</span>${flagSw('cardColor', 'Product colors')}${flagSw('skins', 'Skins')}</div><span class="cb-auto-sp" style="flex:1"></span><button class="lb-gear" data-ad-ev title="Event: x coins / x drops / x pass XP for everyone">🎉</button><button class="lb-gear" data-ad-ann title="Announcement: a text for everyone or one person">📢</button><button class="lb-gear" data-ad-hook title="Discord: logs + end of shift report">🔔</button><button class="lb-gear" data-ad-log title="last 50 actions">📜</button><button class="sh-x" data-adx>✕</button></div>
         ${adm.needKey ? `<div class="ad-goal"><label>Admin key</label><input type="password" id="ad-key" placeholder="ADMIN_KEY from Cloudflare" style="width:260px" autocomplete="off"><button class="buy" data-adkey>Save on this PC</button></div>` : ''}
         ${adm.note ? `<div class="sh-note">${escHtml(adm.note)}</div>` : ''}
         <div class="ad-goal"><label>Shift goal</label><span>start</span><input type="time" id="ad-gf" value="${(adm.goal && adm.goal.from) || '18:00'}"><input type="number" id="ad-gs" min="0" placeholder="auto" title="open picklists at the start time (empty = counted by itself)" value="${adm.goal && adm.goal.start ? adm.goal.start : ''}"><span>→</span><input type="number" id="ad-gt" min="1" placeholder="goal" value="${adm.goal ? adm.goal.target : ''}" title="max open picklists at the end time"><span>at</span><input type="time" id="ad-gz" value="${(adm.goal && adm.goal.to) || '23:00'}"><button class="buy" data-adg="save">Set</button>${adm.goal ? '<button data-adg="off">Off</button>' : '<small>no goal = no bar</small>'}</div>
+        ${adm.evOpen ? `<div class="ad-ann">
+          ${adm.ev ? `<div class="ad-r"><label>Now</label><b>${escHtml(evTxt(adm.ev))}</b><span class="ad-mut">${leftTxt(adm.ev.until)} left</span><button data-adev="off">Stop it</button></div>` : '<div class="ad-r"><label>Now</label><span class="ad-mut">no event</span></div>'}
+          <div class="ad-r"><label>Name</label><input id="ad-en" maxlength="40" placeholder="Triple coins (empty = made from the numbers)" style="flex:1"></div>
+          <div class="ad-r"><label>Coins x</label><input type="number" id="ad-ex" value="3" min="1" max="10" step="0.5"><span class="ad-mut">drops x</span><input type="number" id="ad-el" value="1" min="1" max="20" step="0.5"><span class="ad-mut">pass XP x</span><input type="number" id="ad-ep" value="1" min="1" max="10" step="0.5"><span class="ad-mut">for</span><input type="number" id="ad-em" value="60" min="1" max="1440"><span class="ad-mut">min</span><button class="buy" data-adev="go">Start</button></div>
+          <div class="ad-r"><label></label><span class="ad-mut">quick:</span><button data-adq="2,1,1">Double coins</button><button data-adq="3,1,1">Triple coins</button><button data-adq="1,5,1">Crate rain (x5 drops)</button><button data-adq="1,1,2">Double XP</button><button data-adq="2,2,2">Happy hour (x2 all)</button></div>
+          <div class="ad-r"><label></label><span class="ad-mut">a new event replaces the running one · everyone gets a card when it starts · boosts still count on top</span></div></div>` : ''}
         ${adm.hookOpen ? `<div class="ad-hooks">
           <div class="ad-r"><label>Logs</label><input id="ad-hlog" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).log || '')}"><button data-adh="test-log">Test</button></div>
           <div class="ad-r"><label>Report</label><input id="ad-hrep" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).report || '')}"><input id="ad-hat" type="time" value="${escHtml((adm.hooks || {}).reportAt || '22:30')}"><button data-adh="test-report">Send now</button></div>
@@ -7775,6 +7838,18 @@
         showAdmin();
       }));
       ov.querySelector('[data-ad-log]').onclick = async () => { if (adm.log) { adm.log = null; return showAdmin(); } const j = await adminPost('log', ''); adm.log = j.log || []; adm.note = j.err || ''; showAdmin(); };
+      // events
+      ov.querySelector('[data-ad-ev]').onclick = async () => { adm.evOpen = !adm.evOpen; showAdmin(); if (adm.evOpen) { const j = await adminPost('event', '').catch((e) => ({ err: e.message })); adm.ev = j.event || null; if (j.err) adm.note = j.err; showAdmin(); } };
+      ov.querySelectorAll('[data-adq]').forEach((b) => (b.onclick = () => { const [x, l, p] = b.dataset.adq.split(','); ov.querySelector('#ad-ex').value = x; ov.querySelector('#ad-el').value = l; ov.querySelector('#ad-ep').value = p; ov.querySelector('#ad-en').value = b.textContent.replace(/ \(.*/, ''); }));
+      ov.querySelectorAll('[data-adev]').forEach((b) => (b.onclick = async () => {
+        b.disabled = true;
+        const v = (id) => ov.querySelector(id).value;
+        const body = b.dataset.adev === 'off' ? { off: true } : { event: { name: v('#ad-en'), x: +v('#ad-ex'), luck: +v('#ad-el'), xp: +v('#ad-ep'), min: +v('#ad-em') } };
+        const j = await adminPost('event', '', body).catch((e) => ({ err: e.message }));
+        if (!j.err) adm.ev = j.event || null;
+        adm.note = j.err || (adm.ev ? `event started ✓ · ${evTxt(adm.ev)} · ${leftTxt(adm.ev.until)}` : 'event stopped');
+        showAdmin();
+      }));
       // announcements
       const loadAnns = async () => { const j = await adminPost('anns', '').catch((e) => ({ err: e.message })); adm.anns = j.anns || adm.anns || []; if (j.err) adm.note = j.err; showAdmin(); };
       ov.querySelector('[data-ad-ann]').onclick = () => { adm.annOpen = !adm.annOpen; showAdmin(); if (adm.annOpen) { names().then(() => document.getElementById('pq-adm-ov') && showAdmin()).catch(() => {}); loadAnns(); } };
@@ -8008,7 +8083,7 @@
     el.className = `${x.to === 'you' ? 'you' : ''}${dark ? ' dark' : ''}`;
     el.setAttribute('role', 'status');
     const t = new Date(x.at).toLocaleString('nl-NL', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
-    el.innerHTML = `<div class="pa-top"><b>${x.to === 'you' ? '📩 MESSAGE FOR YOU' : '📢 ANNOUNCEMENT'}</b><span>${escHtml(t)}${ANN.q.length > 1 ? ` · 1 of ${ANN.q.length}` : ''}</span></div>
+    el.innerHTML = `<div class="pa-top"><b>${x.title ? escHtml(x.title) : x.to === 'you' ? '📩 MESSAGE FOR YOU' : '📢 ANNOUNCEMENT'}</b><span>${escHtml(t)}${ANN.q.length > 1 ? ` · 1 of ${ANN.q.length}` : ''}</span></div>
       <div class="pa-text">${escHtml(x.text)}</div>
       <div class="pa-bot"><span>${x.by ? '— ' + escHtml(x.by) : ''}</span><button type="button">OK</button></div>`;
     document.body.appendChild(el);
@@ -8021,7 +8096,7 @@
       all[uid] = mine;
       lsSet(LS_ANN, all); // the other tabs drop it too
       const u = annUrl();
-      if (u) fetch(`${u}/ann`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: uid, aid: x.id }) }).catch(() => {});
+      if (u && !x.local) fetch(`${u}/ann`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: uid, aid: x.id }) }).catch(() => {});
       el.classList.add('out');
       setTimeout(() => { el.remove(); if (ANN.el === el) ANN.el = null; ANN.q.shift(); ANN.busy = false; annShow(); }, 200);
     };
