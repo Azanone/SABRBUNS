@@ -11,7 +11,7 @@
 //   PROXIES      text    user ids that never count, comma separated (optional)
 //   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
-import { newState, tick, profile, buy, equip, paint, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, buyPass, adminOp, OWNER, shiftReport, reportWhs, friendOp, chatSend, chatRead, pairKey, liveDue, liveTick, liveBoard, LIVE_ACTIVE_MIN, annFor, annSeen } from './game.js';
+import { newState, tick, profile, buy, equip, paint, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, buyPass, adminOp, OWNER, shiftReport, reportWhs, fxOp, dailyLogin, errPoints, friendOp, chatSend, chatRead, pairKey, liveDue, liveTick, liveBoard, LIVE_ACTIVE_MIN, annFor, annSeen } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
@@ -354,7 +354,28 @@ export class Game extends DurableObject {
       live: { batches: bs.length, lastCheck: bs.length ? Math.max(...bs.map((b) => b.checked)) : null, events: L.ev.length, pickers: Object.keys(L.last || {}).length } };
   }
   async totals() { return { at: Date.now(), people: totals(await this.load()) }; }
-  async profile(id) { return profile(await this.load(), id, amsNow().slice(0, 10)); }
+  // v = the script version asking (392 = 3.92). The daily login reward starts with 3.92 (older scripts can't show it).
+  async profile(id, v = 0) {
+    const st = await this.load(), today = amsNow().slice(0, 10), now = Date.now();
+    if (v >= 392 && dailyLogin(st, id, today, now, () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296)) await this.ctx.storage.put('state', st);
+    return profile(st, id, today, now, v);
+  }
+  // shipment error: half the points for the packer. Checks in Picqer (read only) that the picklist is real, open, ours, and has the error comment.
+  async err(id, plId) {
+    const env = this.env;
+    const pl = await picqer(env, `/picklists/${plId}`).catch(() => null);
+    if (!pl || !pl.idpicklist) return { err: 'no such picklist' };
+    if (pl.status === 'closed' || pl.status === 'cancelled') return { err: 'that picklist is closed' };
+    const ws = (await warehouses(env)).filter(Boolean), w = ws.find((x) => String(x.id) === String(pl.idwarehouse));
+    if (ws.length && !w) return { err: 'not one of our warehouses' };
+    const com = await picqer(env, `/picklists/${plId}/comments`).catch(() => null);
+    if (!/Verzendfout/i.test(JSON.stringify(com || ''))) return { err: 'no shipment error on that picklist' };
+    const st = await this.load();
+    const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
+    const res = errPoints(st, id, { idpicklist: pl.idpicklist, products: (pl.products || []).map((x) => ({ productcode: x.productcode, has_parts: !!x.has_parts })) }, { now: Date.now(), today: amsNow().slice(0, 10), wh: w ? w.id : '', proxies: proxiesOf(env), rnd });
+    if (res.ok) await this.ctx.storage.put('state', st);
+    return res;
+  }
   async friend(id, op, to) {
     const st = await this.load();
     const res = friendOp(st, id, op, to);
@@ -378,9 +399,9 @@ export class Game extends DurableObject {
   async change(kind, id, skin) {
     const st = await this.load();
     const rnd = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
-    const res = kind === 'grant' ? grant(st, id, skin) : kind === 'crate' ? crate(st, id, rnd) : kind === 'buy' ? buy(st, id, skin) : kind === 'color' ? paint(st, id, skin) : equip(st, id, skin);
+    const res = kind === 'grant' ? grant(st, id, skin) : kind === 'crate' ? crate(st, id, rnd) : kind === 'buy' ? buy(st, id, skin, amsNow().slice(0, 10)) : kind === 'fx' ? fxOp(st, id, skin) : kind === 'color' ? paint(st, id, skin) : equip(st, id, skin);
     if (res.ok) await this.ctx.storage.put('state', st);
-    return { ...res, profile: profile(st, id, amsNow().slice(0, 10)) };
+    return { ...res, profile: profile(st, id, amsNow().slice(0, 10), Date.now(), 392) };
   }
 }
 
@@ -488,12 +509,18 @@ export default {
         return json((await game(env).getSettings(id)) || { cfg: null, at: 0 });
       }
       if (url.pathname === '/be') return json(await game(env).be());
+      if (url.pathname === '/err' && req.method === 'POST') {
+        const b = await req.json().catch(() => ({}));
+        if (!/^\d+$/.test(String(b.id || '')) || !/^\d+$/.test(String(b.picklist || ''))) return json({ err: 'id and picklist needed' }, 400);
+        return json(await game(env).err(String(b.id), String(b.picklist)));
+      }
       if (url.pathname === '/profile') {
         const id = url.searchParams.get('id');
         if (!/^\d+$/.test(id || '')) return json({ err: 'id needed' }, 400);
-        return json(await game(env).profile(id));
+        const v = Math.round(parseFloat(url.searchParams.get('v') || '0') * 100) || 0; // 3.92 → 392
+        return json(await game(env).profile(id, v));
       }
-      if ((url.pathname === '/buy' || url.pathname === '/equip' || url.pathname === '/crate' || url.pathname === '/color') && req.method === 'POST') {
+      if ((url.pathname === '/buy' || url.pathname === '/equip' || url.pathname === '/crate' || url.pathname === '/color' || url.pathname === '/fx') && req.method === 'POST') {
         const b = await req.json().catch(() => ({}));
         if (!/^\d+$/.test(String(b.id || ''))) return json({ err: 'id needed' }, 400);
         return json(await game(env).change(url.pathname.slice(1), String(b.id), b.skin ? String(b.skin) : null));

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.91
+// @version      3.92
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.91';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.92';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -894,6 +894,11 @@
           await post(`/api/v1/picklists/${pid}/comments`, {
             body: `Verzendfout: ${err}\nActies: ${res.join(' · ') || '-'}\n[${TAG} pl=${id} ${mode} by=${myUserId()} ts=${Date.now()}]`,
           });
+        }
+        // the packer did the work but can't close it: half the points (the middle stop checks the picklist + the comment itself)
+        if (C.comment && isNew && can('leaderboard')) {
+          const u = String((CFG.leaderboard && CFG.leaderboard.url) || '').trim().replace(/\/+$/, '');
+          if (u) fetch(`${u}/err`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: String(myUserId()), picklist: String(pid) }) }).catch(() => {});
         }
         console.log(`[shiperr] ${mode} ${ref || id}:`, err, res);
         toast(ref || `#${id}`, res);
@@ -5786,13 +5791,13 @@
       if (lock && lock.tab !== TAB && Date.now() - lock.ts < POLL * 1.6) return; // another tab on this PC does it
       lsSet(LS_LOCK, { tab: TAB, ts: Date.now() });
       try {
-        let people = null, whName = '', via = '', king = null, pickPeople = null, goal = null, whsIn = null, mainId = '';
+        let people = null, whName = '', via = '', king = null, pickPeople = null, goal = null, whsIn = null, mainId = '', tqIn = null;
         if (URL_) {
           try {
             const r = await fetch(`${URL_}/leaderboard`, { credentials: 'omit', cache: 'no-store' });
             const j = await r.json();
             if (!r.ok || !j.people) throw new Error(j.err || `HTTP ${r.status}`);
-            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed); eventCheck(j.event); pickPeople = j.picks && (j.picks.all || j.picks.people); goal = j.goal || null;
+            people = j.people; whName = j.wh || ''; king = j.king || null; via = 'middle stop'; feedCheck(j.feed); eventCheck(j.event); tqIn = j.teamq || null; pickPeople = j.picks && (j.picks.all || j.picks.people); goal = j.goal || null;
             whsIn = Array.isArray(j.whs) && j.whs.length > 1 ? j.whs : null; mainId = String(j.main || (goal && goal.wh) || '');
             if (j.flags && JSON.stringify(j.flags) !== JSON.stringify(lsGet(LS_FLAGS, null))) { lsSet(LS_FLAGS, j.flags); window.dispatchEvent(new Event('pq-flags')); }
           } catch (e) { console.info('[leaderboard] middle stop:', e.message, '· asking Picqer myself'); }
@@ -5816,7 +5821,8 @@
         // 2+ warehouses: a board + king each (Bunsenstraat, Barnsteen…)
         const whs = whsIn ? whsIn.map((w) => ({ id: String(w.id), name: norm(w.name || ''), list: rows(w.people), king: w.king || null })) : null;
         const plist = (pickPeople || []).filter((r) => !proxies.has(String(r.id))).map((r) => ({ ...r, id: String(r.id), name: map[r.id] || `#${r.id}`, wh: r.wh != null ? String(r.wh) : '' }));
-        data = { at: Date.now(), wh: norm(whName || ''), list, king, via: via || 'Picqer', err: '', picks: plist, goal, whs, main: mainId };
+        data = { at: Date.now(), wh: norm(whName || ''), list, king, via: via || 'Picqer', err: '', picks: plist, goal, whs, main: mainId, teamq: tqIn };
+        teamqCheck(tqIn);
         idleCheck(plist);
       } catch (e) {
         data = { ...(data || { list: [] }), at: Date.now(), err: e.message };
@@ -6260,7 +6266,7 @@
           if (prev === null || r.balance !== prev) rank = i + 1;
           prev = r.balance;
           return `<div class="lb-row click t-${rank === 1 ? 'gold' : 'none'}${r.id === ME_ID ? ' me' : ''}${ql && !low(r.name).includes(ql) ? ' hide' : ''}" data-n="${escHtml(low(r.name))}" data-who="${escHtml(r.id)}" title="Click for everything about ${escHtml(r.name)}"><span class="r">${rank === 1 ? '🏆' : '#' + rank}</span>
-            <span class="nm">${escHtml(r.name)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small>${int(r.picklists)} closed · ${fmt(r.points)} pts${r.pickPoints ? ` · ${fmt(r.pickPoints)} pick pts` : ''}${r.kingTotal ? ` · king ${int(r.kingTotal)} min` : ''}</small></span>
+            <span class="nm">${nm(r)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small>${int(r.picklists)} closed · ${fmt(r.points)} pts${r.pickPoints ? ` · ${fmt(r.pickPoints)} pick pts` : ''}${r.kingTotal ? ` · king ${int(r.kingTotal)} min` : ''}</small></span>
             <span class="v">${int(r.balance)}<small>coins</small></span></div>`;
         }).join('') : `<div class="lb-empty">${URL_ ? (tot ? 'Nobody has coins yet' : 'Loading…') : ''}</div>`);
       } else body = whSwitch({ count: (w) => w.list.length }) + packHtml();
@@ -6289,7 +6295,7 @@
     // ---------- my profile (🪙 button at the top) ----------
     async function loadProfile() {
       if (!URL_ || !ME_ID) return null;
-      const r = await fetch(`${URL_}/profile?id=${encodeURIComponent(ME_ID)}`, { credentials: 'omit', cache: 'no-store' });
+      const r = await fetch(`${URL_}/profile?id=${encodeURIComponent(ME_ID)}&v=3.92`, { credentials: 'omit', cache: 'no-store' }); // v: this script knows the 3.92 pop-ups (daily login…)
       const j = await r.json();
       if (!r.ok || j.err) throw new Error(j.err || `HTTP ${r.status}`);
       return setProf(j);
@@ -6315,6 +6321,9 @@
         <div class="sh-sw" style="background:${swOf(s.id)}">${on ? '<span>✓</span>' : ''}</div>
         <div class="sh-in"><b>${escHtml(s.name)}</b>${on && !animated(SKIN_LOOK[worn]) ? '<small>only shows on ✦ skins</small>' : ''}</div><button class="sh-try" data-tryc="${s.id}" title="try it on your skin for 10 sec">👁</button>${btn}</div>`;
     }
+    // mystery shop: today's 3 discounted skins (the same for everyone, new at midnight)
+    const dealOf = (p, id) => ((p && p.deals) || []).find((d) => d.id === id) || null;
+    const priceOf = (p, s) => (dealOf(p, s.id) ? dealOf(p, s.id).price : s.price);
     function skinCard(p, s) {
       if (s.color) return colorCard(p, s);
       if (!SKIN_LOOK[s.id]) return `<div class="sh-skin"><div class="sh-sw" style="background:repeating-linear-gradient(135deg,#334155 0 8px,#3f4b5f 8px 16px)"></div><div class="sh-in"><b>${escHtml(s.name)}</b><small>update the script</small></div></div>`;
@@ -6325,12 +6334,43 @@
         : s.passOnly ? '<button disabled>🎟 Pass</button>'
         : s.crateOnly ? `<button disabled>${spinIds.has(s.id) ? '🎰 Spin only' : '📦 Drops'}</button>`
         : s.limit && !s.left ? '<button disabled>Sold out</button>'
-        : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < s.price ? 'disabled' : ''}>${int(s.price)}</button>`;
+        : `<button class="buy" data-pf="buy" data-s="${s.id}" ${p.balance < priceOf(p, s) ? 'disabled' : ''}>${dealOf(p, s.id) ? `<s>${int(s.price)}</s> ` : ''}${int(priceOf(p, s))}</button>`;
       return `<div class="sh-skin${on ? ' on' : ''}${own ? ' own' : ''}" style="--r:${RARITY[s.id] || '#94a3b8'}">
-        ${s.limit ? `<em class="sh-ltd">★ ${s.left || 0}/${s.limit}</em>` : s.passOnly ? '<em class="sh-only pass">PASS</em>' : s.crateOnly ? `<em class="sh-only">${spinIds.has(s.id) ? 'SPIN' : 'DROP'}</em>` : ''}
+        ${dealOf(p, s.id) && !own ? `<em class="sh-only deal">−${dealOf(p, s.id).off}%</em>` : s.limit ? `<em class="sh-ltd">★ ${s.left || 0}/${s.limit}</em>` : s.passOnly ? '<em class="sh-only pass">PASS</em>' : s.crateOnly ? `<em class="sh-only">${spinIds.has(s.id) ? 'SPIN' : 'DROP'}</em>` : ''}
         <div class="sh-sw" style="background:${swOf(s.id)}">${on ? '<span>✓</span>' : ''}</div>
         <div class="sh-in"><b>${escHtml(s.name)}${look.crown ? ' 👑' : ''}${animated(look) ? ' <i class="sh-anim" title="animated · can get a color">✦</i>' : ''}</b></div><button class="sh-try" data-try="${s.id}" title="try it on for 10 sec">👁</button>${btn}</div>`;
     }
+    // name effects: how your name looks on the boards, for everyone
+    function fxShop(p) {
+      const F = p.fx;
+      if (!F || !F.list) return '';
+      return `<h3>✍️ Name effects <small>everyone sees it on the boards</small></h3><div class="sh-grid">${F.list.map((f) => {
+        const own = (F.owned || []).includes(f.id), on = F.on === f.id;
+        const btn = on ? '<button data-fx="">Take off</button>' : own ? `<button class="wear" data-fx="${f.id}">Wear</button>` : `<button class="buy" data-fx="${f.id}" data-price="${f.price}" ${p.balance < f.price ? 'disabled' : ''}>${int(f.price)}</button>`;
+        return `<div class="sh-skin${on ? ' on' : ''}${own ? ' own' : ''}" style="--r:#94a3b8"><div class="sh-sw fx-sw"><b class="fx fx-${f.id}">${escHtml(ME.name || 'Your name')}</b></div><div class="sh-in"><b>${escHtml(f.name)}</b></div>${btn}</div>`;
+      }).join('')}</div>`;
+    }
+    const nm = (r) => (r.fx ? `<span class="fx fx-${escHtml(r.fx)}">${escHtml(r.name)}</span>` : escHtml(r.name));
+    addStyle('pq-fx-style', `
+      .fx{font-weight:800}
+      .fx-glow{color:#f5b301;text-shadow:0 0 8px rgba(245,179,1,.8)}
+      .fx-ice{color:#38bdf8;text-shadow:0 0 8px rgba(125,211,252,.9)}
+      .fx-fire{background:linear-gradient(0deg,#ef4444,#f59e0b 70%,#fde047);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 4px rgba(239,68,68,.6))}
+      .fx-neon{color:#f0abfc;text-shadow:0 0 4px #e879f9,0 0 12px #c026d3}
+      .fx-toxic{color:#a3e635;text-shadow:0 0 8px rgba(132,204,22,.9)}
+      .fx-shadow{color:#0f172a;text-shadow:2px 2px 0 #94a3b8}
+      html.pq-dark .fx-shadow,.dark .fx-shadow{color:#f8fafc;text-shadow:2px 2px 0 #475569}
+      .fx-rainbow{background:linear-gradient(90deg,#ef4444,#f59e0b,#eab308,#22c55e,#3b82f6,#a855f7,#ef4444);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:pqFxRb 4s linear infinite}
+      .fx-voidfx{background:linear-gradient(90deg,#ff0034,#7f1d1d,#ff0034);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 5px rgba(255,0,52,.7));animation:pqFxRb 3s linear infinite}
+      @keyframes pqFxRb{to{background-position:200% 0}}
+      .sh .fx-sw{display:flex;align-items:center;justify-content:center;background:#0f172a !important;font-size:14px;overflow:hidden}
+      .sh .sh-only.deal{background:#16a34a;color:#fff}
+      .sh .buy s{opacity:.6;font-weight:500}
+      .sh .bp-free{margin-top:2px;opacity:.95} .sh .bp-rowl{font:700 11px system-ui,sans-serif;color:var(--mut);margin:6px 2px 0;text-transform:uppercase;letter-spacing:.05em}
+      .sh .bp-t.none{visibility:hidden}
+      .sh .tq{margin:8px 0;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--soft);font:600 12px system-ui,sans-serif}
+      .sh .tq .qs-bar{margin-top:6px}
+    `);
     function spinHtml(p) {
       if (!p.crate) return '';
       const odds = p.crate.odds || [];
@@ -6380,7 +6420,7 @@
         ${note ? `<div class="sh-note">${escHtml(note)}</div>` : ''}
         ${pfTab === 'inv' ? invHtml(p) : pfTab === 'chat' && can('chat') ? chatHtml(p) : pfTab === 'pass' ? passHtml(p) : pfTab === 'spin' ? spinHtml(p) : pfTab === 'stats' ? statsHtml(p) : pfTab === 'set' ? setHtml() : (() => {
           const notMine = (p.skins || []).filter((s) => !(p.owned || []).includes(s.id));
-          if (!notMine.length) return `<h3>Skins ${ii('skins')}</h3><div class="iv-empty">you own every skin</div>`;
+          if (!notMine.length) return `<h3>Skins ${ii('skins')}</h3><div class="iv-empty">you own every skin</div>${fxShop(p)}`;
           const G = [['color', 'Colors'], ['#e4ae39', 'Gold'], ['#eb4b4b', 'Red'], ['#d32ce6', 'Pink'], ['#8847ff', 'Purple'], ['#4b69ff', 'Blue']];
           const keyOf = (s) => (s.color ? 'color' : RARITY[s.id] || '#4b69ff');
           const fits = (s) => shopF === 'all' || (shopF === 'anim' ? animated(SKIN_LOOK[s.id]) : keyOf(s) === shopF);
@@ -6389,7 +6429,10 @@
           const sec = (t, col, list) => (list.length ? `<div class="sh-gh">${col ? `<i style="background:${col}"></i>` : ''}<b>${t}</b><small>${list.length}</small></div><div class="sh-grid">${list.sort((a, b) => a.price - b.price).map((s) => skinCard(p, s)).join('')}</div>` : '');
           const body = G.map(([k, t]) => sec(t, k[0] === '#' ? k : '', notMine.filter((s) => !s.crateOnly && !s.passOnly && keyOf(s) === k && fits(s)))).join('')
             + sec('Only from the spin, drop crates or the pass', '', notMine.filter((s) => (s.crateOnly || s.passOnly) && fits(s)));
-          return `<h3>Skins ${ii('skins')}</h3><div class="sh-chips">${chips}</div>${body || '<div class="iv-empty">nothing here</div>'}`;
+          const mid = new Date(); mid.setHours(24, 0, 0, 0);
+          const deals = (p.deals || []).map((d) => notMine.find((s) => s.id === d.id)).filter(Boolean);
+          const mystery = (p.deals || []).length ? `<h3>🎲 Mystery shop <small>new in ${Math.max(1, Math.ceil((mid - Date.now()) / 3600000))} h</small></h3>${deals.length ? `<div class="sh-grid">${deals.map((s) => skinCard(p, s)).join('')}</div>` : '<div class="iv-empty">you already own today\'s 3</div>'}` : '';
+          return `${mystery}<h3>Skins ${ii('skins')}</h3><div class="sh-chips">${chips}</div>${body || '<div class="iv-empty">nothing here</div>'}${fxShop(p)}`;
         })()}
       </div>`;
       ov.querySelector('[data-pf-close]').onclick = () => close('pq-pf-ov');
@@ -6409,6 +6452,12 @@
         try { const j = await change('color', c); showProfile(j.err || (c ? `${nameOfSkin(c)} on ✓` : 'color off')); } catch (e) { showProfile('could not reach the middle stop'); }
       }));
       ov.querySelectorAll('[data-sf]').forEach((b) => (b.onclick = () => { shopF = b.dataset.sf; showProfile(); }));
+      ov.querySelectorAll('[data-fx]').forEach((b) => (b.onclick = async () => {
+        const f = b.dataset.fx || null;
+        if (b.dataset.price && !confirm(`Buy this name effect for ${int(b.dataset.price)} coins?`)) return;
+        b.disabled = true;
+        try { const j = await change('fx', f); showProfile(j.err || ''); } catch (e) { showProfile('could not reach the middle stop'); }
+      }));
       if (pfTab === 'pass') wirePass(ov);
       if (pfTab === 'chat') wireChat(ov); else chatWatch(false);
       wireInfo(ov);
@@ -6419,7 +6468,7 @@
       ov.querySelectorAll('[data-pf]').forEach((b) => b.addEventListener('click', async () => {
         const kind = b.dataset.pf === 'buy' ? 'buy' : 'equip';
         const skin = b.dataset.pf === 'off' ? null : b.dataset.s;
-        if (b.dataset.pf === 'buy' && !confirm(`Buy ${nameOfSkin(skin)} for ${int((p.skins.find((s) => s.id === skin) || {}).price)} coins?`)) return;
+        if (b.dataset.pf === 'buy' && !confirm(`Buy ${nameOfSkin(skin)} for ${int(priceOf(p, p.skins.find((s) => s.id === skin) || { id: skin, price: 0 }))} coins?`)) return;
         b.disabled = true;
         try { const j = await change(kind, skin); showProfile(j.err || (kind === 'buy' ? `${nameOfSkin(skin)} bought ✓` : '')); } catch (e) { showProfile('could not reach the middle stop'); }
       }));
@@ -6937,8 +6986,19 @@
         if (x.kind === 'chat') el.dataset.chat = x.from;
       } else if (x.kind === 'pass') {
         el.style.setProperty('--r', '#e4ae39');
-        el.innerHTML = `<div class="dp-box">${rewardIc(x)}</div><div class="dp-t"><small>pass level</small><b>${int(x.lv)}</b><span>${escHtml(rewardTxt(x))}</span></div>`;
+        el.innerHTML = `<div class="dp-box">${rewardIc(x)}</div><div class="dp-t"><small>pass level${x.free ? ' · free track' : ''}</small><b>${int(x.lv)}</b><span>${escHtml(rewardTxt(x))}</span></div>`;
         open = 'pass';
+      } else if (x.kind === 'login') {
+        el.style.setProperty('--r', '#10b981');
+        el.innerHTML = `<div class="dp-box">${x.crate ? '🎁' : '📅'}</div><div class="dp-t"><small>daily login · day ${int(x.n)}</small><b>${x.crate ? `${escHtml(tierName(x.crate))} crate` : `+${int(x.coins)} coins`}</b><span>day ${((x.n - 1) % 7) + 1} of 7 · day 7 = a crate</span></div>`;
+        if (!x.crate) open = null;
+      } else if (x.kind === 'teamq') {
+        el.style.setProperty('--r', TIER_COL[x.tier] || '#10b981');
+        el.innerHTML = `<div class="dp-box">🤝</div><div class="dp-t"><small>team quest done${x.wh ? ' · ' + escHtml(x.wh) : ''}</small><b>${escHtml(tierName(x.tier))} crate for everyone</b><span>${int(x.target)} picklists together</span></div>`;
+      } else if (x.kind === 'err') {
+        el.style.setProperty('--r', '#f59e0b');
+        el.innerHTML = `<div class="dp-box">⚠️</div><div class="dp-t"><small>shipment error</small><b>+${fmt(x.pts)} pts</b><span>half the points, you did the work</span></div>`;
+        open = null;
       } else if (x.kind === 'toast') {
         el.style.setProperty('--r', '#6366f1');
         el.innerHTML = `<div class="dp-t"><span>${escHtml(x.msg)}</span></div>`;
@@ -7204,11 +7264,32 @@
       return `<div class="bp-head"><div class="bp-name"><b>${escHtml(S.name)}</b>${ii('pass')}<small>${days}d</small></div>
           ${P.owned ? '<span class="bp-own">✓</span>' : `<button class="buy bp-buy" data-bp ${p.balance < S.price ? 'disabled' : ''}>🪙 ${int(S.price)}</button>`}</div>
         <div class="bp-lv"><span class="bp-n">${lv}</span><div class="bp-bar"><i style="width:${lv >= n ? 100 : Math.round((into / S.per) * 100)}%"></i></div><span class="bp-x">${lv >= n ? 'max' : `${int(into)} / ${int(S.per)}`}</span></div>
-        ${questsHtml(p)}
+        ${teamqHtml(p)}${questsHtml(p)}
+        ${S.free ? `<div class="bp-rowl">Free · everyone</div><div class="bp-track bp-free">${S.levels.map((_, i) => {
+          const L = i + 1, r = S.free[L];
+          if (!r) return `<div class="bp-t none"><small>${L}</small><div class="bp-ic"></div><em></em></div>`;
+          const got = L <= (P.gotF || 0);
+          return `<div class="bp-t${got ? ' got' : ''}${L === lv + 1 ? ' next' : ''}" title="${L} · free · ${escHtml(rewardTxt(r))}" style="--r:${rewardCol(r)}"><small>${L}</small><div class="bp-ic">${rewardIc(r)}</div><em>${r.coins ? int(r.coins) : ''}</em></div>`;
+        }).join('')}</div><div class="bp-rowl">Pass${P.owned ? '' : ' · 🔒 buy it to get these too'}</div>` : ''}
         <div class="bp-track${P.owned ? '' : ' locked'}">${S.levels.map((r, i) => {
           const L = i + 1, got = P.owned && L <= P.got, reached = L <= lv;
           return `<div class="bp-t${got ? ' got' : ''}${reached && !got ? ' reach' : ''}${L === lv + 1 ? ' next' : ''}${r.skin ? ' big' : ''}" title="${L} · ${escHtml(rewardTxt(r))}" style="--r:${rewardCol(r)}"><small>${L}</small><div class="bp-ic">${rewardIc(r)}</div><em>${r.coins ? int(r.coins) : ''}</em></div>`;
         }).join('')}</div>`;
+    }
+    function teamqHtml(p) {
+      const q = p.teamq || (data && data.teamq);
+      if (!q) return '';
+      return `<div class="tq">🤝 Team quest${q.whName ? ' · ' + escHtml(q.whName) : ''}: ${q.done ? `done ✓ · ${escHtml(tierName(q.tier))} crate for everyone who packed there` : `close ${int(q.target)} picklists together → ${escHtml(tierName(q.tier))} crate for everyone (3+ closed there today)`}
+        <div class="qs-bar"><i style="width:${Math.round((q.n / q.target) * 100)}%"></i></div>${q.done ? '' : `<small>${int(q.n)} / ${int(q.target)}</small>`}</div>`;
+    }
+    // a team quest started for the warehouse you work in: a card, once
+    function teamqCheck(q) {
+      if (!q || q.done || (multiWh() && homeWh() !== String(q.wh))) return;
+      const k = 'pqsuite_teamq_seen_v1', id = `tq${q.at}`;
+      if (lsGet(k, '') === id) return;
+      lsSet(k, id);
+      ANN.q.push({ id, local: true, at: Date.now(), title: '🤝 TEAM QUEST', text: `${q.whName ? q.whName + ': ' : ''}close ${int(q.target)} picklists together today\n→ a ${tierName(q.tier)} crate for everyone who closed 3 or more`, to: 'all', by: '' });
+      annShow();
     }
     function questsHtml(p) {
       const qs = p.quests || [];
@@ -7623,7 +7704,7 @@
       const at = data && data.at ? new Date(data.at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '–';
       return `<div class="lb-meta">last ${mins} min · multi 2 · single 1,334${vw.name ? ' · ' + escHtml(vw.name) : ''} · ${at}${data && data.err ? ' · ⚠ ' + escHtml(data.err) : ''}</div>
         ${list.length ? list.map((r) => `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.king ? '👑' : '#' + r.rank}</span>
-          <span class="nm">${escHtml(r.name)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single${r.king && r.kingMin != null ? ` · king ${r.kingMin} min` : ''}</small></span>
+          <span class="nm">${nm(r)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small>${r.n} closed · ${r.multis} multi · ${r.singles} single${r.king && r.kingMin != null ? ` · king ${r.kingMin} min` : ''}</small></span>
           <span class="v">${fmt(r.points)}<small>pts</small></span></div>`).join('') : `<div class="lb-empty">Nobody closed a picklist in the last ${mins} min</div>`}
         <div class="lb-legend"><span class="t-blue"><i></i>46+</span><span class="t-turq"><i></i>38+</span><span class="t-dgreen"><i></i>30+</span><span class="t-green"><i></i>21+</span><span class="t-orange"><i></i>14+</span><span class="t-red"><i></i>less</span><span>👑 king = #1 with 21+ · +20 coins a minute</span></div>`;
     }
@@ -7635,14 +7716,14 @@
       const row = (r) => {
         const L = r.live, bt = L.batch;
         return `<div class="lb-row t-${r.tier}${r.id === ME_ID ? ' me' : ''}"><span class="r">${r.rank === 1 ? '🏆' : '#' + r.rank}</span>
-          <span class="nm">${escHtml(r.name)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small><b class="${idleCls(r)}">${idleTxt(r)}</b> · ${int(L.locs15)} locations · ${int(L.items15)} products in 15 min${bt ? ` · batch ${int(bt.items)}/${int(bt.total)}` : ''}</small></span>
+          <span class="nm">${nm(r)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small><b class="${idleCls(r)}">${idleTxt(r)}</b> · ${int(L.locs15)} locations · ${int(L.items15)} products in 15 min${bt ? ` · batch ${int(bt.items)}/${int(bt.total)}` : ''}</small></span>
           <span class="v">${fmt(L.m15)}<small>pts · 15 min · ${fmt(r.points)} today</small></span></div>`;
       };
       return `<div class="lb-meta">picking now · 3 per location + 0,2 per product collected · color = last 15 min · ${hm}${picksErr ? ' · ⚠ ' + escHtml(picksErr) : ''}</div>
         ${act.length ? act.map(row).join('') : `<div class="lb-empty">${picks ? 'Nobody collected anything in the last hour' : picksErr ? '' : 'Loading…'}</div>`}
         <div class="lb-legend"><span class="t-blue"><i></i>75+</span><span class="t-turq"><i></i>60+</span><span class="t-dgreen"><i></i>45+</span><span class="t-green"><i></i>30+</span><span class="t-orange"><i></i>18+</span><span class="t-red"><i></i>less</span><span>pick points in the last 15 min · idle = nothing collected</span></div>
         ${rest.length ? `<h3 class="pk-h">Not picking right now <small>completed today</small></h3>${rest.map((r) => `<div class="lb-row t-none pk-off${r.id === ME_ID ? ' me' : ''}"><span class="r">–</span>
-          <span class="nm">${escHtml(r.name)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small>${int(r.batches)} batch${r.batches === 1 ? '' : 'es'} · ${int(r.locations)} locations · ${int(r.items)} products${r.live && r.live.last ? ` · last pick ${new Date(r.live.last).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}` : ''}</small></span>
+          <span class="nm">${nm(r)}${r.badges ? `<i class="lb-bd">${escHtml(r.badges)}</i>` : ''}<small>${int(r.batches)} batch${r.batches === 1 ? '' : 'es'} · ${int(r.locations)} locations · ${int(r.items)} products${r.live && r.live.last ? ` · last pick ${new Date(r.live.last).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}` : ''}</small></span>
           <span class="v">${fmt(r.points)}<small>pts today</small></span></div>`).join('')}` : ''}`;
     }
     function showPk(refresh) {
@@ -7788,6 +7869,8 @@
           <div class="ad-r"><label>Name</label><input id="ad-en" maxlength="40" placeholder="Triple coins (empty = made from the numbers)" style="flex:1"></div>
           <div class="ad-r"><label>Coins x</label><input type="number" id="ad-ex" value="3" min="1" max="10" step="0.5"><span class="ad-mut">drops x</span><input type="number" id="ad-el" value="1" min="1" max="20" step="0.5"><span class="ad-mut">pass XP x</span><input type="number" id="ad-ep" value="1" min="1" max="10" step="0.5"><span class="ad-mut">for</span><input type="number" id="ad-em" value="60" min="1" max="1440"><span class="ad-mut">min</span><button class="buy" data-adev="go">Start</button></div>
           <div class="ad-r"><label></label><span class="ad-mut">quick:</span><button data-adq="2,1,1">Double coins</button><button data-adq="3,1,1">Triple coins</button><button data-adq="1,5,1">Crate rain (x5 drops)</button><button data-adq="1,1,2">Double XP</button><button data-adq="2,2,2">Happy hour (x2 all)</button></div>
+          <div class="ad-r"><label>Team quest</label><select id="ad-tw">${whsOf().map((w) => `<option value="${escHtml(w.id)}">${escHtml(w.name || w.id)}</option>`).join('')}</select><input type="number" id="ad-tt" placeholder="picklists" min="1" style="width:100px"><select id="ad-tr">${['common', 'uncommon', 'rare', 'epic'].map((t) => `<option value="${t}">${t} crate</option>`).join('')}</select><button class="buy" data-adtq="go">Start</button>${data && data.teamq ? `<span class="ad-mut">${escHtml(data.teamq.whName || '')} ${int(data.teamq.n)}/${int(data.teamq.target)}${data.teamq.done ? ' ✓' : ''}</span><button data-adtq="off">Stop</button>` : ''}</div>
+          <div class="ad-r"><label></label><span class="ad-mut">team quest: one warehouse at a time, counts from now until midnight, everyone who closed 3+ there gets the crate</span></div>
           <div class="ad-r"><label></label><span class="ad-mut">a new event replaces the running one · everyone gets a card when it starts · boosts still count on top</span></div></div>` : ''}
         ${adm.hookOpen ? `<div class="ad-hooks">
           <div class="ad-r"><label>Logs</label><input id="ad-hlog" placeholder="Discord webhook URL" value="${escHtml((adm.hooks || {}).log || '')}"><button data-adh="test-log">Test</button></div>
@@ -7848,6 +7931,15 @@
         const j = await adminPost('event', '', body).catch((e) => ({ err: e.message }));
         if (!j.err) adm.ev = j.event || null;
         adm.note = j.err || (adm.ev ? `event started ✓ · ${evTxt(adm.ev)} · ${leftTxt(adm.ev.until)}` : 'event stopped');
+        showAdmin();
+      }));
+      ov.querySelectorAll('[data-adtq]').forEach((b) => (b.onclick = async () => {
+        b.disabled = true;
+        const body = b.dataset.adtq === 'off' ? { off: true } : { teamq: { wh: ov.querySelector('#ad-tw').value, target: +ov.querySelector('#ad-tt').value, tier: ov.querySelector('#ad-tr').value } };
+        if (body.teamq && !(body.teamq.target > 0)) { adm.note = 'how many picklists?'; return showAdmin(); }
+        const j = await adminPost('teamq', '', body).catch((e) => ({ err: e.message }));
+        if (!j.err && data) data.teamq = j.teamq || null;
+        adm.note = j.err || (j.teamq ? `team quest started ✓ · ${j.teamq.whName}: ${j.teamq.target} picklists` : 'team quest stopped');
         showAdmin();
       }));
       // announcements
