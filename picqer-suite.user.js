@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.92
+// @version      3.93
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.92';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.93';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -159,6 +159,7 @@
     skins: 'Skins / themes (looks of Picqer)',
     chat: 'Chat with friends (🪙 panel)',
     beCounter: 'BE Pick-up + EIGENAAR counters in the header (until 23:00)',
+    shiftTools: 'Shift leader tools: AANVULADVIES pill, MEGAMULTI progress bar, unbound batch alert',
   };
   const FEATURES = Object.keys(FEATURE_INFO);
   const VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '';
@@ -209,6 +210,12 @@
     ]},
     { id: 'comboAlert', title: 'Combo changed popup', hint: 'popup on [COMBO CHANGED] comment', fields: [
       { k: 'beep', label: 'Beep', type: 'bool', def: true },
+    ]},
+    { id: 'shiftTools', title: 'Shift leader tools', hint: 'aanvuladvies pill · megamulti bar · unbound alert', fields: [
+      { k: 'aanvul', label: 'AANVULADVIES pill in the header (how many, click = the page)', type: 'bool', def: true },
+      { k: 'mmBar', label: 'Progress bar at the top on a MEGAMULTI batch', type: 'bool', def: true },
+      { k: 'unbound', label: 'Message when a batch has picks but unbound picklists', type: 'bool', def: true },
+      { k: 'beep', label: 'Beep on the unbound message', type: 'bool', def: true },
     ]},
     { id: 'replenish', title: 'Replenish alert', hint: 'toast on new aanvuladvies', fields: [
       { k: 'intervalSec', label: 'Check every (sec)', type: 'num', def: 60 },
@@ -656,6 +663,7 @@
     pickStats: 'Ctrl+Alt+P: who is picking right now (last 15 min, idle time), who packs, and charts per hour for any day. Bunsenstraat / Barnsteen at the top: switch warehouse. The idle alert is for the pickers of your own warehouse.',
     leaderboard: 'Packing points (multi 2, single 1,334) of the last 15 min. Every warehouse (Bunsenstraat, Barnsteen) has its own board and king. Your rank bottom right (the warehouse you work in), Ctrl+Alt+L for everyone: switch warehouse at the top. Points are coins for the shop, crates and the pass (🪙 at the top), the same everywhere.',
     cardColor: 'A colored bar per product code on picklists, so look-alike products are easy to tell apart.',
+    shiftTools: 'For shift leaders. AANVULADVIES pill next to BE Pick-up / EIGENAAR (how many replenish advices there are, click = that page, every 60 sec). On a batch named MEGAMULTI: a progress bar at the top (picklists picked, items, %). And a message when a batch somebody is picking still has unbound picklists (no letter or no container) while there are picks on it.',
     beCounter: 'In the header next to the coins: how many open picklists have the tag BE Pick-up, and how many EIGENAAR. Click one = those picklists in Picqer. Counts live (every 15 sec), gone after 23:00.',
   };
   function addStyle(id, css) {
@@ -1262,6 +1270,209 @@
     }, 1000);
   }
 
+  // ---------- BE Pick-up counter (team feature, until 23:00): open picklists with that tag, counts down live ----------
+  function tagPillStyle() {
+    addStyle('pq-be-style', `
+        #pq-tags{display:inline-flex;align-items:center;margin-right:10px;border:1px solid rgba(255,255,255,.16);border-radius:8px;overflow:hidden;height:24px}
+        .pq-tagpill{display:inline-flex;align-items:center;gap:6px;height:100%;padding:0 9px;color:inherit !important;font:600 10.5px system-ui,sans-serif;letter-spacing:.03em;white-space:nowrap;text-decoration:none !important;transition:background .15s}
+        .pq-tagpill + .pq-tagpill{border-left:1px solid rgba(255,255,255,.16)}
+        .pq-tagpill span{opacity:.7;text-transform:uppercase}
+        a.pq-tagpill{cursor:pointer} a.pq-tagpill:hover{background:rgba(255,255,255,.1)}
+        .pq-tagpill b{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;display:inline-block}
+        .pq-tagpill.dn b{animation:pqBeDn 1.4s ease} .pq-tagpill.up b{animation:pqBeUp 1.4s ease}
+        @keyframes pqBeDn{0%{color:#4ade80;transform:translateY(-4px)}100%{transform:none}}
+        @keyframes pqBeUp{0%{color:#fb7185;transform:translateY(4px)}100%{transform:none}}`);
+  }
+  // the small pill group in Picqer's header (BE / EIGENAAR from the worker, AANVULADVIES from shiftTools)
+  function tagGroup() {
+    const hdr = document.querySelector('.layout-header-navigation');
+    if (!hdr) return null;
+    tagPillStyle();
+    let nav = document.getElementById('pq-tags');
+    if (!nav || !nav.isConnected) { nav = nav || document.createElement('div'); nav.id = 'pq-tags'; hdr.prepend(nav); }
+    return nav;
+  }
+  function tagGroupTidy() { const n = document.getElementById('pq-tags'); if (n && !n.children.length) n.remove(); }
+  const OWN_PILLS = new Set(['pq-tag-aanvul']); // pills the BE loop must leave alone
+  function tagPills() {
+    const URL_ = norm(String((CFG.leaderboard && CFG.leaderboard.url) || '')).replace(/\/+$/, '');
+    const int = (x) => Math.floor(+x || 0).toLocaleString('nl-NL');
+    async function beTick() {
+      const pills = () => [...document.querySelectorAll('.pq-tagpill')].filter((x) => !OWN_PILLS.has(x.id));
+      const gone = () => { pills().forEach((x) => x.remove()); tagGroupTidy(); };
+      if (!can('beCounter') || !URL_ || new Date().getHours() >= 23) { gone(); return; }
+      let j = null;
+      try { j = await (await fetch(`${URL_}/be`, { credentials: 'omit', cache: 'no-store' })).json(); } catch (_) {}
+      if (!j || j.n == null) { gone(); return; }
+      const nav = tagGroup();
+      if (!nav) return;
+      // older worker: only the BE number
+      const tags = Array.isArray(j.tags) && j.tags.length ? j.tags : [{ key: 'be', label: 'BE Pick-up', n: j.n, peak: j.peak, id: 252185 }];
+      const keep = new Set(tags.map((t) => 'pq-tag-' + t.key));
+      pills().forEach((x) => { if (!keep.has(x.id)) x.remove(); });
+      [...tags].reverse().forEach((t) => { // prepend in reverse = BE first, then EIGENAAR
+        const id = 'pq-tag-' + t.key, href = t.id ? `${location.origin}/picklists?filter_tags_in=${encodeURIComponent(t.id)}` : '';
+        let el = document.getElementById(id);
+        if (!el || !el.isConnected || (href ? el.tagName !== 'A' : el.tagName === 'A')) { el?.remove(); el = document.createElement(href ? 'a' : 'div'); el.id = id; el.className = 'pq-tagpill'; }
+        if (href) el.href = href;
+        nav.prepend(el);
+        const was = el.dataset.n == null ? null : +el.dataset.n;
+        el.dataset.n = t.n;
+        el.title = `open picklists with the tag ${t.label} · most today ${t.peak || t.n}${href ? ' · click to see them' : ''}`;
+        el.innerHTML = `<span>${escHtml(t.label)}</span><b>${int(t.n)}</b>`;
+        if (was != null && was !== t.n) { el.classList.remove('dn', 'up'); void el.offsetWidth; el.classList.add(t.n < was ? 'dn' : 'up'); }
+      });
+    }
+    setInterval(() => { if (!document.hidden) beTick(); }, 15000);
+    setTimeout(beTick, 1500);
+  }
+
+  /* =========================================================================
+   *  SHIFT LEADER TOOLS (team feature shiftTools)
+   *   - AANVULADVIES pill in the header group (count of /products/replenish-advice, 60 s, shared by tabs)
+   *   - MEGAMULTI progress bar on a batch page whose batch is named MEGAMULTI
+   *   - message when a batch has picks but still unbound picklists (worker /shift, reads Picqer only)
+   * ========================================================================= */
+  function shiftTools() {
+    const C = CFG.shiftTools || {};
+    const URL_ = norm(String((CFG.leaderboard && CFG.leaderboard.url) || '')).replace(/\/+$/, '');
+    const int = (x) => Math.floor(+x || 0).toLocaleString('nl-NL');
+    const AURL = '/products/replenish-advice', LS_A = 'pq_aanvul', LS_ALOCK = 'pq_aanvul_lock';
+
+    // ---------- AANVULADVIES pill ----------
+    async function aanvulCount() {
+      const c = lsGet(LS_A, null);
+      // the replenish alert (if on) reads the same page every minute and leaves the count → only ask Picqer ourselves when it went quiet
+      const maxAge = use('replenish') ? Math.max(15, +(CFG.replenish || {}).intervalSec || 60) * 1000 + 15000 : 58000;
+      if (c && Date.now() - c.at < maxAge) return c;
+      if (Date.now() - lsGet(LS_ALOCK, 0) < 20000) return c; // another tab is asking right now
+      if (use('replenish') && Date.now() - lsGet('ra_last', 0) < 15000) { setTimeout(aanvulTick, 4000); return c; } // the replenish alert is asking right now → use its answer
+      lsSet(LS_ALOCK, Date.now());
+      try {
+        const r = await fetch(AURL, { credentials: 'same-origin', cache: 'no-store' });
+        if (!r.ok) return c;
+        const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+        const table = doc.querySelector('.replenish-advice-table');
+        if (!table) return c;
+        const n = table.querySelectorAll('tbody tr').length;
+        const more = !!doc.querySelector('.pagination li a[rel="next"], .pagination .next:not(.disabled)');
+        const out = { n, more, at: Date.now() };
+        lsSet(LS_A, out);
+        return out;
+      } catch (_) { return c; } finally { lsSet(LS_ALOCK, 0); }
+    }
+    function aanvulPill(c) {
+      let el = document.getElementById('pq-tag-aanvul');
+      if (!c || C.aanvul === false) { el?.remove(); tagGroupTidy(); return; }
+      const nav = tagGroup();
+      if (!nav) return;
+      if (!el || !el.isConnected) { el = document.createElement('a'); el.id = 'pq-tag-aanvul'; el.className = 'pq-tagpill'; el.href = location.origin + AURL; }
+      if (el.parentNode !== nav || el !== nav.lastElementChild) nav.appendChild(el); // always last: BE · EIGENAAR · AANVULADVIES
+      const was = el.dataset.n == null ? null : +el.dataset.n;
+      el.dataset.n = c.n;
+      el.title = `replenish advice (aanvuladvies) · ${c.n}${c.more ? '+' : ''} products to refill · click to see them`;
+      el.innerHTML = `<span>Aanvuladvies</span><b>${int(c.n)}${c.more ? '+' : ''}</b>`;
+      if (was != null && was !== c.n) { el.classList.remove('dn', 'up'); void el.offsetWidth; el.classList.add(c.n < was ? 'dn' : 'up'); }
+    }
+    async function aanvulTick() { if (C.aanvul === false) return aanvulPill(null); aanvulPill(await aanvulCount()); }
+    if (C.aanvul !== false) {
+      setTimeout(() => { const c = lsGet(LS_A, null); if (c) aanvulPill(c); }, 900); // last known number right away
+      setTimeout(aanvulTick, use('replenish') ? 6000 : 1200); // the replenish alert asks at 3 s: wait for its answer
+      setInterval(() => { if (!document.hidden) aanvulTick(); }, 15000); // cheap: only asks Picqer when the shared count is 1 min old
+      window.addEventListener('storage', (e) => { if (e.key === LS_A && e.newValue) { try { aanvulPill(JSON.parse(e.newValue)); } catch (_) {} } });
+    }
+
+    // ---------- MEGAMULTI progress bar ----------
+    const BATCH_ID = (location.pathname.match(/^\/picklists\/batches\/(\d+)/) || [])[1];
+    const isMM = (b) => /MEGAMULTI/i.test([b && (b.title || b.name || b.description), document.querySelector('h1')?.textContent, document.title].filter(Boolean).join(' '));
+    function mmStyle() {
+      addStyle('pq-mm-style', `
+        #pq-mm{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:10px;padding:3px 24px;background:#fff;border-bottom:1px solid #e2e8f0;font:500 11px system-ui,sans-serif;color:#0f172a;line-height:16px}
+        #pq-mm b.t{font-weight:800;letter-spacing:.04em;color:#7c3aed;white-space:nowrap}
+        #pq-mm .mb{flex:1;height:6px;border-radius:999px;background:#ede9fe;position:relative;overflow:hidden;min-width:80px}
+        #pq-mm .mb i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:linear-gradient(90deg,#8b5cf6,#6366f1);transition:width .6s}
+        #pq-mm .mb.ok i{background:#10b981}
+        #pq-mm span{white-space:nowrap;font-variant-numeric:tabular-nums} #pq-mm .mut{color:#64748b}
+        html.pq-dark #pq-mm{background:var(--th-bg,#0f1117);border-color:rgba(255,255,255,.08);color:#e2e8f0}
+        html.pq-dark #pq-mm .mb{background:rgba(255,255,255,.1)} html.pq-dark #pq-mm .mut{color:#94a3b8}
+        @media (max-width:700px){#pq-mm .mut{display:none}}`);
+    }
+    function mmRender(b) {
+      const live = (b.picklists || []).filter((p) => p.status !== 'cancelled');
+      const tot = live.reduce((a, p) => a + (+p.total_products || 0), 0), got = live.reduce((a, p) => a + Math.min(+p.total_collected || 0, +p.total_products || 0), 0);
+      const picked = live.filter((p) => p.status === 'closed' || ((+p.total_products || 0) > 0 && (+p.total_collected || 0) >= (+p.total_products || 0))).length;
+      const closed = live.filter((p) => p.status === 'closed').length;
+      const pct = tot ? Math.round((got / tot) * 100) : 0;
+      mmStyle();
+      let bar = document.getElementById('pq-mm');
+      if (!bar) { bar = document.createElement('div'); bar.id = 'pq-mm'; }
+      const host = document.querySelector('.layout-content');
+      if (host && bar.parentNode !== host) host.prepend(bar); else if (!host && !bar.parentNode) document.body.prepend(bar);
+      bar.title = `MEGAMULTI batch ${b.picklist_batchid || BATCH_ID} · ${picked} of ${live.length} picklists fully picked · ${closed} closed · ${got} of ${tot} items`;
+      bar.innerHTML = `<b class="t">MEGAMULTI</b><span>${int(picked)}/${int(live.length)} picklists</span><div class="mb${pct >= 100 ? ' ok' : ''}"><i style="width:${pct}%"></i></div><span><b>${pct}%</b></span><span class="mut">${int(got)}/${int(tot)} items · ${int(closed)} closed</span>`;
+    }
+    let mmOn = null; // null = not known yet, false = not a megamulti
+    async function mmTick() {
+      if (!BATCH_ID || C.mmBar === false || mmOn === false) return;
+      let b = null;
+      try {
+        const r = await fetch(`/api/v1/picklists/batches/${BATCH_ID}`, { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+        if (r.ok) b = await r.json();
+      } catch (_) {}
+      if (!b || !Array.isArray(b.picklists)) return;
+      if (mmOn === null) mmOn = isMM(b);
+      if (!mmOn) { document.getElementById('pq-mm')?.remove(); return; }
+      mmRender(b);
+    }
+    if (BATCH_ID && C.mmBar !== false) {
+      setTimeout(mmTick, 800);
+      setInterval(() => { if (!document.hidden) mmTick(); }, 10000);
+      document.addEventListener('click', () => { if (mmOn) setTimeout(mmTick, 1500); }, true); // a tick on a line → fresh numbers soon
+    }
+
+    // ---------- unbound batch with picks → message ----------
+    const LS_UB = 'pq_ub_seen';
+    addStyle('pq-ub-style', `
+      #pq-ub-wrap{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:100002;display:flex;flex-direction:column;gap:8px;width:380px;max-width:calc(100vw - 32px)}
+      .pq-ub{background:#fff;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);border-left:4px solid #f59e0b;font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1f2937;padding:10px 12px;animation:ra-in .15s ease-out}
+      .pq-ub .h{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14px}
+      .pq-ub .h button{background:none;border:0;color:#9ca3af;font-size:18px;line-height:1;cursor:pointer}
+      .pq-ub p{margin:4px 0 8px;color:#4b5563}
+      .pq-ub a{color:#d97706;font-weight:700;text-decoration:none}
+      html.pq-dark .pq-ub{background:#1e2230;color:#e2e8f0} html.pq-dark .pq-ub p{color:#94a3b8}
+      @keyframes ra-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}`);
+    function ubShow(x) {
+      let wrap = document.getElementById('pq-ub-wrap');
+      if (!wrap) { wrap = document.createElement('div'); wrap.id = 'pq-ub-wrap'; document.body.appendChild(wrap); }
+      document.getElementById('pq-ub-' + x.id)?.remove();
+      const t = document.createElement('div');
+      t.className = 'pq-ub'; t.id = 'pq-ub-' + x.id;
+      t.innerHTML = `<div class="h">⚠ Unbound batch with picks<button title="Close">×</button></div>
+        <p>Batch <b>${escHtml(x.nr)}</b> · ${escHtml(x.name)}${x.whName ? ' · ' + escHtml(x.whName) : ''}<br>${int(x.ub)} picklist${x.ub === 1 ? '' : 's'} without a letter or container · ${int(x.items)}/${int(x.total)} picked</p>
+        <a href="${location.origin}/picklists/batches/${encodeURIComponent(x.id)}">Open the batch →</a>`;
+      t.querySelector('button').onclick = () => t.remove();
+      wrap.appendChild(t);
+      if (C.beep !== false) { try { const a = new AudioContext(), o = a.createOscillator(), g = a.createGain(); o.frequency.value = 660; g.gain.value = 0.06; o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + 0.18); } catch (_) {} }
+    }
+    async function ubTick() {
+      if (!URL_ || C.unbound === false) return;
+      let j = null;
+      try { j = await (await fetch(`${URL_}/shift`, { credentials: 'omit', cache: 'no-store' })).json(); } catch (_) {}
+      if (!j || !Array.isArray(j.ub)) return;
+      const seen = lsGet(LS_UB, {}), now = Date.now(), live = new Set(j.ub.map((x) => String(x.id)));
+      for (const k of Object.keys(seen)) if (!live.has(k) && now - seen[k] > 30 * 60000) delete seen[k];
+      for (const k of Object.keys(seen)) if (!live.has(k)) document.getElementById('pq-ub-' + k)?.remove(); // bound now → card away
+      const fresh = j.ub.filter((x) => !seen[String(x.id)]);
+      fresh.forEach((x) => { seen[String(x.id)] = now; });
+      lsSet(LS_UB, seen);
+      fresh.forEach(ubShow); // once per batch, in the tab that saw it first
+    }
+    if (URL_ && C.unbound !== false) {
+      setTimeout(ubTick, 3000);
+      setInterval(() => { if (!document.hidden) ubTick(); }, 30000);
+    }
+  }
+
   /* =========================================================================
    *  REPLENISH ALERT
    * ========================================================================= */
@@ -1298,6 +1509,7 @@
       let items;
       try { items = await fetchAdvice(); } catch (_) { return; }
       if (!items) return;
+      lsSet('pq_aanvul', { n: items.length, at: Date.now() }); // the AANVULADVIES pill reads this too
       const known = lsGet(LS_KNOWN, null);
       lsSet(LS_KNOWN, items.map((i) => i.id));
       if (known === null) return;
@@ -6044,47 +6256,6 @@
     if (C.widget !== false) document.body.appendChild(box);
 
     // ---------- shift goal: thin bar under Picqer's header (only when Ahmad set a goal, Shift+9) ----------
-    // ---------- BE Pick-up counter (team feature, until 23:00): open picklists with that tag, counts down live ----------
-    async function beTick() {
-      const pills = () => document.querySelectorAll('.pq-tagpill');
-      const gone = () => document.getElementById('pq-tags')?.remove();
-      if (!can('beCounter') || !URL_ || new Date().getHours() >= 23) { gone(); return; }
-      let j = null;
-      try { j = await (await fetch(`${URL_}/be`, { credentials: 'omit', cache: 'no-store' })).json(); } catch (_) {}
-      if (!j || j.n == null) { gone(); return; }
-      addStyle('pq-be-style', `
-        #pq-tags{display:inline-flex;align-items:center;margin-right:10px;border:1px solid rgba(255,255,255,.16);border-radius:8px;overflow:hidden;height:24px}
-        .pq-tagpill{display:inline-flex;align-items:center;gap:6px;height:100%;padding:0 9px;color:inherit !important;font:600 10.5px system-ui,sans-serif;letter-spacing:.03em;white-space:nowrap;text-decoration:none !important;transition:background .15s}
-        .pq-tagpill + .pq-tagpill{border-left:1px solid rgba(255,255,255,.16)}
-        .pq-tagpill span{opacity:.7;text-transform:uppercase}
-        a.pq-tagpill{cursor:pointer} a.pq-tagpill:hover{background:rgba(255,255,255,.1)}
-        .pq-tagpill b{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;display:inline-block}
-        .pq-tagpill.dn b{animation:pqBeDn 1.4s ease} .pq-tagpill.up b{animation:pqBeUp 1.4s ease}
-        @keyframes pqBeDn{0%{color:#4ade80;transform:translateY(-4px)}100%{transform:none}}
-        @keyframes pqBeUp{0%{color:#fb7185;transform:translateY(4px)}100%{transform:none}}`);
-      const hdr = document.querySelector('.layout-header-navigation');
-      if (!hdr) return;
-      let nav = document.getElementById('pq-tags');
-      if (!nav || !nav.isConnected) { nav = nav || document.createElement('div'); nav.id = 'pq-tags'; hdr.prepend(nav); }
-      // older worker: only the BE number
-      const tags = Array.isArray(j.tags) && j.tags.length ? j.tags : [{ key: 'be', label: 'BE Pick-up', n: j.n, peak: j.peak, id: 252185 }];
-      const keep = new Set(tags.map((t) => 'pq-tag-' + t.key));
-      pills().forEach((x) => { if (!keep.has(x.id)) x.remove(); });
-      [...tags].reverse().forEach((t) => { // prepend in reverse = BE first, then EIGENAAR
-        const id = 'pq-tag-' + t.key, href = t.id ? `${location.origin}/picklists?filter_tags_in=${encodeURIComponent(t.id)}` : '';
-        let el = document.getElementById(id);
-        if (!el || !el.isConnected || (href ? el.tagName !== 'A' : el.tagName === 'A')) { el?.remove(); el = document.createElement(href ? 'a' : 'div'); el.id = id; el.className = 'pq-tagpill'; }
-        if (href) el.href = href;
-        nav.prepend(el);
-        const was = el.dataset.n == null ? null : +el.dataset.n;
-        el.dataset.n = t.n;
-        el.title = `open picklists with the tag ${t.label} · most today ${t.peak || t.n}${href ? ' · click to see them' : ''}`;
-        el.innerHTML = `<span>${escHtml(t.label)}</span><b>${int(t.n)}</b>`;
-        if (was != null && was !== t.n) { el.classList.remove('dn', 'up'); void el.offsetWidth; el.classList.add(t.n < was ? 'dn' : 'up'); }
-      });
-    }
-    setInterval(() => { if (!document.hidden) beTick(); }, 15000);
-    setTimeout(beTick, 1500);
     function goalBar() {
       const g = data && data.goal;
       let bar = document.getElementById('pq-goal');
@@ -8254,7 +8425,7 @@
    *  SETTINGS PANEL (Shift+8 / *) + TEAMS EDITOR
    * ========================================================================= */
   const MOD_ICON = { comboBatcher: '📦', comboAlert: '🔔', replenish: '🔄', shipErr: '🚚', addrFix: '🏠', banner: '🚩', batchOpt: '🏷️', zap: '⚡', dayson: '📋',
-    zaplog: '🧾', unpick: '↩️', autoNext: '⏭️', autoPrint: '🖨️', pickAllKey: '🅰️', pickStats: '📊', leaderboard: '🏆', cardColor: '🎨' };
+    zaplog: '🧾', unpick: '↩️', autoNext: '⏭️', autoPrint: '🖨️', pickAllKey: '🅰️', pickStats: '📊', leaderboard: '🏆', cardColor: '🎨', shiftTools: '🧭' };
   // these have a ⚙ in their own window: Shift+8 only shows their on/off switch
   const OWN_GEAR = { comboBatcher: 'Ctrl+Shift+B → ⚙', leaderboard: 'Ctrl+Alt+L → ⚙', zap: 'Ctrl+Alt+Z → ⚙', zaplog: 'Ctrl+Alt+Z → ⚙' };
   function settingsPanel() {
@@ -9096,6 +9267,8 @@
     if (use('unpick')) safe('unpick', unpickAll);
     if (use('comboAlert')) safe('comboAlert', comboAlert);
     if (use('replenish')) safe('replenish', replenish);
+    if (can('beCounter')) safe('tagPills', tagPills);
+    if (use('shiftTools')) safe('shiftTools', shiftTools);
     if (use('batchOpt')) safe('batchOpt', batchOpt);
     if (use('zap') || use('dayson')) safe('zaplog-overview', ZL.installOverview);
     if (use('zap')) safe('zap', zap);

@@ -11,7 +11,7 @@
 //   PROXIES      text    user ids that never count, comma separated (optional)
 //   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
-import { newState, tick, profile, buy, equip, paint, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, buyPass, adminOp, OWNER, shiftReport, reportWhs, fxOp, dailyLogin, errPoints, friendOp, chatSend, chatRead, pairKey, liveDue, liveTick, liveBoard, LIVE_ACTIVE_MIN, annFor, annSeen } from './game.js';
+import { newState, tick, profile, buy, equip, paint, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, buyPass, adminOp, OWNER, shiftReport, reportWhs, fxOp, dailyLogin, errPoints, friendOp, chatSend, chatRead, pairKey, liveDue, liveTick, liveBoard, unboundList, LIVE_ACTIVE_MIN, annFor, annSeen } from './game.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
@@ -182,6 +182,15 @@ export class Game extends DurableObject {
     }
     o.at = now;
     await this.ctx.storage.put('beCount', o);
+  }
+  // shift leaders: batches with pick progress but unbound picklists (from the live loop, nothing extra asked from Picqer)
+  async shift() {
+    const L = await this.ctx.storage.get('live');
+    const list = unboundList(L);
+    if (!list.length) return { ub: [] };
+    const nm = await this.userNames().catch(() => ({}));
+    const wn = Object.fromEntries((await warehouses(this.env).catch(() => [])).filter(Boolean).map((w) => [w.id, w.name]));
+    return { ub: list.map((x) => ({ ...x, name: nm[x.who] || `#${x.who}`, whName: wn[x.wh] || '' })) };
   }
   async be() {
     const o = (await this.ctx.storage.get('beCount')) || null;
@@ -509,6 +518,7 @@ export default {
         return json((await game(env).getSettings(id)) || { cfg: null, at: 0 });
       }
       if (url.pathname === '/be') return json(await game(env).be());
+      if (url.pathname === '/shift') return json(await game(env).shift());
       if (url.pathname === '/err' && req.method === 'POST') {
         const b = await req.json().catch(() => ({}));
         if (!/^\d+$/.test(String(b.id || '')) || !/^\d+$/.test(String(b.picklist || ''))) return json({ err: 'id and picklist needed' }, 400);
