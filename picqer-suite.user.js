@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.93
+// @version      3.94
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.93';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.94';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -216,6 +216,7 @@
       { k: 'mmBar', label: 'Progress bar at the top on a MEGAMULTI batch', type: 'bool', def: true },
       { k: 'unbound', label: 'Message when a batch has picks but unbound picklists', type: 'bool', def: true },
       { k: 'beep', label: 'Beep on the unbound message', type: 'bool', def: true },
+      { k: 'again', label: 'Unbound message: pop up again every (min) while it is still unbound · 0 = only once', type: 'num', def: 10 },
     ]},
     { id: 'replenish', title: 'Replenish alert', hint: 'toast on new aanvuladvies', fields: [
       { k: 'intervalSec', label: 'Check every (sec)', type: 'num', def: 60 },
@@ -1461,8 +1462,11 @@
       if (!j || !Array.isArray(j.ub)) return;
       const seen = lsGet(LS_UB, {}), now = Date.now(), live = new Set(j.ub.map((x) => String(x.id)));
       for (const k of Object.keys(seen)) if (!live.has(k) && now - seen[k] > 30 * 60000) delete seen[k];
+      for (const k of Object.keys(seen)) if (!live.has(k)) seen[k] = Math.min(seen[k], now - 30 * 60000 + 120000); // bound → forget soon, so a new unbound pops up again
       for (const k of Object.keys(seen)) if (!live.has(k)) document.getElementById('pq-ub-' + k)?.remove(); // bound now → card away
-      const fresh = j.ub.filter((x) => !seen[String(x.id)]);
+      const again = Math.max(0, +(C.again ?? 10) || 0) * 60000;
+      // new ones, and (when set) the ones still unbound after `again` min whose card is not on screen anymore
+      const fresh = j.ub.filter((x) => { const t = seen[String(x.id)]; return !t || (again && now - t >= again && !document.getElementById('pq-ub-' + x.id)); });
       fresh.forEach((x) => { seen[String(x.id)] = now; });
       lsSet(LS_UB, seen);
       fresh.forEach(ubShow); // once per batch, in the tab that saw it first
@@ -3153,6 +3157,9 @@
     let tab = 'single';
     // isolated tab
     let isoData = null, isoBusy = false, isoAt = 0, isoErr = '', isoProg = '';
+    // last result is shared by every tab for 5 min → opening the tab shows it right away
+    const LS_ISO = 'pq_iso_last', LS_ISONEG = 'pq_iso_neg';
+    try { const c = JSON.parse(localStorage.getItem(LS_ISO) || 'null'); if (c && c.at && Date.now() - c.at < 30 * 60000) { isoData = c.data; isoAt = c.at; } } catch (_) {}
     let warehouses = null;
     const isoColor = new Map();
 
@@ -3421,7 +3428,7 @@
         await loadWarehouses();
         const wid = autoWhId(); // same warehouse as auto batch (Bunsenstraat), empty = all
         loadUsers().catch(() => {});
-        const open = (await pagesFast('/picklists?status=new', (n) => setProg(`open picklists ${n}…`)))
+        const open = (await pagesFast(`/picklists?status=new${wid ? `&idwarehouse=${encodeURIComponent(wid)}` : ''}`, (n) => setProg(`open picklists ${n}…`)))
           .filter((pl) => pl.status === 'new' && (!wid || String(pl.idwarehouse) === String(wid)));
         const free = open.filter((pl) => !pl.idpicklist_batch);
         const inBatch = open.length - free.length;
@@ -3429,12 +3436,22 @@
         let k = 0, bad = 0, badMsg = '';
         setProg(`${open.length} open · ${inBatch} in a batch · containers…`);
         // 1 call per picklist without a batch (Picqer has tens of thousands of containers, so reading them all is slower)
-        await pool(free, 6, async (pl) => {
+        // a picklist that had no container and did not change since is skipped for 10 min (shared by tabs) → a re-check is mostly instant
+        let neg = {};
+        try { neg = JSON.parse(localStorage.getItem(LS_ISONEG) || '{}') || {}; } catch (_) {}
+        const negNew = {}, ver = (pl) => String(pl.updated || pl.updated_at || '');
+        const todo = free.filter((pl) => {
+          const n = neg[pl.idpicklist];
+          if (n && n[0] === ver(pl) && Date.now() - n[1] < 10 * 60000) { negNew[pl.idpicklist] = n; k++; return false; }
+          return true;
+        });
+        await pool(todo, 8, async (pl) => {
           if (isoStop) return;
           try {
             const r = await apiRetry('GET', `/picking-containers?idpicklist=${pl.idpicklist}`, null, { retry5xx: true });
             const boxes = (Array.isArray(r) ? r : r ? [r] : []).filter((c) => c && String(c.idpicklist) === String(pl.idpicklist));
             if (boxes.length) list.push({ pl, boxes });
+            else negNew[pl.idpicklist] = [ver(pl), Date.now()];
           } catch (e) { bad++; badMsg = e.message || String(e); }
           setProg(`${open.length} open · ${inBatch} in a batch · containers ${++k}/${free.length}…`);
         });
@@ -3451,6 +3468,8 @@
           .sort((a, b) => ageMs(b) - ageMs(a));
         isoData = { list, half, parked, nOpen: open.length, nInBatch: inBatch, nChecked: k, nFree: free.length, stopped: isoStop, wh: wid ? whNameOf(wid) : '' };
         isoAt = Date.now();
+        try { localStorage.setItem(LS_ISONEG, JSON.stringify(negNew)); } catch (_) {}
+        if (!isoStop) try { localStorage.setItem(LS_ISO, JSON.stringify({ at: isoAt, data: isoData })); } catch (_) { try { localStorage.removeItem(LS_ISO); } catch (__) {} }
         if (bad) isoErr = `${bad} picklist${bad === 1 ? '' : 's'} could not be checked (${badMsg})`;
       } catch (e) {
         isoErr = e.message || String(e);
@@ -3466,13 +3485,13 @@
       const userName = (id) => ((users || []).find((u) => u.id === String(id)) || {}).name || `#${id}`;
       const list = isoData ? isoData.list : [];
       const multiWh = new Set(list.map((x) => x.pl.idwarehouse)).size > 1;
-      const info = isoBusy ? `<span class="cb-iso-prog">${esc(isoProg)}</span>`
+      const info = isoBusy ? `<span class="cb-iso-prog">${esc(isoProg)}</span>${isoData ? ` · showing ${hm(isoAt)} meanwhile` : ''}`
         : isoData ? `checked ${hm(isoAt)}${isoData.wh ? ` · only ${isoData.wh}` : ''} · ${isoData.nOpen} open picklists · ${isoData.nInBatch} in a batch · ${isoData.nChecked}${isoData.stopped ? ` of ${isoData.nFree}` : ''} without a batch checked for a container${isoData.stopped ? ' · stopped' : ''}`
         : 'Open picklists (not snoozed or paused) that have a container but are not in a batch';
       let html = `<div class="cb-isobar">${isoBusy ? '<button class="cb-btn" data-act="isostop">Stop</button>' : `<button class="cb-btn" data-act="isocheck">${isoData ? 'Check again' : 'Check'}</button>`}
         <span class="cb-muted">${info}</span><span class="cb-sp"></span>${list.length && !isoBusy ? '<button class="cb-btn" data-act="isocopy">Copy list</button>' : ''}</div>`;
       if (isoErr && !isoBusy) html += `<div class="cb-isocount cb-warn">⚠ ${esc(isoErr)}</div>`;
-      if (isoData && !isoBusy) {
+      if (isoData) { // while checking again the last result stays visible
         if (!list.length) html += `<div class="cb-empty">No isolated picklists${isoData.stopped ? ' so far' : ''}. Every open picklist with a container is in a batch</div>`;
         else {
           html += `<div class="cb-isocount"><b>${list.length}</b> isolated picklist${list.length === 1 ? '' : 's'} · oldest first</div>`;
