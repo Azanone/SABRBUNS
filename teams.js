@@ -19,13 +19,7 @@ window.PQ_TEAMS = {
       "allow": "*",
       "users": [
         32247, // Ahmad Saber
-        "Ahmad Saber",
-        36510, // Sedat Ozbasi
-        39213, // Ali Al- Turaim
-        32651, // Egehan Akali
-        22610, // Jari Bezemer
-        42368, // Sharlton Matwirjo
-        37129 // Steyn Rombout
+        "Ahmad Saber"
       ]
     }
   ],
