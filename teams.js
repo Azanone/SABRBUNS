@@ -27,21 +27,7 @@ window.PQ_TEAMS = {
         42368, // Sharlton Matwirjo
         37129 // Steyn Rombout
       ]
-    },
-    {
-      "name": "shiftlead",
-      "allow": ["settings", "comboBatcher", "replenish", "batchOpt", "zap", "dayson", "unpick", "pickStats", "colors", "skins", "beCounter", "shiftTools"],
-      "users": [
-        18089 // Rodney Huijgen
-      ]
-    },
-    {
-      "name": "megamulters",
-      "allow": ["settings", "comboBatcher", "comboAlert", "batchOpt", "leaderboard", "autoNext", "cardColor", "colors", "pickAll", "bulkSingles", "skins"],
-      "users": [
-        35714 // Jokke Jacobs
-      ]
     }
   ],
-  "leftovers": { "allow": ["comboAlert", "leaderboard", "pickAll", "bulkSingles", "skins"] }
+  "leftovers": { "allow": [] }
 };
