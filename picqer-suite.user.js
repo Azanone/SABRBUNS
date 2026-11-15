@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.94
+// @version      3.95
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.94';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.95';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -3048,6 +3048,8 @@
       .cb-lime{background:#a3e635;color:#1a2e05}
       .cb-snz{background:#ede9fe;color:#6d28d9}
       .cb-isobar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 12px 0;font-size:12px}
+      html.pq-dark .cb-isowh{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.15)}
+      .cb-isowh{font:inherit;font-weight:600;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:inherit;cursor:pointer}
       .cb-isobar .cb-sp{flex:1}
       .cb-isocount{margin:12px 12px 0;font-size:13px;color:#334155}
       .cb-isorow .cb-items a{color:inherit;text-decoration:none}
@@ -3159,7 +3161,22 @@
     let isoData = null, isoBusy = false, isoAt = 0, isoErr = '', isoProg = '';
     // last result is shared by every tab for 5 min → opening the tab shows it right away
     const LS_ISO = 'pq_iso_last', LS_ISONEG = 'pq_iso_neg';
-    try { const c = JSON.parse(localStorage.getItem(LS_ISO) || 'null'); if (c && c.at && Date.now() - c.at < 30 * 60000) { isoData = c.data; isoAt = c.at; } } catch (_) {}
+    // warehouse of the isolated tab: own dropdown ('' = not chosen → the auto batch warehouse, 'all' = every warehouse); remembered per PC
+    let isoWh = (() => { try { return localStorage.getItem('pq_iso_wh') || ''; } catch (_) { return ''; } })();
+    const isoWid = () => (isoWh === 'all' ? '' : isoWh || autoWhId() || '');
+    const isoKey = () => `${LS_ISO}_${isoWh === 'all' ? 'all' : isoWid() || 'all'}`;
+    // tab opened: warehouses first (dropdown + which saved result), show the saved one, check when it is older than 5 min
+    async function isoOpen() {
+      await loadWarehouses();
+      if (isoBusy || tab !== 'iso') return;
+      if (!isoData) isoLoad();
+      renderIso();
+      if (!isoData || Date.now() - isoAt > 5 * 60000) isoCheck();
+    }
+    function isoLoad() {
+      isoData = null; isoAt = 0;
+      try { const c = JSON.parse(localStorage.getItem(isoKey()) || 'null'); if (c && c.at && Date.now() - c.at < 30 * 60000) { isoData = c.data; isoAt = c.at; } } catch (_) {}
+    }
     let warehouses = null;
     const isoColor = new Map();
 
@@ -3221,7 +3238,7 @@
       renderPill();
       try { await loadShops(); } catch (e) { $status.textContent = 'Could not load shops: ' + e.message; }
       renderChips();
-      if (tab === 'iso' && !isoBusy && (!isoData || Date.now() - isoAt > 5 * 60000)) isoCheck();
+      if (tab === 'iso' && !isoBusy) isoOpen();
       if (tab === 'opt') renderAuto();
       if (!selectedShops.size) { $shops.style.display = 'block'; $status.textContent = 'Pick shops, then Scan'; }
       else if (!lastGroups) scan();
@@ -3266,7 +3283,7 @@
       if (q) q.innerHTML = helpBtn(TAB_HELP[tab]);
       renderAuto();
       if (tab === 'opt') renderOpt();
-      if (tab === 'iso') { renderIso(); if (isOpen() && !isoBusy && (!isoData || Date.now() - isoAt > 5 * 60000)) isoCheck(); }
+      if (tab === 'iso') { renderIso(); if (isOpen() && !isoBusy) isoOpen(); }
     }
     panel.querySelectorAll('.cb-tab').forEach((t) => { t.onclick = () => showTab(t.dataset.tab); });
     const gear = panel.querySelector('.cb-gear');
@@ -3426,7 +3443,8 @@
       renderIso();
       try {
         await loadWarehouses();
-        const wid = autoWhId(); // same warehouse as auto batch (Bunsenstraat), empty = all
+        const wid = isoWid(); // the dropdown, else the auto batch warehouse (Bunsenstraat); empty = all
+        const key = isoKey();
         loadUsers().catch(() => {});
         const open = (await pagesFast(`/picklists?status=new${wid ? `&idwarehouse=${encodeURIComponent(wid)}` : ''}`, (n) => setProg(`open picklists ${n}…`)))
           .filter((pl) => pl.status === 'new' && (!wid || String(pl.idwarehouse) === String(wid)));
@@ -3469,7 +3487,7 @@
         isoData = { list, half, parked, nOpen: open.length, nInBatch: inBatch, nChecked: k, nFree: free.length, stopped: isoStop, wh: wid ? whNameOf(wid) : '' };
         isoAt = Date.now();
         try { localStorage.setItem(LS_ISONEG, JSON.stringify(negNew)); } catch (_) {}
-        if (!isoStop) try { localStorage.setItem(LS_ISO, JSON.stringify({ at: isoAt, data: isoData })); } catch (_) { try { localStorage.removeItem(LS_ISO); } catch (__) {} }
+        if (!isoStop) try { localStorage.setItem(key, JSON.stringify({ at: isoAt, data: isoData })); } catch (_) { try { localStorage.removeItem(key); } catch (__) {} }
         if (bad) isoErr = `${bad} picklist${bad === 1 ? '' : 's'} could not be checked (${badMsg})`;
       } catch (e) {
         isoErr = e.message || String(e);
@@ -3488,7 +3506,10 @@
       const info = isoBusy ? `<span class="cb-iso-prog">${esc(isoProg)}</span>${isoData ? ` · showing ${hm(isoAt)} meanwhile` : ''}`
         : isoData ? `checked ${hm(isoAt)}${isoData.wh ? ` · only ${isoData.wh}` : ''} · ${isoData.nOpen} open picklists · ${isoData.nInBatch} in a batch · ${isoData.nChecked}${isoData.stopped ? ` of ${isoData.nFree}` : ''} without a batch checked for a container${isoData.stopped ? ' · stopped' : ''}`
         : 'Open picklists (not snoozed or paused) that have a container but are not in a batch';
-      let html = `<div class="cb-isobar">${isoBusy ? '<button class="cb-btn" data-act="isostop">Stop</button>' : `<button class="cb-btn" data-act="isocheck">${isoData ? 'Check again' : 'Check'}</button>`}
+      const whs = (warehouses || []).filter((w) => w.active !== false);
+      const cur = isoWh === 'all' ? 'all' : isoWid();
+      const whSel = whs.length > 1 ? `<select class="cb-isowh" title="Warehouse to check"${isoBusy ? ' disabled' : ''}>${whs.map((w) => `<option value="${esc(String(w.idwarehouse))}"${String(w.idwarehouse) === String(cur) ? ' selected' : ''}>${esc(w.name)}</option>`).join('')}<option value="all"${cur === 'all' || !cur ? ' selected' : ''}>All warehouses</option></select>` : '';
+      let html = `<div class="cb-isobar">${whSel}${isoBusy ? '<button class="cb-btn" data-act="isostop">Stop</button>' : `<button class="cb-btn" data-act="isocheck">${isoData ? 'Check again' : 'Check'}</button>`}
         <span class="cb-muted">${info}</span><span class="cb-sp"></span>${list.length && !isoBusy ? '<button class="cb-btn" data-act="isocopy">Copy list</button>' : ''}</div>`;
       if (isoErr && !isoBusy) html += `<div class="cb-isocount cb-warn">⚠ ${esc(isoErr)}</div>`;
       if (isoData) { // while checking again the last result stays visible
@@ -3524,6 +3545,15 @@
       }
       $iso.innerHTML = html;
     }
+    $iso.addEventListener('change', (e) => {
+      const sel = e.target.closest('.cb-isowh');
+      if (!sel || isoBusy) return;
+      isoWh = sel.value;
+      try { localStorage.setItem('pq_iso_wh', isoWh); } catch (_) {}
+      isoLoad(); isoErr = '';
+      renderIso();
+      if (!isoData || Date.now() - isoAt > 5 * 60000) isoCheck();
+    });
     $iso.addEventListener('click', async (e) => {
       const el = e.target.closest('[data-act]');
       if (!el) return;
