@@ -24,7 +24,7 @@ window.PQ_TEAMS = {
     },
     {
       "name": "a",
-      "allow": ["comboAlert", "autoNext", "pickAll", "bulkSingles"],
+      "allow": ["settings", "comboAlert", "autoNext", "pickAll", "bulkSingles"],
       "users": [
         32602 // Emir Seme
       ]
