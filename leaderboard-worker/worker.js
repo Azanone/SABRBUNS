@@ -12,6 +12,7 @@
 //   ADMIN_KEY    secret  lets POST /admin/grant {id, coins} with header X-Admin-Key add or take coins (optional)
 import { DurableObject } from 'cloudflare:workers';
 import { newState, tick, profile, buy, equip, paint, grant, totals, crate, pickTick, pickBoard, chart, openDrop, useItem, tradeOp, tradesFor, buyPass, adminOp, OWNER, shiftReport, reportWhs, fxOp, dailyLogin, errPoints, friendOp, chatSend, chatRead, pairKey, liveDue, liveTick, liveBoard, unboundList, LIVE_ACTIVE_MIN, annFor, annSeen } from './game.js';
+import { newStudy, studyTick, studyView, studyActive } from './study.js';
 
 const ams = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const amsNow = (t = Date.now()) => ams.format(new Date(t));
@@ -240,6 +241,12 @@ export class Game extends DurableObject {
     const env = this.env, now = Date.now();
     const open = (await batchList(env, 'open')).filter((b) => b.status === 'open' && b.assigned_to);
     const due = liveDue(await this.ctx.storage.get('live'), open, now, 40);
+    // batch study: the followed batches are read every cycle (15 s), also when they are quiet
+    const S = await this.studyLoad(false);
+    const want = new Set(studyActive(S));
+    if (S && S.on && S.order.length < S.want) open.forEach((b) => { if (!S.b[String(b.idpicklist_batch)] && !S.skip[String(b.idpicklist_batch)]) want.add(String(b.idpicklist_batch)); });
+    const dueIds = new Set(due.map((b) => String(b.idpicklist_batch)));
+    open.forEach((b) => { if (want.has(String(b.idpicklist_batch)) && !dueIds.has(String(b.idpicklist_batch)) && due.length < 60) due.push(b); });
     const details = [];
     // 6 at a time: one batch with all its products takes Picqer a few seconds
     for (let i = 0; i < due.length; i += 6) {
@@ -249,6 +256,55 @@ export class Game extends DurableObject {
     await this.ctx.storage.put('liveTook', Date.now() - now);
     const L = liveTick(await this.ctx.storage.get('live'), open, details, { now, proxies: proxiesOf(env) });
     await this.ctx.storage.put('live', L);
+    if (S && S.on) await this.studySave(studyTick(S, open, details, { now, proxies: proxiesOf(this.env) }), true);
+  }
+  // the study is kept as 1 small key + 1 key per batch (a storage value may be 128 KB at most)
+  async studyLoad(all) {
+    const S = await this.ctx.storage.get('study');
+    if (!S) return null;
+    if (S.b && Object.keys(S.b).length) { const old = S.b; S.b = {}; for (const [id, r] of Object.entries(old)) S.b[id] = r; S._migrate = true; }
+    S.b = S.b || {};
+    const ids = all ? S.order : S.order.filter((id) => !(S.fin || {})[id]);
+    for (let i = 0; i < ids.length; i += 100) {
+      const got = await this.ctx.storage.get(ids.slice(i, i + 100).map((id) => `stb:${id}`));
+      for (const [k, r] of got) S.b[k.slice(4)] = r;
+    }
+    // finished ones not loaded: stub so studyTick skips them
+    for (const id of S.order) if (!S.b[id]) S.b[id] = { id, end: 1 };
+    return S;
+  }
+  async studySave(S, onlyLive) {
+    const { b, _migrate, ...meta } = S;
+    meta.fin = meta.fin || {};
+    const put = {};
+    for (const id of S.order) {
+      const r = b[id];
+      if (!r || (r.end === 1 && !r.seen)) continue; // stub
+      if (onlyLive && meta.fin[id] && !_migrate) continue;
+      put[`stb:${id}`] = r;
+      if (r.end || r.gone) meta.fin[id] = 1;
+    }
+    const keys = Object.entries(put);
+    for (let i = 0; i < keys.length; i += 100) await this.ctx.storage.put(Object.fromEntries(keys.slice(i, i + 100)));
+    await this.ctx.storage.put('study', meta);
+  }
+  // batch study (Shift+9 starts it, shift leaders look at it): only reads Picqer
+  async study() {
+    const S = await this.studyLoad(true);
+    const nm = await this.userNames().catch(() => ({}));
+    const wn = Object.fromEntries((await warehouses(this.env).catch(() => [])).filter(Boolean).map((w) => [w.id, w.name]));
+    return studyView(S, nm, wn);
+  }
+  async studyAdmin(b) {
+    const s = b.study || {};
+    let S = await this.studyLoad(true);
+    if (s.start || s.clear) { const old = await this.ctx.storage.get('study'); if (old) for (let i = 0; i < old.order.length; i += 100) await this.ctx.storage.delete(old.order.slice(i, i + 100).map((id) => `stb:${id}`)); }
+    if (s.start) S = newStudy(s.want, s.wh, Date.now());
+    else if (s.stop && S) { S.on = false; S.ended = S.ended || Math.round(Date.now() / 1000); }
+    else if (s.resume && S) { S.on = true; S.ended = null; if (s.want) S.want = Math.max(S.order.length, Math.min(200, +s.want)); }
+    else if (s.clear) { await this.ctx.storage.delete('study'); return { ok: true, study: await this.study() }; }
+    if (S) await this.studySave(S, false);
+    return { ok: true, study: await this.study() };
   }
   async chart(date, wh) { return chart(await this.load(), date, wh); }
   async inv(kind, id, uid, target) {
@@ -519,6 +575,7 @@ export default {
       }
       if (url.pathname === '/be') return json(await game(env).be());
       if (url.pathname === '/shift') return json(await game(env).shift());
+      if (url.pathname === '/study') return json(await game(env).study());
       if (url.pathname === '/err' && req.method === 'POST') {
         const b = await req.json().catch(() => ({}));
         if (!/^\d+$/.test(String(b.id || '')) || !/^\d+$/.test(String(b.picklist || ''))) return json({ err: 'id and picklist needed' }, 400);
@@ -540,6 +597,7 @@ export default {
         const b = await req.json().catch(() => ({}));
         const key = String(env.ADMIN_KEY || '').trim();
         if (String(b.by) !== OWNER || (key && req.headers.get('X-Admin-Key') !== key)) return json({ err: 'not allowed' }, 403);
+        if (b.op === 'study') return json(await game(env).studyAdmin(b));
         return json(await game(env).admin(String(b.op || ''), String(b.target || ''), b));
       }
       if (url.pathname === '/admin/grant' && req.method === 'POST') {

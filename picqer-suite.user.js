@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.96
+// @version      3.97
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.96';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.97';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -159,7 +159,7 @@
     skins: 'Skins / themes (looks of Picqer)',
     chat: 'Chat with friends (🪙 panel)',
     beCounter: 'BE Pick-up + EIGENAAR counters in the header (until 23:00)',
-    shiftTools: 'Shift leader tools: AANVULADVIES pill, MEGAMULTI progress bar, unbound batch alert',
+    shiftTools: 'Shift leader tools: AANVULADVIES pill, MEGAMULTI progress bar, unbound batch alert, batch study (Ctrl+Alt+S)',
   };
   const FEATURES = Object.keys(FEATURE_INFO);
   const VERSION = (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) || '';
@@ -663,7 +663,7 @@
     pickStats: 'Ctrl+Alt+P: who is picking right now (last 15 min, idle time), who packs, and charts per hour for any day. Bunsenstraat / Barnsteen at the top: switch warehouse. The idle alert is for the pickers of your own warehouse.',
     leaderboard: 'Packing points (multi 2, single 1,334) of the last 15 min. Every warehouse (Bunsenstraat, Barnsteen) has its own board and king. Your rank bottom right (the warehouse you work in), Ctrl+Alt+L for everyone: switch warehouse at the top. Points are coins for the shop, crates and the pass (🪙 at the top), the same everywhere.',
     cardColor: 'A colored bar per product code on picklists, so look-alike products are easy to tell apart.',
-    shiftTools: 'For shift leaders. AANVULADVIES pill next to BE Pick-up / EIGENAAR (how many replenish advices there are, click = that page, every 60 sec). On a batch named MEGAMULTI: a progress bar at the top (picklists picked, items, %). And a message when a batch somebody is picking still has unbound picklists (no letter or no container) while there are picks on it.',
+    shiftTools: 'For shift leaders. Ctrl+Alt+S = Batch study (the next N batches timed: bind, first pick, pick time per stop / item, a realistic target and how everyone does). AANVULADVIES pill next to BE Pick-up / EIGENAAR (how many replenish advices there are, click = that page, every 60 sec). On a batch named MEGAMULTI: a progress bar at the top (picklists picked, items, %). And a message when a batch somebody is picking still has unbound picklists (no letter or no container) while there are picks on it.',
     beCounter: 'In the header next to the coins: how many open picklists have the tag BE Pick-up, and how many EIGENAAR. Click one = those picklists in Picqer. Counts live (every 15 sec), gone after 23:00.',
   };
   function addStyle(id, css) {
@@ -1470,6 +1470,132 @@
     if (URL_ && C.unbound !== false) {
       setTimeout(ubTick, 3000);
       setInterval(() => { if (!document.hidden) ubTick(); }, 30000);
+    }
+
+    // ---------- batch study dashboard (Ctrl+Alt+S): the next N batches, timed from getting them to everything picked ----------
+    if (URL_) {
+      const ss = (x) => { if (x == null || !isFinite(x)) return '–'; x = Math.round(x); const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), sec = x % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`; };
+      const pctCls = (p) => (p == null ? '' : p <= 90 ? 'g' : p <= 110 ? 'o' : 'b');
+      let stTimer = null, stData = null, stMsg = '';
+      addStyle('pq-st-style', `
+        #pq-st-ov{position:fixed;inset:0;z-index:100003;background:rgba(15,23,42,.45);display:flex;align-items:flex-start;justify-content:center;padding:4vh 16px;overflow:auto;font:13px system-ui,-apple-system,"Segoe UI",sans-serif}
+        #pq-st{background:#fff;color:#0f172a;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.3);width:1100px;max-width:100%;padding:18px 20px 22px}
+        #pq-st h2{margin:0;font-size:18px;font-weight:800} #pq-st .sub{color:#64748b;font-size:12px;margin-top:2px}
+        #pq-st .top{display:flex;align-items:flex-start;gap:12px} #pq-st .sp{flex:1}
+        #pq-st button,#pq-st select,#pq-st input{font:inherit;font-size:12px;padding:5px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:inherit;cursor:pointer}
+        #pq-st input{width:56px;cursor:text} #pq-st button.pri{background:#4f46e5;border-color:#4f46e5;color:#fff;font-weight:700}
+        #pq-st .own{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px;padding:8px 10px;background:#f8fafc;border-radius:8px;font-size:12px}
+        #pq-st .kp{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:14px 0}
+        #pq-st .k{background:#f8fafc;border-radius:8px;padding:9px 11px} #pq-st .k b{display:block;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+        #pq-st .k span{font-size:11px;color:#64748b}
+        #pq-st .tg{background:linear-gradient(90deg,#eef2ff,#f5f3ff);border-radius:10px;padding:11px 14px;margin-bottom:14px;line-height:1.55}
+        #pq-st .tg b.f{font-size:15px}
+        #pq-st h3{font-size:13px;font-weight:800;margin:16px 0 6px;text-transform:uppercase;letter-spacing:.05em;color:#475569}
+        #pq-st table{width:100%;border-collapse:collapse;font-size:12px} #pq-st th{text-align:left;color:#64748b;font-weight:600;padding:5px 6px;border-bottom:1px solid #e2e8f0;white-space:nowrap}
+        #pq-st td{padding:5px 6px;border-bottom:1px solid #f1f5f9;font-variant-numeric:tabular-nums;white-space:nowrap} #pq-st td.n{text-align:right} #pq-st th.n{text-align:right}
+        #pq-st .pc{font-weight:800;padding:1px 6px;border-radius:5px} #pq-st .pc.g{background:#dcfce7;color:#166534} #pq-st .pc.o{background:#fef3c7;color:#92400e} #pq-st .pc.b{background:#fee2e2;color:#991b1b}
+        #pq-st .st{font-size:11px;padding:1px 6px;border-radius:5px;background:#f1f5f9;color:#475569} #pq-st .st.picking{background:#e0e7ff;color:#3730a3} #pq-st .st.done{background:#dcfce7;color:#166534}
+        #pq-st a{color:#4f46e5;text-decoration:none;font-weight:600} #pq-st .mut{color:#94a3b8} #pq-st .wrap{overflow:auto}
+        #pq-st .err{color:#b91c1c;margin-top:8px}
+        html.pq-dark #pq-st{background:#161a24;color:#e2e8f0} html.pq-dark #pq-st .k,html.pq-dark #pq-st .own{background:rgba(255,255,255,.05)}
+        html.pq-dark #pq-st .tg{background:rgba(99,102,241,.14)} html.pq-dark #pq-st button,html.pq-dark #pq-st select,html.pq-dark #pq-st input{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.15)}
+        html.pq-dark #pq-st td{border-color:rgba(255,255,255,.06)} html.pq-dark #pq-st th{border-color:rgba(255,255,255,.12)}`);
+      function stChart(rows, m) {
+        const pts = rows.filter((r) => r.state === 'done' && r.active > 0);
+        if (pts.length < 2) return '';
+        const W = 520, H = 190, P = 30, maxX = Math.max(...pts.map((r) => r.stops)) * 1.08, maxY = Math.max(...pts.map((r) => r.active), ...(m ? pts.map((r) => r.pred || 0) : [])) * 1.1;
+        const x = (v) => P + (v / maxX) * (W - P - 8), y = (v) => H - 20 - (v / maxY) * (H - 30);
+        const dots = pts.map((r) => `<circle cx="${x(r.stops).toFixed(1)}" cy="${y(r.active).toFixed(1)}" r="4" fill="${r.ratio == null ? '#94a3b8' : r.ratio <= 0.9 ? '#16a34a' : r.ratio <= 1.1 ? '#d97706' : '#dc2626'}" opacity=".85"><title>${escHtml(r.nr)} · ${escHtml(r.name)} · ${r.stops} stops · ${ss(r.active)}</title></circle>`).join('');
+        const line = m && m.kind === 'per stop' ? `<line x1="${x(0)}" y1="${y(0)}" x2="${x(maxX)}" y2="${y(m.b * maxX)}" stroke="#6366f1" stroke-width="2" stroke-dasharray="5 4"/><line x1="${x(0)}" y1="${y(0)}" x2="${x(maxX)}" y2="${y(m.b * maxX * (m.good || 1))}" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="2 4"/>` : '';
+        return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto" role="img" aria-label="stops vs pick time">
+          <line x1="${P}" y1="${H - 20}" x2="${W - 8}" y2="${H - 20}" stroke="currentColor" opacity=".2"/><line x1="${P}" y1="10" x2="${P}" y2="${H - 20}" stroke="currentColor" opacity=".2"/>
+          <text x="${W - 8}" y="${H - 6}" text-anchor="end" font-size="10" fill="currentColor" opacity=".6">stops →</text><text x="${P + 4}" y="18" font-size="10" fill="currentColor" opacity=".6">pick time (no pauses)  · max ${ss(maxY)}</text>
+          ${line}${dots}</svg>`;
+      }
+      function stRender() {
+        const box = document.getElementById('pq-st');
+        if (!box) return;
+        const v = stData;
+        const own = isOwner();
+        const whs = (window.__pqWhs || []);
+        if (!v) { box.innerHTML = '<div class="mut">loading…</div>'; return; }
+        const c = v.counts || {}, st = v.stats || {}, m = v.model;
+        const status = v.none ? 'not started yet' : v.on ? `following ${c.tracked || 0}/${v.want} batches${v.whName ? ` · only ${escHtml(v.whName)}` : ''} · ${c.picking || 0} picking · ${c.waiting || 0} waiting · ${c.done || 0} done` : `ended · ${c.done || 0} of ${c.tracked || 0} done`;
+        const ex = m ? (() => { const s0 = Math.round(st.stops || 20), i0 = Math.round(st.items || 40), t = m.a + m.b * s0 + m.c * i0; return `a normal batch here (${s0} stops, ${i0} items): <b>${ss(t * (m.typical || 1))}</b> normal · <b>${ss(t * (m.good || 1))}</b> good`; })() : '';
+        let h = `<div class="top"><div><h2>📊 Batch study</h2><div class="sub">${status}${v.started ? ` · since ${new Date(v.started).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}</div></div><span class="sp"></span><button data-a="re">↻</button><button data-a="x">✕</button></div>`;
+        if (own) h += `<div class="own">${v.on ? `<button data-a="stop">Stop</button>` : `<span>Follow the next</span><input type="number" class="sw" min="5" max="200" value="${v.want || 50}"><span>batches in</span><select class="swh"><option value="">every warehouse</option>${whs.map((w) => `<option value="${escHtml(w.id)}">${escHtml(w.name)}</option>`).join('')}</select><button class="pri" data-a="start">${v.none ? 'Start' : 'Start over'}</button>${!v.none && (c.tracked || 0) < 200 ? `<button data-a="resume">Go on (+${v.want || 50})</button>` : ''}`}${!v.none ? '<span class="sp"></span><button data-a="clear">Delete study</button>' : ''}</div>`;
+        if (stMsg) h += `<div class="err">${escHtml(stMsg)}</div>`;
+        if (v.none) { box.innerHTML = h + `<p class="mut" style="margin-top:14px">Nothing followed yet.${own ? ' Start it above: from then on every new batch that somebody gets (not started yet) is timed until everything is picked.' : ' Ahmad starts it.'}</p>`; return; }
+        h += `<div class="kp">
+          <div class="k"><b>${ss(st.bind && st.bind.med)}</b><span>time to bind (letters + containers)${st.bind && st.bind.n ? ` · ${ss(st.bind.p25)}–${ss(st.bind.p75)}` : ''}</span></div>
+          <div class="k"><b>${ss(st.toFirst)}</b><span>bound → first pick</span></div>
+          <div class="k"><b>${st.perStop == null ? '–' : st.perStop + ' s'}</b><span>per stop (location)</span></div>
+          <div class="k"><b>${st.perItem == null ? '–' : st.perItem + ' s'}</b><span>per item</span></div>
+          <div class="k"><b>${st.gapSame == null ? '–' : st.gapSame + ' s'} · ${st.gapSwitch == null ? '–' : st.gapSwitch + ' s'}</b><span>stop → stop · same aisle · other aisle</span></div>
+          <div class="k"><b>${ss(st.active)}</b><span>pick time of a batch (${st.stops ?? '–'} stops) · ${st.pauses || 0} with a pause</span></div>
+        </div>`;
+        h += m ? `<div class="tg">🎯 <b class="f">Target = ${m.a ? `${ss(m.a)} + ` : ''}${m.b} s per stop${m.c ? ` + ${m.c} s per item` : ''}</b> <span class="mut">(${m.kind === 'fit' ? 'fitted on' : 'median of'} ${c.done} batches, pauses of 10+ min left out)</span><br>
+            Good = <b>${Math.round((m.good || 1) * 100)}%</b> of that (what the best quarter does) · ${ex}<br>
+            <span class="mut">bind target: ${ss(st.bind && st.bind.p25)} good · ${ss(st.bind && st.bind.med)} normal · times are ±15 s (the worker looks every 15 s)</span></div>`
+          : `<div class="tg mut">🎯 The target shows once the first batches are done.</div>`;
+        h += stChart(v.rows || [], m);
+        if ((v.people || []).length) {
+          h += `<h3>People</h3><div class="wrap"><table><tr><th>Picker</th><th class="n">Batches</th><th class="n">vs target</th><th class="n">Bind</th><th class="n">Per stop</th></tr>${v.people.map((p) => `<tr><td>${escHtml(p.name)}</td><td class="n">${p.n}</td><td class="n"><span class="pc ${pctCls(p.ratio)}">${p.ratio == null ? '–' : Math.round(p.ratio) + '%'}</span></td><td class="n">${ss(p.bind)}</td><td class="n">${p.perStop == null ? '–' : p.perStop + ' s'}</td></tr>`).join('')}</table></div><div class="mut" style="font-size:11px;margin-top:4px">vs target: 100% = normal, under 100% = faster than normal</div>`;
+        }
+        h += `<h3>Batches</h3><div class="wrap"><table><tr><th>Batch</th><th>Picker</th><th></th><th class="n">Picklists</th><th class="n">Stops</th><th class="n">Items</th><th class="n">Aisles</th><th class="n">Bind</th><th class="n">→ 1st pick</th><th class="n">Pick</th><th class="n">Pause</th><th class="n">Target</th><th class="n">Result</th></tr>
+          ${(v.rows || []).map((r) => { const p = r.ratio == null ? null : Math.round(r.ratio * 100); return `<tr><td><a href="${location.origin}/picklists/batches/${encodeURIComponent(r.id)}" target="_blank">${escHtml(r.nr)}</a>${r.whName && !v.wh ? ` <span class="mut">${escHtml(r.whName)}</span>` : ''}</td><td>${escHtml(r.name)}</td><td><span class="st ${r.state}">${r.state}${r.state === 'picking' && r.items ? ` ${Math.round((r.got / r.items) * 100)}%` : ''}</span></td>
+            <td class="n">${r.n}</td><td class="n">${r.stops}</td><td class="n">${r.items}</td><td class="n">${r.aisles}</td><td class="n">${r.preBound ? '<span class="mut" title="was bound already when it was given out">pre</span>' : ss(r.bind)}</td><td class="n">${ss(r.toFirst)}</td><td class="n">${ss(r.active)}</td><td class="n">${r.pause ? ss(r.pause) : ''}</td>
+            <td class="n">${r.target ? `${ss(r.target.typical)}` : '–'}</td><td class="n">${p == null ? '' : `<span class="pc ${pctCls(p)}">${p}%</span>`}</td></tr>`; }).join('')}</table></div>`;
+        box.innerHTML = h;
+      }
+      async function stLoad() {
+        try { stData = await (await fetch(`${URL_}/study`, { credentials: 'omit', cache: 'no-store' })).json(); } catch (e) { stMsg = 'could not reach the worker'; }
+        if (!window.__pqWhs) { try { const r = await fetch('/api/v1/warehouses', { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }); if (r.ok) window.__pqWhs = (await r.json()).filter((w) => w.active !== false).map((w) => ({ id: String(w.idwarehouse), name: w.name })); } catch (_) {} }
+        stRender();
+      }
+      async function stAdmin(study) {
+        if (!unlocked() && !(await unlock('the batch study'))) return;
+        const key = lsGet('pqsuite_admin_key', '');
+        stMsg = '';
+        try {
+          const r = await fetch(`${URL_}/admin`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Admin-Key': key } : {}) }, body: JSON.stringify({ by: String(ME.id || ''), op: 'study', study }) });
+          const j = await r.json().catch(() => ({}));
+          if (r.status === 403) stMsg = 'admin key needed on this PC: open Shift+9 once and fill it in';
+          else if (j.study) stData = j.study;
+          else if (j.err) stMsg = j.err;
+        } catch (_) { stMsg = 'could not reach the worker'; }
+        stRender();
+      }
+      function stClose() { document.getElementById('pq-st-ov')?.remove(); clearInterval(stTimer); stTimer = null; }
+      function stOpen() {
+        if (document.getElementById('pq-st-ov')) return stClose();
+        const ov = document.createElement('div');
+        ov.id = 'pq-st-ov';
+        ov.innerHTML = '<div id="pq-st"></div>';
+        document.body.appendChild(ov);
+        ov.addEventListener('mousedown', (e) => { if (e.target === ov) stClose(); });
+        ov.addEventListener('click', (e) => {
+          const a = e.target.closest('[data-a]')?.dataset.a;
+          if (!a) return;
+          if (a === 'x') stClose();
+          else if (a === 're') stLoad();
+          else if (a === 'stop') stAdmin({ stop: true });
+          else if (a === 'resume') stAdmin({ resume: true, want: ((stData && stData.counts && stData.counts.tracked) || 0) + ((stData && stData.want) || 50) });
+          else if (a === 'clear') { if (confirmInline(e.target, 'Sure? click again')) stAdmin({ clear: true }); }
+          else if (a === 'start') stAdmin({ start: true, want: +ov.querySelector('.sw').value || 50, wh: ov.querySelector('.swh').value || null });
+        });
+        stRender(); stLoad();
+        stTimer = setInterval(() => { if (!document.hidden && document.getElementById('pq-st-ov')) stLoad(); }, 20000);
+      }
+      // a second click within 3 s confirms (no browser dialogs)
+      function confirmInline(btn, txt) {
+        if (btn.dataset.sure && Date.now() - +btn.dataset.sure < 3000) return true;
+        btn.dataset.sure = Date.now(); btn.textContent = txt; return false;
+      }
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.getElementById('pq-st-ov') && !document.getElementById('pq-lock')) { stClose(); return; }
+        if (e.ctrlKey && e.altKey && !e.shiftKey && e.code === 'KeyS') { e.preventDefault(); stOpen(); }
+      });
     }
   }
 
