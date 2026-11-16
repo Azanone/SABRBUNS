@@ -20,15 +20,15 @@ window.PQ_TEAMS = {
       "users": [
         32247, // Ahmad Saber
         "Ahmad Saber",
-        22610 // Jari Bezemer
+        22610, // Jari Bezemer
+        42368 // Sharlton Matwirjo
       ]
     },
     {
       "name": "a",
       "allow": ["settings", "comboAlert", "autoNext", "pickAll", "bulkSingles"],
       "users": [
-        32602, // Emir Seme
-        42368 // Sharlton Matwirjo
+        32602 // Emir Seme
       ]
     }
   ],
