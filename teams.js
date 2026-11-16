@@ -9,7 +9,7 @@
 //          settings comboBatcher comboAlert replenish shipErr addrFix
 //          banner batchOpt zap dayson unpick pickStats leaderboard
 //          autoNext cardColor colors pickAll truePickAll bulkSingles
-//          skins chat beCounter
+//          skins chat beCounter shiftTools
 //  leftovers: everyone who is in no team
 // =====================================================================
 window.PQ_TEAMS = {
@@ -26,7 +26,8 @@ window.PQ_TEAMS = {
       "name": "a",
       "allow": ["settings", "comboAlert", "autoNext", "pickAll", "bulkSingles"],
       "users": [
-        32602 // Emir Seme
+        32602, // Emir Seme
+        42368 // Sharlton Matwirjo
       ]
     }
   ],
