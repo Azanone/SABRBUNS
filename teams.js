@@ -9,7 +9,7 @@
 //          settings comboBatcher comboAlert replenish shipErr addrFix
 //          banner batchOpt zap dayson unpick pickStats leaderboard
 //          autoNext cardColor colors pickAll truePickAll bulkSingles
-//          skins chat beCounter shiftTools
+//          skins chat beCounter
 //  leftovers: everyone who is in no team
 // =====================================================================
 window.PQ_TEAMS = {
@@ -20,6 +20,13 @@ window.PQ_TEAMS = {
       "users": [
         32247, // Ahmad Saber
         "Ahmad Saber"
+      ]
+    },
+    {
+      "name": "a",
+      "allow": ["autoNext", "pickAll"],
+      "users": [
+        32602 // Emir Seme
       ]
     }
   ],
