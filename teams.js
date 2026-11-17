@@ -19,8 +19,7 @@ window.PQ_TEAMS = {
       "allow": "*",
       "users": [
         32247, // Ahmad Saber
-        "Ahmad Saber",
-        22610 // Jari Bezemer
+        "Ahmad Saber"
       ]
     },
     {
