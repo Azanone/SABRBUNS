@@ -53,8 +53,8 @@ async function whAll(env) {
 async function warehouse(env) { return (await whAll(env)).main; }
 // every warehouse with a board · [null] = no filter at all (nothing configured / found)
 async function warehouses(env) { const w = await whAll(env); return w.whs.length ? w.whs : [w.main || null]; }
-async function closedRows(env, min) {
-  const since = amsNow(Date.now() - min * 60000);
+async function closedRows(env, min, from = null) {
+  const since = from || amsNow(Date.now() - min * 60000);
   const ws = await warehouses(env), rows = [];
   for (const w of ws) {
     for (let off = 0; off < 5000; off += 100) {
@@ -88,7 +88,19 @@ export class Game extends DurableObject {
     return board;
   }
   // packing: closed picklists of the last 15 min (every warehouse) → boards, coins, king
-  async packRound() { const r = await closedRows(this.env, 15); return this.tick(r.rows, r.wh, proxiesOf(this.env), r.whs, r.main); }
+  async packRound() { const r = await this.closedInc(15); return this.tick(r.rows, r.wh, proxiesOf(this.env), r.whs, r.main); }
+  // closed picklists of the last 15 min without asking the same ones every 15 s: keep them here and only ask what closed since
+  // the last look (90 s overlap). Everything again every 10 min, or when this instance just woke up.
+  async closedInc(min) {
+    const now = Date.now(), since = amsNow(now - min * 60000), c = this._closed;
+    const full = !c || now - c.full > 10 * 60000 || now - c.at > 60000;
+    const r = await closedRows(this.env, min, full ? null : amsNow(c.at - 90000));
+    const map = full ? new Map() : c.map;
+    for (const p of r.rows) map.set(String(p.idpicklist), p);
+    for (const [k, p] of map) if (String(p.closed_at || '') < since) map.delete(k);
+    this._closed = { at: now, full: full ? now : c.full, map };
+    return { ...r, rows: [...map.values()] };
+  }
   async board() { return (await this.load()).board; }
   async boardAll() {
     const st = await this.load(), b = st.board;
@@ -143,7 +155,9 @@ export class Game extends DurableObject {
   async studyQuick(t0) {
     for (const at of [t0 + 5000, t0 + 10000]) {
       const S = await this.studyLoad(false);
-      const ids = studyActive(S).slice(0, 8);
+      // only batches that changed in the last 2 min (a picker on a break or not started yet = the 15 s cycle is enough)
+      const sec = Math.round(Date.now() / 1000);
+      const ids = studyActive(S).filter((id) => sec - ((S.b[id] && (S.b[id].chg || S.b[id].seen)) || 0) <= 120).slice(0, 8);
       if (!S || !S.on || !ids.length) return;
       if (Date.now() > at + 2500) continue; // the cycle took too long: skip this one
       await new Promise((r) => setTimeout(r, Math.max(0, at - Date.now())));
@@ -181,9 +195,10 @@ export class Game extends DurableObject {
     const hm = amsNow().slice(11, 16);
     if (hm >= '23:00' || hm < '06:00') return;
     const w = await warehouse(this.env);
-    const tags = await this.tagIds().catch(() => TAG_PILLS.map((t) => ({ ...t, title: t.find, id: t.id || null })));
     const o = (await this.ctx.storage.get('beCount')) || {};
     const now = Date.now(), day = amsNow().slice(0, 10);
+    if (o.at && o.day === day && now - o.at < 28000) return; // header pills: every 30 s
+    const tags = await this.tagIds().catch(() => TAG_PILLS.map((t) => ({ ...t, title: t.find, id: t.id || null })));
     if (o.day !== day) { o.day = day; o.peak = 0; o.tags = {}; }
     o.tags = o.tags || {};
     for (const t of tags) {
@@ -237,6 +252,8 @@ export class Game extends DurableObject {
   }
   async picksDone() {
     const env = this.env;
+    if (this._pdAt && Date.now() - this._pdAt < 28000) return; // every 30 s is enough for coins on finished batches
+    this._pdAt = Date.now();
     const mine = await batchList(env, 'completed');
     const today = amsNow().slice(0, 10);
     const isNew = new Set((await this.newBatchIds(mine.map((b) => b.idpicklist_batch))).map(String));

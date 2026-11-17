@@ -743,7 +743,7 @@ export function liveDue(L, open, now, max = 40) {
   const score = (b) => {
     const s = L.b[String(b.idpicklist_batch)];
     if (!s) return 0;
-    if (now - (s.changed || 0) < 30 * 60000) return 1;
+    if (now - (s.changed || 0) < 30 * 60000) return now - (s.checked || 0) >= 25000 ? 1 : 9; // busy: every 30 s (was every 15 s)
     return now - s.checked >= 5 * 60000 ? 2 : 9;
   };
   return open.map((b) => [score(b), b]).filter(([s]) => s < 9).sort((a, b) => a[0] - b[0]).slice(0, max).map(([, b]) => b);

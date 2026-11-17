@@ -59,6 +59,8 @@ export function studyTick(S, open, details, { now, proxies = [], quick = false }
     const s = look(d);
     const sec = t(now);
     r.last = sec;
+    const sig = `${s.items}|${s.anyBound}|${s.allBound}`;
+    if (sig !== r.sig) { r.sig = sig; r.chg = sec; } // last change: the 5 s looks stop for quiet batches
     if (s.anyBound && !r.bindStart) r.bindStart = sec;
     if (s.allBound && !r.bound) r.bound = sec;
     if (s.items > 0 && !r.first) { r.first = sec; if (!r.bound) r.bound = sec; } // picking started = binding was done
