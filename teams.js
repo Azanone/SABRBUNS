@@ -32,7 +32,8 @@ window.PQ_TEAMS = {
         42368, // Sharlton Matwirjo
         28469, // Dani Scheers
         35714, // Jokke Jacobs
-        34369 // Efe Yildrim
+        34369, // Efe Yildrim
+        39213 // Ali Al- Turaim
       ]
     }
   ],
