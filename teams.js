@@ -20,7 +20,8 @@ window.PQ_TEAMS = {
       "users": [
         32247, // Ahmad Saber
         "Ahmad Saber",
-        22610 // Jari Bezemer
+        22610, // Jari Bezemer
+        37129 // Steyn Rombout
       ]
     },
     {
