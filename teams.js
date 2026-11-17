@@ -9,7 +9,7 @@
 //          settings comboBatcher comboAlert replenish shipErr addrFix
 //          banner batchOpt zap dayson unpick pickStats leaderboard
 //          autoNext cardColor colors pickAll truePickAll bulkSingles
-//          skins chat beCounter
+//          skins chat beCounter shiftTools
 //  leftovers: everyone who is in no team
 // =====================================================================
 window.PQ_TEAMS = {
@@ -19,15 +19,18 @@ window.PQ_TEAMS = {
       "allow": "*",
       "users": [
         32247, // Ahmad Saber
-        "Ahmad Saber"
+        "Ahmad Saber",
+        22610 // Jari Bezemer
       ]
     },
     {
       "name": "a",
-      "allow": ["settings", "comboAlert", "autoNext", "pickAll", "bulkSingles"],
+      "allow": ["settings", "comboAlert", "autoNext", "pickAll", "truePickAll", "bulkSingles"],
       "users": [
         32602, // Emir Seme
-        42368 // Sharlton Matwirjo
+        42368, // Sharlton Matwirjo
+        28469, // Dani Scheers
+        35714 // Jokke Jacobs
       ]
     }
   ],
