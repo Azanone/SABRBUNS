@@ -31,7 +31,8 @@ window.PQ_TEAMS = {
         32602, // Emir Seme
         42368, // Sharlton Matwirjo
         28469, // Dani Scheers
-        35714 // Jokke Jacobs
+        35714, // Jokke Jacobs
+        34369 // Efe Yildrim
       ]
     }
   ],
