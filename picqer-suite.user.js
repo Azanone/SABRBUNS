@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.97
+// @version      3.98
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.97';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.98';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -1536,7 +1536,7 @@
         </div>`;
         h += m ? `<div class="tg">🎯 <b class="f">Target = ${m.a ? `${ss(m.a)} + ` : ''}${m.b} s per stop${m.c ? ` + ${m.c} s per item` : ''}</b> <span class="mut">(${m.kind === 'fit' ? 'fitted on' : 'median of'} ${c.done} batches, pauses of 10+ min left out)</span><br>
             Good = <b>${Math.round((m.good || 1) * 100)}%</b> of that (what the best quarter does) · ${ex}<br>
-            <span class="mut">bind target: ${ss(st.bind && st.bind.p25)} good · ${ss(st.bind && st.bind.med)} normal · times are ±15 s (the worker looks every 15 s)</span></div>`
+            <span class="mut">bind target: ${ss(st.bind && st.bind.p25)} good · ${ss(st.bind && st.bind.med)} normal · times are ±5 s (the worker looks every 5 s at followed batches)</span></div>`
           : `<div class="tg mut">🎯 The target shows once the first batches are done.</div>`;
         h += stChart(v.rows || [], m);
         if ((v.people || []).length) {

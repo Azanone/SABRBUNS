@@ -39,7 +39,8 @@ export function studyActive(S) {
   return S.order.filter((id) => { const r = S.b[id]; return r && !r.end && !r.gone; });
 }
 
-export function studyTick(S, open, details, { now, proxies = [] }) {
+// quick = the 5 s in-between look: only the followed batches, no new ones, nothing marked gone
+export function studyTick(S, open, details, { now, proxies = [], quick = false }) {
   if (!S || !S.on) return S;
   const skipWho = new Set([...proxies.map(String), ...NOT_PEOPLE]);
   const det = new Map(details.map((d) => [String(d.idpicklist_batch), d]));
@@ -71,6 +72,7 @@ export function studyTick(S, open, details, { now, proxies = [] }) {
     if (s.total > 0 && s.items >= s.total) r.end = sec;
   }
 
+  if (quick) return S;
   // 2) new ones: assigned, nothing picked yet, while there is room
   for (const b of open) {
     const id = String(b.idpicklist_batch);
@@ -174,7 +176,7 @@ export function studyView(S, names = {}, whNames = {}) {
   rows.forEach((r) => { delete r.gaps; });
   return {
     on: !!S.on, want: S.want, wh: S.wh, whName: S.wh ? whNames[S.wh] || '' : '', started: S.started, ended: S.ended,
-    counts: { tracked: rows.length, done: done.length, picking: rows.filter((r) => r.state === 'picking').length, waiting: rows.filter((r) => r.state === 'waiting' || r.state === 'bound').length, gone: rows.filter((r) => r.state === 'gone').length },
+    counts: { tracked: rows.length, done: rows.filter((r) => r.state === 'done').length, picking: rows.filter((r) => r.state === 'picking').length, waiting: rows.filter((r) => r.state === 'waiting' || r.state === 'bound').length, gone: rows.filter((r) => r.state === 'gone').length },
     model: model && { a: r1(model.a), b: r1(model.b), c: r1(model.c), kind: model.kind, good: r1(good), typical: r1(typical) },
     stats: {
       bind: { med: med(binds), p25: q(binds, 0.25), p75: q(binds, 0.75), n: binds.length },

@@ -136,7 +136,23 @@ export class Game extends DurableObject {
   async alarm() {
     const t0 = Date.now();
     try { await this.cycle(); await this.ctx.storage.delete('liveErr'); } catch (e) { console.log('cycle', e.message); await this.ctx.storage.put('liveErr', { at: Date.now(), err: String(e.message || e) }); }
+    // batch study: look at the followed batches again every 5 s between the 15 s cycles (max 8 batches → ≤ 64 extra Picqer calls a min)
+    try { await this.studyQuick(t0); } catch (e) { console.log('study quick', e.message); }
     await this.ctx.storage.setAlarm(Math.max(Date.now() + 3000, t0 + 15000));
+  }
+  async studyQuick(t0) {
+    for (const at of [t0 + 5000, t0 + 10000]) {
+      const S = await this.studyLoad(false);
+      const ids = studyActive(S).slice(0, 8);
+      if (!S || !S.on || !ids.length) return;
+      if (Date.now() > at + 2500) continue; // the cycle took too long: skip this one
+      await new Promise((r) => setTimeout(r, Math.max(0, at - Date.now())));
+      const now = Date.now();
+      const det = (await Promise.all(ids.map((id) => picqer(this.env, `/picklists/batches/${id}`).catch(() => null)))).filter(Boolean);
+      const S2 = await this.studyLoad(false); // fresh: the cycle may have changed it meanwhile
+      if (!S2 || !S2.on) return;
+      await this.studySave(studyTick(S2, ids.map((id) => ({ idpicklist_batch: id })), det, { now, quick: true }), true);
+    }
   }
   async cycle() {
     const env = this.env;
