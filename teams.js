@@ -38,7 +38,7 @@ window.PQ_TEAMS = {
     },
     {
       "name": "shiftlead",
-      "allow": ["settings", "comboBatcher", "comboAlert", "replenish", "batchOpt", "zap", "dayson", "unpick", "leaderboard", "autoNext", "pickAll", "bulkSingles", "beCounter", "shiftTools"],
+      "allow": ["settings", "comboBatcher", "comboAlert", "replenish", "batchOpt", "zap", "dayson", "unpick", "leaderboard", "autoNext", "pickAll", "truePickAll", "bulkSingles", "beCounter", "shiftTools"],
       "users": [
         35714, // Jokke Jacobs
         18089, // Rodney Huijgen
@@ -46,5 +46,5 @@ window.PQ_TEAMS = {
       ]
     }
   ],
-  "leftovers": { "allow": ["bulkSingles"] }
+  "leftovers": { "allow": ["leaderboard", "bulkSingles"] }
 };
