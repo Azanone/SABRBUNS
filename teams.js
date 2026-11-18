@@ -49,6 +49,7 @@ window.PQ_TEAMS = {
       "name": "TS",
       "allow": ["comboAlert", "replenish", "zap", "dayson", "unpick", "leaderboard", "bulkSingles"],
       "users": [
+        34266 // Ruben Groeneweg
       ]
     }
   ],
