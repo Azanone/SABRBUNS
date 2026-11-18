@@ -32,7 +32,8 @@ window.PQ_TEAMS = {
         32602, // Emir Seme
         42368, // Sharlton Matwirjo
         28469, // Dani Scheers
-        34369 // Efe Yildrim
+        34369, // Efe Yildrim
+        42037 // Dardan Ujkani
       ]
     },
     {
