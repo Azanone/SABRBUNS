@@ -32,8 +32,16 @@ window.PQ_TEAMS = {
         32602, // Emir Seme
         42368, // Sharlton Matwirjo
         28469, // Dani Scheers
-        35714, // Jokke Jacobs
         34369 // Efe Yildrim
+      ]
+    },
+    {
+      "name": "shiftlead",
+      "allow": ["settings", "comboBatcher", "comboAlert", "replenish", "batchOpt", "zap", "dayson", "unpick", "leaderboard", "autoNext", "pickAll", "bulkSingles", "beCounter", "shiftTools"],
+      "users": [
+        35714, // Jokke Jacobs
+        18089, // Rodney Huijgen
+        23384 // Joshua van der Meer
       ]
     }
   ],
