@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.98
+// @version      3.99
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.98';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.99';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -579,10 +579,21 @@
   };
   // per picklist in a batch: how much is picked (at the table) and is it closed. from GET /api/v1/picklists/batches/{id}
   // normal batches have the counts per picklist inside each product line (products[].picklists[])
+  // one batch as JSON, shared: the same batch asked twice within maxAge (or while it is still loading) = 1 call to Picqer
+  const BJ = new Map();
+  function batchJson(idBatch, maxAge = 5000) {
+    const k = String(idBatch), c = BJ.get(k);
+    if (c && (c.p || Date.now() - c.at < maxAge)) return c.p || Promise.resolve(c.d);
+    const p = fastFetch(`/api/v1/picklists/batches/${k}`, { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((d) => { BJ.set(k, { at: Date.now(), d }); return d; })
+      .catch((e) => { BJ.delete(k); throw e; });
+    BJ.set(k, { at: 0, p });
+    if (BJ.size > 300) BJ.delete(BJ.keys().next().value);
+    return p;
+  }
   async function batchPickState(idBatch) {
-    const r = await fetch(`/api/v1/picklists/batches/${idBatch}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d = await r.json();
+    const d = await batchJson(idBatch);
     const out = new Map();
     const get = (id) => { const k = String(id); if (!out.has(k)) out.set(k, { id: k, alias: '', status: '', total: 0, picked: 0 }); return out.get(k); };
     for (const pl of d.picklists || []) { const e = get(pl.idpicklist); e.alias = pl.alias || ''; e.status = pl.status || ''; }
@@ -1415,10 +1426,7 @@
     async function mmTick() {
       if (!BATCH_ID || C.mmBar === false || mmOn === false) return;
       let b = null;
-      try {
-        const r = await fetch(`/api/v1/picklists/batches/${BATCH_ID}`, { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-        if (r.ok) b = await r.json();
-      } catch (_) {}
+      try { b = await batchJson(BATCH_ID, 8000); } catch (_) {} // shared with the picked tags on this page
       if (!b || !Array.isArray(b.picklists)) return;
       if (mmOn === null) mmOn = isMM(b);
       if (!mmOn) { document.getElementById('pq-mm')?.remove(); return; }
@@ -1426,7 +1434,7 @@
     }
     if (BATCH_ID && C.mmBar !== false) {
       setTimeout(mmTick, 800);
-      setInterval(() => { if (!document.hidden) mmTick(); }, 10000);
+      setInterval(() => { if (!document.hidden) mmTick(); }, 20000);
       document.addEventListener('click', () => { if (mmOn) setTimeout(mmTick, 1500); }, true); // a tick on a line → fresh numbers soon
     }
 
@@ -1751,8 +1759,7 @@
       const target = row.querySelector('a[href*="/picklists/batches/"]');
       const loader = createLoader(target);
       apiQueue.push((done) => {
-        fastFetch(`/api/v1/picklists/batches/${batchId}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-          .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        batchJson(batchId, 20000) // Picqer redraws this table now and then: the same batch within 20 s = no new call
           .then((b) => {
             if (!b || !Array.isArray(b.picklists)) throw new Error('no picklists');
             loader.remove();
@@ -5327,6 +5334,7 @@
       };
     } catch (_) {}
     async function pickByLines() {
+      let busy = 0; // Picqer said "too many" in a row
       for (let guard = 0; guard < 300; guard++) {
         const it = openLines()[0];
         if (!it) return 'done';
@@ -5334,18 +5342,25 @@
         const before = lineLeft(it), n0 = pickNet.n;
         lineBtn(it).click();
         const t0 = Date.now();
-        while (Date.now() - t0 < 2500 && pickNet.n === n0) await wait(50); // Picqer's answer to this pick
+        while (Date.now() - t0 < 2500 && pickNet.n === n0) await wait(25); // Picqer's answer to this pick
+        if (pickNet.n !== n0 && pickNet.status === 429 && busy < 3) { // too fast: wait a bit and do the same line again
+          busy++;
+          setInfo(`Picqer: slow down · waiting ${busy * 1.5} s…`, false, true);
+          await wait(busy * 1500);
+          continue;
+        }
         if (pickNet.n !== n0 && pickNet.status && (pickNet.status < 200 || pickNet.status >= 300)) {
           setInfo(pickNet.status === 429 ? `Picqer: too many requests · ${code} not picked · page reloads, press A again in a few sec`
             : `Picqer said no (HTTP ${pickNet.status}) to ${code} · page reloads`, true);
           setTimeout(() => location.reload(), 3000); // show what really got picked
           return 'error';
         }
+        busy = 0;
         if (pickNet.n === n0) { // never saw the call: go by the line itself
           if (it.isConnected && lineLeft(it) === before && lineBtn(it)) { setInfo(`pick all: ${code} did not get picked`, true); return 'error'; }
-          await wait(800);
+          await wait(400);
         }
-        await wait(450); // about as fast as picking by hand
+        await wait(120); // Picqer redraws the line, then the next one (was 450 ms)
       }
       return 'done';
     }

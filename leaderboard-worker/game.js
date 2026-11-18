@@ -770,7 +770,8 @@ export function liveTick(L, open, details, { now, proxies = [] }) {
     }
     // open picklists without a letter or a container (the UNBOUND tag) → shift leaders get a warning when it also has picks
     const ub = (d.picklists || []).filter((p) => p.status !== 'closed' && p.status !== 'cancelled' && (!String(p.alias || '').trim() || !p.picking_container)).length;
-    L.b[bid] = { who, wh, ...s, checked: now, changed, ub, nr: String(d.picklist_batchid || bid) };
+    const pl = (d.picklists || []).filter((p) => p.status !== 'cancelled').length;
+    L.b[bid] = { who, wh, ...s, checked: now, changed, ub, pl, nr: String(d.picklist_batchid || bid) };
   }
   L.ev = L.ev.filter((e) => now - e.at < 60 * 60000);
   for (const k of Object.keys(L.last)) if (now - L.last[k] > 12 * 3600000) delete L.last[k];
@@ -778,8 +779,9 @@ export function liveTick(L, open, details, { now, proxies = [] }) {
 }
 // batches with picks that still have unbound picklists (read only, from the last live look)
 export function unboundList(L) {
-  return Object.entries((L && L.b) || {}).filter(([, s]) => s.ub > 0 && s.items > 0)
-    .map(([id, s]) => ({ id, nr: s.nr || id, who: s.who, wh: s.wh, ub: s.ub, items: s.items, total: s.total, changed: s.changed || 0 }));
+  // only full batches of exactly 15 picklists (the normal batch size), with picks and something unbound
+  return Object.entries((L && L.b) || {}).filter(([, s]) => s.pl === 15 && s.ub > 0 && s.items > 0)
+    .map(([id, s]) => ({ id, nr: s.nr || id, who: s.who, wh: s.wh, ub: s.ub, pl: s.pl, items: s.items, total: s.total, changed: s.changed || 0 }));
 }
 export function liveBoard(L, now) {
   L = L || newLive();
