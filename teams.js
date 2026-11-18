@@ -44,7 +44,13 @@ window.PQ_TEAMS = {
         18089, // Rodney Huijgen
         23384 // Joshua van der Meer
       ]
+    },
+    {
+      "name": "TS",
+      "allow": ["comboAlert", "replenish", "zap", "dayson", "unpick", "leaderboard", "bulkSingles"],
+      "users": [
+      ]
     }
   ],
-  "leftovers": { "allow": ["leaderboard", "bulkSingles"] }
+  "leftovers": { "allow": ["comboAlert", "leaderboard", "bulkSingles"] }
 };
