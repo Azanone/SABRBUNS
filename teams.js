@@ -27,7 +27,7 @@ window.PQ_TEAMS = {
     },
     {
       "name": "a",
-      "allow": ["settings", "comboAlert", "autoNext", "truePickAll", "bulkSingles"],
+      "allow": ["settings", "comboAlert", "leaderboard", "autoNext", "truePickAll", "bulkSingles"],
       "users": [
         32602, // Emir Seme
         42368, // Sharlton Matwirjo
