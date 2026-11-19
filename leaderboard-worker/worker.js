@@ -280,6 +280,9 @@ export class Game extends DurableObject {
     if (S && S.on && S.order.length < S.want) open.forEach((b) => { if (!S.b[String(b.idpicklist_batch)] && !S.skip[String(b.idpicklist_batch)]) want.add(String(b.idpicklist_batch)); });
     const dueIds = new Set(due.map((b) => String(b.idpicklist_batch)));
     open.forEach((b) => { if (want.has(String(b.idpicklist_batch)) && !dueIds.has(String(b.idpicklist_batch)) && due.length < 60) due.push(b); });
+    // followed batches that left the open list: read them one last time to see how they ended (done or removed)
+    const openSet = new Set(open.map((b) => String(b.idpicklist_batch)));
+    for (const id of studyActive(S)) if (!openSet.has(id) && due.length < 70) due.push({ idpicklist_batch: id });
     const details = [];
     // 6 at a time: one batch with all its products takes Picqer a few seconds
     for (let i = 0; i < due.length; i += 6) {
@@ -287,7 +290,7 @@ export class Game extends DurableObject {
       details.push(...got.filter(Boolean));
     }
     await this.ctx.storage.put('liveTook', Date.now() - now);
-    const L = liveTick(await this.ctx.storage.get('live'), open, details, { now, proxies: proxiesOf(env) });
+    const L = liveTick(await this.ctx.storage.get('live'), open, details.filter((d) => openSet.has(String(d.idpicklist_batch))), { now, proxies: proxiesOf(env) }); // live board: only open batches
     await this.ctx.storage.put('live', L);
     if (S && S.on) await this.studySave(studyTick(S, open, details, { now, proxies: proxiesOf(this.env) }), true);
   }

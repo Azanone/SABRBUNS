@@ -23,7 +23,8 @@ function look(d) {
     const k = String(p.stock_location || '').trim() || `#${p.idproduct}`;
     const L = (locs[k] = locs[k] || { need: 0, got: 0, skus: 0 });
     L.skus++;
-    for (const x of p.picklists || []) { L.need += +x.amount || 0; L.got += Math.min(+x.amount_collected || 0, +x.amount || 0); }
+    // picked in the Picqer app counts as amount_picked, in the browser first as amount_collected: take the highest
+    for (const x of p.picklists || []) { L.need += +x.amount || 0; L.got += Math.min(Math.max(+x.amount_collected || 0, +x.amount_picked || 0), +x.amount || 0); }
   }
   for (const L of Object.values(locs)) { items += L.got; total += L.need; }
   const pls = (d.picklists || []).filter((p) => p.status !== 'cancelled');
@@ -51,13 +52,25 @@ export function studyTick(S, open, details, { now, proxies = [], quick = false }
   for (const id of studyActive(S)) {
     const r = S.b[id];
     const d = det.get(id);
-    if (!openIds.has(id) && !d) { // left the open list: all picked → done at the last look, else gone
-      if (r.got >= r.total && r.total > 0) r.end = r.last; else r.gone = now;
+    const left = !openIds.has(id); // not open anymore: the worker read it one last time (d) to see how it ended
+    if (left && !d) { // that last look failed: try again next time, give up after 4 tries
+      r.miss = (r.miss || 0) + 1;
+      if (r.miss >= 4) { if (r.got >= r.total && r.total > 0) r.end = r.last; else r.gone = t(now); }
       continue;
     }
     if (!d) continue;
     const s = look(d);
     const sec = t(now);
+    if (left) {
+      // finished (Picqer closes a batch when everything is picked): done now, the last locations too
+      if ((s.total > 0 && s.items >= s.total) || d.status === 'completed') {
+        for (const [k, L] of Object.entries(s.locs)) { const o = (r.locs[k] = r.locs[k] || [L.need, null, L.skus]); if (o[1] == null) o[1] = sec; }
+        if (!r.first) r.first = sec;
+        if (!r.bound) r.bound = r.first;
+        r.got = s.total || r.got; r.total = s.total || r.total; r.end = sec; r.last = sec;
+      } else { r.got = s.items; r.gone = sec; } // removed / cancelled before it was picked
+      continue;
+    }
     r.last = sec;
     const sig = `${s.items}|${s.anyBound}|${s.allBound}`;
     if (sig !== r.sig) { r.sig = sig; r.chg = sec; } // last change: the 5 s looks stop for quiet batches
@@ -87,6 +100,9 @@ export function studyTick(S, open, details, { now, proxies = [], quick = false }
     if (S.wh && String(b.idwarehouse) !== S.wh) { S.skip[id] = 1; continue; }
     const s = look(d);
     if (s.items > 0) { S.skip[id] = 1; continue; } // already being picked: we missed the start
+    if (!s.total) { S.skip[id] = 1; continue; } // nothing to pick in it
+    const made = ms(d.created_at || b.created_at);
+    if (made && made < S.started - 2 * 60000) { S.skip[id] = 1; continue; } // only batches made after the study started
     const sec = t(now);
     S.b[id] = {
       id, nr: String(d.picklist_batchid || b.picklist_batchid || id), wh: String(b.idwarehouse || d.idwarehouse || ''), who,

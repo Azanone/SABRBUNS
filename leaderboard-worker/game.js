@@ -731,7 +731,7 @@ function snap(d) {
   for (const p of d.products || []) {
     const k = String(p.stock_location || p.idproduct);
     const L = (locs[k] = locs[k] || { need: 0, got: 0 });
-    for (const x of p.picklists || []) { L.need += +x.amount || 0; L.got += Math.min(+x.amount_collected || 0, +x.amount || 0); }
+    for (const x of p.picklists || []) { L.need += +x.amount || 0; L.got += Math.min(Math.max(+x.amount_collected || 0, +x.amount_picked || 0), +x.amount || 0); } // app picks = amount_picked
   }
   let done = 0;
   for (const L of Object.values(locs)) { items += L.got; total += L.need; if (L.need > 0 && L.got >= L.need) done++; }
