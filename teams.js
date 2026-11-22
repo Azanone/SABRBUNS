@@ -42,7 +42,8 @@ window.PQ_TEAMS = {
       "users": [
         35714, // Jokke Jacobs
         18089, // Rodney Huijgen
-        23384 // Joshua van der Meer
+        23384, // Joshua van der Meer
+        32651 // Egehan Akali
       ]
     },
     {
