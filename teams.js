@@ -52,7 +52,8 @@ window.PQ_TEAMS = {
       "allow": ["comboAlert", "replenish", "zap", "dayson", "unpick", "leaderboard", "bulkSingles"],
       "users": [
         34266, // Ruben Groeneweg
-        37110 // Tobias Vaartmans
+        37110, // Tobias Vaartmans
+        37421 // Burhan Dagdeviren
       ]
     }
   ],
