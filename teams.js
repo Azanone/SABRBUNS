@@ -22,7 +22,8 @@ window.PQ_TEAMS = {
         "Ahmad Saber",
         22610, // Jari Bezemer
         37129, // Steyn Rombout
-        39213 // Ali Al- Turaim
+        39213, // Ali Al- Turaim
+        33116 // Mohamad Alamirat
       ]
     },
     {
