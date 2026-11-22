@@ -22,8 +22,7 @@ window.PQ_TEAMS = {
         "Ahmad Saber",
         22610, // Jari Bezemer
         37129, // Steyn Rombout
-        39213, // Ali Al- Turaim
-        33116 // Mohamad Alamirat
+        39213 // Ali Al- Turaim
       ]
     },
     {
@@ -52,7 +51,8 @@ window.PQ_TEAMS = {
       "name": "TS",
       "allow": ["comboAlert", "replenish", "zap", "dayson", "unpick", "leaderboard", "bulkSingles"],
       "users": [
-        34266 // Ruben Groeneweg
+        34266, // Ruben Groeneweg
+        37110 // Tobias Vaartmans
       ]
     }
   ],
