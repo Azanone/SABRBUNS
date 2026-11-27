@@ -35,7 +35,8 @@ window.PQ_TEAMS = {
         34369, // Efe Yildrim
         42037, // Dardan Ujkani
         38669, // Ilayda Kafa
-        36510 // Sedat Ozbasi
+        36510, // Sedat Ozbasi
+        36789 // Denis Tuchiu
       ]
     },
     {
