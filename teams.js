@@ -27,14 +27,15 @@ window.PQ_TEAMS = {
     },
     {
       "name": "a",
-      "allow": ["settings", "comboAlert", "leaderboard", "autoNext", "truePickAll", "bulkSingles"],
+      "allow": ["settings", "comboAlert", "replenish", "leaderboard", "autoNext", "truePickAll", "bulkSingles"],
       "users": [
         32602, // Emir Seme
         42368, // Sharlton Matwirjo
         28469, // Dani Scheers
         34369, // Efe Yildrim
         42037, // Dardan Ujkani
-        38669 // Ilayda Kafa
+        38669, // Ilayda Kafa
+        36510 // Sedat Ozbasi
       ]
     },
     {
@@ -53,8 +54,7 @@ window.PQ_TEAMS = {
       "users": [
         34266, // Ruben Groeneweg
         37110, // Tobias Vaartmans
-        37421, // Burhan Dagdeviren
-        36510 // Sedat Ozbasi
+        37421 // Burhan Dagdeviren
       ]
     }
   ],
