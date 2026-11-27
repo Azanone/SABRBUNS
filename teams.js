@@ -50,7 +50,7 @@ window.PQ_TEAMS = {
     },
     {
       "name": "TS",
-      "allow": ["comboAlert", "replenish", "zap", "dayson", "unpick", "leaderboard", "bulkSingles"],
+      "allow": ["comboAlert", "replenish", "batchOpt", "zap", "dayson", "unpick", "leaderboard", "bulkSingles"],
       "users": [
         34266, // Ruben Groeneweg
         37110, // Tobias Vaartmans
