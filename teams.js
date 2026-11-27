@@ -54,7 +54,8 @@ window.PQ_TEAMS = {
       "users": [
         34266, // Ruben Groeneweg
         37110, // Tobias Vaartmans
-        37421 // Burhan Dagdeviren
+        37421, // Burhan Dagdeviren
+        32254 // Stijn Laurijssens
       ]
     }
   ],
