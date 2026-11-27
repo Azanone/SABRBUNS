@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      4.00
+// @version      4.01
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -14,6 +14,8 @@
 
 (() => {
   'use strict';
+  // the hidden frame that reads the Batch maken page for the BATCHES / FEDEX pills: no suite in there
+  try { if (window.top !== window && window.name === 'pq-presets') return; } catch (_) {}
   if (window.__pqSuite) return;
   window.__pqSuite = true;
 
@@ -54,7 +56,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '4.00';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '4.01';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -1432,15 +1434,39 @@
       }
       return out;
     }
+    function frameRead() {
+      return new Promise((done) => {
+        const f = document.createElement('iframe');
+        f.name = 'pq-presets';
+        f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
+        f.style.cssText = 'position:fixed;left:-9999px;top:0;width:1200px;height:900px;border:0;visibility:hidden;pointer-events:none';
+        let n = 0, t = null;
+        const end = (p) => { clearInterval(t); f.remove(); done(p || {}); };
+        f.src = SURL;
+        t = setInterval(() => {
+          n++;
+          let p = {};
+          try { const d = f.contentDocument; if (d && /\/login/.test(d.location.pathname)) return end({}); if (d && d.body) p = parsePresets(d); } catch (_) { return end({}); }
+          if (Object.keys(p).length) end(p); else if (n > 40) end({}); // max 20 s
+        }, 500);
+        document.body.appendChild(f);
+      });
+    }
     async function presetCounts() {
       const c = lsGet(LS_P, null);
       if (c && Date.now() - c.at < 58000) return c;
-      if (Date.now() - lsGet(LS_PLOCK, 0) < 20000) return c;
+      if (Date.now() - lsGet(LS_PLOCK, 0) < 30000) return c;
       lsSet(LS_PLOCK, Date.now());
       try {
-        const r = await fetch(SURL, { credentials: 'same-origin', cache: 'no-store' });
-        if (!r.ok || /\/login/.test(r.url)) return c;
-        const p = parsePresets(new DOMParser().parseFromString(await r.text(), 'text/html'));
+        // 1) the page's HTML (cheap, works if Picqer puts the numbers in the HTML)
+        let p = {};
+        if (!lsGet('pq_presets_js', false)) {
+          const r = await fetch(SURL, { credentials: 'same-origin', cache: 'no-store' });
+          if (!r.ok || /\/login/.test(r.url)) return c;
+          p = parsePresets(new DOMParser().parseFromString(await r.text(), 'text/html'));
+        }
+        // 2) Picqer draws the list with JavaScript: open the page in a hidden frame, read it when it is drawn, close it
+        if (!Object.keys(p).length) { p = await frameRead(); if (Object.keys(p).length) lsSet('pq_presets_js', true); }
         if (!Object.keys(p).length) return c;
         const out = { at: Date.now(), p };
         lsSet(LS_P, out);
@@ -1482,7 +1508,10 @@
       setInterval(() => { if (!document.hidden) presetTick(); }, 15000); // cheap: Picqer only asked when the shared count is 1 min old
       window.addEventListener('storage', (e) => { if (e.key === LS_P && e.newValue) { try { presetPaint(JSON.parse(e.newValue)); } catch (_) {} } });
       // on the Batch maken page itself: read it from the page, no call
-      if (location.pathname === SURL) setTimeout(() => { const p = parsePresets(document); if (Object.keys(p).length) { const o = { at: Date.now(), p }; lsSet(LS_P, o); presetPaint(o); } }, 1200);
+      if (location.pathname === SURL) { // drawn by Picqer after load: keep reading while you are here (every 5 s, no calls)
+        const here = () => { const p = parsePresets(document); if (Object.keys(p).length) { const o = { at: Date.now(), p }; lsSet(LS_P, o); presetPaint(o); } };
+        setTimeout(here, 1200); setInterval(() => { if (!document.hidden) here(); }, 5000);
+      }
     }
 
     // ---------- MEGAMULTI progress bar ----------
