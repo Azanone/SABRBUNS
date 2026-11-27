@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picqer Suite (TRL)
 // @namespace    trl.picqer.suite
-// @version      3.99
+// @version      4.00
 // @description  All TRL Picqer tools in one script: batcher, auto print + next, product colors, picker dashboard, ZAP, DAYSON, error handler and more. Teams decide who may use what. Shift+8 (*) = settings, teams, colors.
 // @match        https://*.picqer.com/*
 // @run-at       document-start
@@ -54,7 +54,7 @@
    *  Tampermonkey loaded with the script (@require), else the fallback below.
    * ========================================================================= */
   const RAW = 'https://raw.githubusercontent.com/Azanone/SABRBUNS/main/';
-  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '3.99';
+  const SUITE_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '4.00';
   const REMOTE_EVERY = 5 * 60 * 1000;              // fetch each file at most every 5 min per PC
   const FALLBACK_TEAMS = {                         // only if there is no teams.js at all
     teams: [{ name: 'Shift leaders', allow: '*', users: [32247, 'Ahmad Saber'] }],
@@ -213,6 +213,12 @@
     ]},
     { id: 'shiftTools', title: 'Shift leader tools', hint: 'aanvuladvies pill · megamulti bar · unbound alert', fields: [
       { k: 'aanvul', label: 'AANVULADVIES pill in the header (how many, click = the page)', type: 'bool', def: true },
+      { k: 'batchPill', label: 'BATCHES pill (left): multi picklists of these presets ÷ batch size, rounded up', type: 'bool', def: true },
+      { k: 'multiPresets', label: 'Presets for the BATCHES pill (Batch maken page, exact names)', type: 'list', def: ['H1 > België > M', 'H1 > NL/BUI > M'] },
+      { k: 'batchSize', label: 'Picklists per batch', type: 'num', def: 15 },
+      { k: 'fedexPill', label: 'FEDEX pill (until the time below)', type: 'bool', def: true },
+      { k: 'fedexPresets', label: 'Presets for the FEDEX pill', type: 'list', def: ['FedEx > M', 'FedEx > S'] },
+      { k: 'fedexUntil', label: 'FEDEX pill until (hh:mm)', type: 'text', def: '16:00' },
       { k: 'mmBar', label: 'Progress bar at the top on a MEGAMULTI batch', type: 'bool', def: true },
       { k: 'unbound', label: 'Message when a batch has picks but unbound picklists', type: 'bool', def: true },
       { k: 'beep', label: 'Beep on the unbound message', type: 'bool', def: true },
@@ -1303,8 +1309,17 @@
     if (!nav || !nav.isConnected) { nav = nav || document.createElement('div'); nav.id = 'pq-tags'; hdr.prepend(nav); }
     return nav;
   }
+  // left → right: BATCHES · BE · EIGENAAR · AANVULADVIES · FEDEX
+  const PILL_RANK = { 'pq-tag-batches': 0, 'pq-tag-be': 1, 'pq-tag-eig': 2, 'pq-tag-aanvul': 8, 'pq-tag-fedex': 9 };
+  function tagOrder() {
+    const nav = document.getElementById('pq-tags');
+    if (!nav) return;
+    const kids = [...nav.children], rank = (el) => PILL_RANK[el.id] ?? 5;
+    const sorted = [...kids].sort((a, b) => rank(a) - rank(b));
+    if (sorted.some((el, i) => el !== kids[i])) sorted.forEach((el) => nav.appendChild(el));
+  }
   function tagGroupTidy() { const n = document.getElementById('pq-tags'); if (n && !n.children.length) n.remove(); }
-  const OWN_PILLS = new Set(['pq-tag-aanvul']); // pills the BE loop must leave alone
+  const OWN_PILLS = new Set(['pq-tag-aanvul', 'pq-tag-batches', 'pq-tag-fedex']); // pills the BE loop must leave alone
   function tagPills() {
     const URL_ = norm(String((CFG.leaderboard && CFG.leaderboard.url) || '')).replace(/\/+$/, '');
     const int = (x) => Math.floor(+x || 0).toLocaleString('nl-NL');
@@ -1333,6 +1348,7 @@
         el.innerHTML = `<span>${escHtml(t.label)}</span><b>${int(t.n)}</b>`;
         if (was != null && was !== t.n) { el.classList.remove('dn', 'up'); void el.offsetWidth; el.classList.add(t.n < was ? 'dn' : 'up'); }
       });
+      tagOrder();
     }
     setInterval(() => { if (!document.hidden) beTick(); }, 15000);
     setTimeout(beTick, 1500);
@@ -1378,7 +1394,8 @@
       const nav = tagGroup();
       if (!nav) return;
       if (!el || !el.isConnected) { el = document.createElement('a'); el.id = 'pq-tag-aanvul'; el.className = 'pq-tagpill'; el.href = location.origin + AURL; }
-      if (el.parentNode !== nav || el !== nav.lastElementChild) nav.appendChild(el); // always last: BE · EIGENAAR · AANVULADVIES
+      if (el.parentNode !== nav) nav.appendChild(el);
+      tagOrder();
       const was = el.dataset.n == null ? null : +el.dataset.n;
       el.dataset.n = c.n;
       el.title = `replenish advice (aanvuladvies) · ${c.n}${c.more ? '+' : ''} products to refill · click to see them`;
@@ -1391,6 +1408,81 @@
       setTimeout(aanvulTick, use('replenish') ? 6000 : 1200); // the replenish alert asks at 3 s: wait for its answer
       setInterval(() => { if (!document.hidden) aanvulTick(); }, 15000); // cheap: only asks Picqer when the shared count is 1 min old
       window.addEventListener('storage', (e) => { if (e.key === LS_A && e.newValue) { try { aanvulPill(JSON.parse(e.newValue)); } catch (_) {} } });
+    }
+
+    // ---------- BATCHES (left) + FEDEX pills: counts from Picqer's "Batch maken" page (presets), 60 s, shared by tabs ----------
+    const SURL = '/picklists/batches/start', LS_P = 'pq_presets', LS_PLOCK = 'pq_presets_lock';
+    const normName = (x) => String(x || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    function parsePresets(doc) {
+      const out = {};
+      for (const btn of doc.querySelectorAll('a, button')) {
+        if (!/^\s*aanmaken\s*$/i.test(btn.textContent || '')) continue;
+        // the row: go up until the text holds a preset name and the count
+        let row = btn.parentElement;
+        for (let i = 0; i < 4 && row && !/>/.test(row.textContent || ''); i++) row = row.parentElement;
+        if (!row) continue;
+        // every text piece on its own (textContent glues "M" and "27" together)
+        const parts = [];
+        const tw = row.ownerDocument.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+        for (let t = tw.nextNode(); t; t = tw.nextNode()) parts.push(t.nodeValue);
+        const txt = parts.join(' ').replace(/aanmaken/ig, ' ').replace(/\bsingles\b/ig, ' ').replace(/\s+/g, ' ').trim();
+        const m = txt.match(/^(.*?)\s+(\d[\d.]*)\s*$/);
+        if (!m) continue;
+        out[normName(m[1])] = parseInt(m[2].replace(/\./g, ''), 10) || 0;
+      }
+      return out;
+    }
+    async function presetCounts() {
+      const c = lsGet(LS_P, null);
+      if (c && Date.now() - c.at < 58000) return c;
+      if (Date.now() - lsGet(LS_PLOCK, 0) < 20000) return c;
+      lsSet(LS_PLOCK, Date.now());
+      try {
+        const r = await fetch(SURL, { credentials: 'same-origin', cache: 'no-store' });
+        if (!r.ok || /\/login/.test(r.url)) return c;
+        const p = parsePresets(new DOMParser().parseFromString(await r.text(), 'text/html'));
+        if (!Object.keys(p).length) return c;
+        const out = { at: Date.now(), p };
+        lsSet(LS_P, out);
+        return out;
+      } catch (_) { return c; } finally { lsSet(LS_PLOCK, 0); }
+    }
+    const sumOf = (p, names) => { let n = 0, found = 0; for (const x of names || []) { const v = p[normName(x)]; if (v != null) { n += v; found++; } } return found ? n : null; };
+    function pill(id, label, value, title, on) {
+      let el = document.getElementById(id);
+      if (!on || value == null) { el?.remove(); tagGroupTidy(); return; }
+      const nav = tagGroup();
+      if (!nav) return;
+      if (!el || !el.isConnected) { el = document.createElement('a'); el.id = id; el.className = 'pq-tagpill'; el.href = location.origin + SURL; nav.appendChild(el); }
+      const was = el.dataset.n == null ? null : +el.dataset.n;
+      el.dataset.n = value; el.title = title;
+      el.innerHTML = `<span>${escHtml(label)}</span><b>${int(value)}</b>`;
+      if (was != null && was !== value) { el.classList.remove('dn', 'up'); void el.offsetWidth; el.classList.add(value < was ? 'dn' : 'up'); }
+      tagOrder();
+    }
+    function untilOk() {
+      const m = String(C.fedexUntil || '16:00').match(/(\d{1,2})[:.](\d{2})/);
+      const d = new Date(), lim = m ? +m[1] * 60 + +m[2] : 960;
+      return d.getHours() * 60 + d.getMinutes() < lim;
+    }
+    function presetPaint(c) {
+      const p = (c && c.p) || null;
+      if (!p) return;
+      const size = Math.max(1, +C.batchSize || 15);
+      const multi = sumOf(p, C.multiPresets || ['H1 > België > M', 'H1 > NL/BUI > M']);
+      const nb = multi == null ? null : Math.ceil(multi / size);
+      pill('pq-tag-batches', 'Batches', nb, multi == null ? '' : `${multi} multi picklists (${(C.multiPresets || []).join(' + ')}) ÷ ${size} = ${(multi / size).toFixed(1).replace('.', ',')} → ${nb} batches · click = Batch maken`, C.batchPill !== false);
+      const fx = sumOf(p, C.fedexPresets || ['FedEx > M', 'FedEx > S']);
+      pill('pq-tag-fedex', 'FedEx', fx, `FedEx picklists to batch (${(C.fedexPresets || []).join(' + ')}) · shows until ${C.fedexUntil || '16:00'} · click = Batch maken`, C.fedexPill !== false && untilOk());
+    }
+    async function presetTick() { presetPaint(await presetCounts()); }
+    if (C.batchPill !== false || C.fedexPill !== false) {
+      setTimeout(() => presetPaint(lsGet(LS_P, null)), 900);
+      setTimeout(presetTick, 1500);
+      setInterval(() => { if (!document.hidden) presetTick(); }, 15000); // cheap: Picqer only asked when the shared count is 1 min old
+      window.addEventListener('storage', (e) => { if (e.key === LS_P && e.newValue) { try { presetPaint(JSON.parse(e.newValue)); } catch (_) {} } });
+      // on the Batch maken page itself: read it from the page, no call
+      if (location.pathname === SURL) setTimeout(() => { const p = parsePresets(document); if (Object.keys(p).length) { const o = { at: Date.now(), p }; lsSet(LS_P, o); presetPaint(o); } }, 1200);
     }
 
     // ---------- MEGAMULTI progress bar ----------
@@ -6993,6 +7085,7 @@
       .sh .iv-eff .good{color:#059669} .sh .iv-eff .bad{color:#e11d48}
       .sh h3 small{color:var(--mut);font-weight:500;margin-left:4px}
       .sh .iv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+      .sh .iv-n{position:absolute;top:6px;right:7px;font:800 11px system-ui,sans-serif;font-style:normal;padding:1px 6px;border-radius:999px;background:var(--r,#94a3b8);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2)}
       .sh .iv-c{position:relative;border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px;background:var(--bg);display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;overflow:hidden}
       .sh .iv-c::before{content:"";position:absolute;left:0;right:0;top:0;height:64px;background:radial-gradient(circle at 50% 0,color-mix(in srgb,var(--r) 32%,transparent),transparent 70%);pointer-events:none}
       .sh .iv-c::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--r)}
@@ -7385,8 +7478,12 @@
       if (p.stolen && p.stolen.until > now) eff.push([`🥷 Wearing ${escHtml(((tot && tot.list) || []).find((r) => r.id === String(p.stolen.from))?.name || 'someone')}'s skin`, p.stolen.until, 'good']);
       const crates = (p.inv || []).filter((x) => x.kind === 'crate').sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier) || a.at - b.at);
       const items = (p.inv || []).filter((x) => x.kind === 'item');
-      const crateCard = (x) => `<div class="iv-c" style="--r:${TIER_COL[x.tier] || '#94a3b8'}" title="${agoTxt(x.at)}"><div class="iv-ic">${TIER_ICON[x.tier] || '📦'}</div><b>${escHtml(tierName(x.tier))}</b><button class="buy" data-open="${escHtml(x.uid)}">Open</button></div>`;
-      const itemCard = (x) => { const d = itemDef(x.item); return `<div class="iv-c" style="--r:${ITEM_COL[x.item] || '#94a3b8'}" title="${escHtml(d.desc)}"><div class="iv-ic">${ITEM_ICON[x.item] || '❔'}</div><b>${escHtml(d.name)}</b><button class="${d.target ? 'buy' : 'wear'}" data-use="${escHtml(x.uid)}">${d.target ? 'Use on…' : 'Use'}</button></div>`; };
+      // the same crate tier / item stacks into one card with ×n; the button opens / uses the oldest one
+      const stack = (list, key) => { const m = new Map(); for (const x of list) { const k = key(x); if (!m.has(k)) m.set(k, []); m.get(k).push(x); } return [...m.values()].map((g) => g.sort((a, b) => (a.at || 0) - (b.at || 0))); };
+      const nBadge = (g) => (g.length > 1 ? `<i class="iv-n">×${g.length}</i>` : '');
+      const crateCard = (g) => { const x = g[0]; return `<div class="iv-c" style="--r:${TIER_COL[x.tier] || '#94a3b8'}" title="${g.length > 1 ? `${g.length} crates · oldest ` : ''}${agoTxt(x.at)}">${nBadge(g)}<div class="iv-ic">${TIER_ICON[x.tier] || '📦'}</div><b>${escHtml(tierName(x.tier))}</b><button class="buy" data-open="${escHtml(x.uid)}">Open</button></div>`; };
+      const itemCard = (g) => { const x = g[0], d = itemDef(x.item); return `<div class="iv-c" style="--r:${ITEM_COL[x.item] || '#94a3b8'}" title="${escHtml(d.desc)}">${nBadge(g)}<div class="iv-ic">${ITEM_ICON[x.item] || '❔'}</div><b>${escHtml(d.name)}</b><button class="${d.target ? 'buy' : 'wear'}" data-use="${escHtml(x.uid)}">${d.target ? 'Use on…' : 'Use'}</button></div>`; };
+      const crateStacks = stack(crates, (x) => x.tier), itemStacks = stack(items, (x) => x.item);
       let aim = '';
       if (aimUid) {
         const x = aimUid === 'TRADE' ? { item: '' } : items.find((i) => i.uid === aimUid);
@@ -7410,9 +7507,9 @@
         ${eff.length ? `<div class="iv-eff">${eff.map(([t, u, k]) => `<span class="${k}">${t} · ${leftTxt(u)}</span>`).join('')}</div>` : ''}
         ${aim}
         <h3>Crates <small>${crates.length || ''}</small> ${ii('drops')}</h3>
-        ${crates.length ? `<div class="iv-grid">${crates.map(crateCard).join('')}</div>` : '<div class="iv-empty">–</div>'}
+        ${crates.length ? `<div class="iv-grid">${crateStacks.map(crateCard).join('')}</div>` : '<div class="iv-empty">–</div>'}
         <h3>Items <small>${items.length || ''}</small> ${ii('items')}</h3>
-        ${items.length ? `<div class="iv-grid">${items.map(itemCard).join('')}</div>` : '<div class="iv-empty">–</div>'}
+        ${items.length ? `<div class="iv-grid">${itemStacks.map(itemCard).join('')}</div>` : '<div class="iv-empty">–</div>'}
         <h3>Themes <small>${mySkins.length || ''}</small></h3>
         ${mySkins.length ? `${mySkins.length > 3 ? sortChips : ''}<div class="sh-grid">${mySkins.map((s) => skinCard(p, s)).join('')}</div>` : '<div class="iv-empty">–</div>'}
         ${myColors.length ? `<h3>Colors ${ii('colors')}</h3><div class="sh-grid">${myColors.map((s) => colorCard(p, s)).join('')}</div>` : ''}`;
