@@ -27,7 +27,7 @@ window.PQ_TEAMS = {
     },
     {
       "name": "a",
-      "allow": ["settings", "comboAlert", "leaderboard", "autoNext", "cardColor", "truePickAll", "bulkSingles"],
+      "allow": ["settings", "comboAlert", "leaderboard", "autoNext", "truePickAll", "bulkSingles"],
       "users": [
         32602, // Emir Seme
         42368, // Sharlton Matwirjo
@@ -39,7 +39,7 @@ window.PQ_TEAMS = {
     },
     {
       "name": "shiftlead",
-      "allow": ["settings", "comboBatcher", "comboAlert", "replenish", "batchOpt", "zap", "dayson", "unpick", "leaderboard", "autoNext", "cardColor", "pickAll", "truePickAll", "bulkSingles", "beCounter", "shiftTools"],
+      "allow": ["settings", "comboBatcher", "comboAlert", "replenish", "batchOpt", "zap", "dayson", "unpick", "leaderboard", "autoNext", "pickAll", "truePickAll", "bulkSingles", "beCounter", "shiftTools"],
       "users": [
         35714, // Jokke Jacobs
         18089, // Rodney Huijgen
@@ -49,11 +49,12 @@ window.PQ_TEAMS = {
     },
     {
       "name": "TS",
-      "allow": ["comboAlert", "replenish", "zap", "dayson", "unpick", "leaderboard", "cardColor", "bulkSingles", "beCounter", "shiftTools"],
+      "allow": ["comboAlert", "replenish", "zap", "dayson", "unpick", "leaderboard", "bulkSingles"],
       "users": [
         34266, // Ruben Groeneweg
         37110, // Tobias Vaartmans
-        37421 // Burhan Dagdeviren
+        37421, // Burhan Dagdeviren
+        36510 // Sedat Ozbasi
       ]
     }
   ],
