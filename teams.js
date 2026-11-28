@@ -36,7 +36,8 @@ window.PQ_TEAMS = {
         42037, // Dardan Ujkani
         38669, // Ilayda Kafa
         36510, // Sedat Ozbasi
-        36789 // Denis Tuchiu
+        33116, // Mohamad Alamirat
+        33562 // Abdullah Salem
       ]
     },
     {
